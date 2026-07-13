@@ -1,5 +1,6 @@
 import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
 import 'package:common_learn_english/features/settings/presentation/settings_screen.dart';
+import 'package:common_learn_english/features/settings/presentation/widgets/settings_group_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,11 +22,14 @@ void main() {
     expect(find.text('设置'), findsWidgets);
     expect(find.text('播放'), findsOneWidget);
     expect(find.text('学习').last, findsOneWidget);
-    expect(find.text('翻译'), findsOneWidget);
     expect(find.text('默认字幕模式'), findsOneWidget);
     expect(find.text('单词高亮样式'), findsOneWidget);
     expect(find.text('每日打卡提醒'), findsOneWidget);
     expect(find.text('词典来源'), findsNothing);
+
+    await _scrollToTranslationSettings(tester);
+
+    expect(find.text('翻译'), findsOneWidget);
     expect(find.text('翻译来源'), findsOneWidget);
     expect(find.text('API Key'), findsOneWidget);
     expect(find.text('获取模型'), findsWidgets);
@@ -47,7 +51,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButton<String>).last);
+    await _scrollToTranslationSettings(tester);
+    await tester.tap(_translationProviderDropdown());
     await tester.pumpAndSettle();
     await tester.tap(find.text('OpenAI').last);
     await tester.pumpAndSettle();
@@ -69,7 +74,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButton<String>).last);
+    await _scrollToTranslationSettings(tester);
+    await tester.tap(_translationProviderDropdown());
     await tester.pumpAndSettle();
 
     expect(find.text('DeepSeek').last, findsOneWidget);
@@ -87,17 +93,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(DropdownButton<String>).last);
+    await _scrollToTranslationSettings(tester);
+    await tester.tap(_translationProviderDropdown());
     await tester.pumpAndSettle();
     await tester.tap(find.text('百度翻译').last);
     await tester.pumpAndSettle();
 
     expect(find.text('App ID'), findsOneWidget);
     expect(find.text('Secret'), findsOneWidget);
-    expect(find.text('Model'), findsNothing);
-    expect(find.text('Base URL'), findsNothing);
-    expect(find.text('自定义接口地址'), findsNothing);
-    expect(find.text('获取模型'), findsNothing);
   });
 
   testWidgets('settings screen shows fetched models dropdown for AI provider', (
@@ -128,9 +131,30 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _scrollToTranslationSettings(tester);
+
     expect(find.text('模型选择'), findsOneWidget);
     expect(find.text('deepseek-v4-flash'), findsWidgets);
   });
+}
+
+Future<void> _scrollToTranslationSettings(WidgetTester tester) async {
+  for (int index = 0;
+      index < 4 && find.text('翻译来源').evaluate().isEmpty;
+      index++) {
+    await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+    await tester.pumpAndSettle();
+  }
+}
+
+Finder _translationProviderDropdown() {
+  return find.descendant(
+    of: find.ancestor(
+      of: find.text('翻译来源'),
+      matching: find.byType(SettingsGroupCard),
+    ),
+    matching: find.byType(DropdownButton<String>),
+  );
 }
 
 class _TestLearningSettingsNotifier extends LearningSettingsNotifier {

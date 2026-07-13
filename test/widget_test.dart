@@ -73,14 +73,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('继续学习'), findsOneWidget);
-    expect(find.text('欢迎回来，学习者'), findsOneWidget);
-    expect(find.text('快速访问'), findsOneWidget);
-    expect(find.text('英语学习休息室'), findsOneWidget);
-    expect(find.text('影视浸润精听'), findsWidgets);
-    expect(find.text('影视库'), findsWidgets);
-    expect(find.text('短语库'), findsWidgets);
-    expect(find.text('学习方法指南'), findsOneWidget);
+    expect(find.text('语言避难所'), findsWidgets);
+    expect(find.text('晚上好 Mark 👋'), findsOneWidget);
+    expect(find.text('导入你的第一套英语视频课程'), findsOneWidget);
+    expect(find.text('去导入课程'), findsOneWidget);
+    expect(find.text('今日挑战'), findsOneWidget);
   });
 
   testWidgets('shows pad home scaffold background color', (
@@ -98,7 +95,7 @@ void main() {
     final Scaffold scaffold = tester.widget<Scaffold>(
       find.byType(Scaffold).first,
     );
-    expect(scaffold.backgroundColor, const Color(0xFFF7F7F4));
+    expect(scaffold.backgroundColor, const Color(0xFFFAFAFA));
   });
 
   testWidgets('renders pad player controls', (WidgetTester tester) async {
@@ -113,11 +110,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('返回剧集列表'), findsOneWidget);
-    expect(find.text('英语学习休息室'), findsOneWidget);
-    expect(find.text('实习生'), findsOneWidget);
-    expect(find.text('第 03 集'), findsOneWidget);
-    expect(find.text('当前'), findsOneWidget);
+    expect(find.text('课程名称'), findsOneWidget);
+    expect(find.text('第 01 集'), findsOneWidget);
     expect(find.text('0.8'), findsOneWidget);
   });
 
@@ -180,9 +174,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('英语学习休息室'), findsOneWidget);
-    expect(find.text('实习生'), findsOneWidget);
-    expect(find.text('当前'), findsOneWidget);
+    expect(find.text('课程名称'), findsOneWidget);
+    expect(find.text('第 01 集'), findsOneWidget);
   });
 
   testWidgets('player no longer shows daily discovery panel', (
