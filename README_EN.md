@@ -1,8 +1,8 @@
-# Shadowing English
-
 <p align="center">
   <img src="assets/img/app_icon.png" alt="Shadowing English app icon" width="112" />
 </p>
+
+<h1 align="center">Shadowing English</h1>
 
 > A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
 
@@ -19,10 +19,21 @@ English · [中文](README.md)
 
 [Download the latest release](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [Run from source](#run-from-source) · [Import learning materials](#import-learning-materials)
 
-| The three-pass method | Import local videos and subtitles |
+## Screenshots
+
+| Sentence-by-sentence player | Import local videos and subtitles |
 | :---: | :---: |
-| <img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" /> |
-| Understand first, listen closely, then shadow the line. | Choose your own media and subtitles, review the matches, then start learning. |
+| <img src="assets/showcase/player.png" alt="Sentence practice, playback controls, and subtitle panel" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" /> |
+| Tap a line, loop the difficult part, and stay with the original scene. | Choose your own media and subtitles, review the matches, then start learning. |
+| The three-pass method | Learning journey and levels |
+| <img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" /> | <img src="assets/showcase/growth.png" alt="Learning journey, levels, and study roadmap" width="100%" /> |
+| Understand first, listen closely, then shadow the line. | Track practice, gain experience, and see the next step clearly. |
+| Wordbook | Saved phrases |
+| <img src="assets/showcase/words.jpg" alt="Wordbook and dictionary lookup" width="100%" /> | <img src="assets/showcase/phrases.jpg" alt="Saved phrases and review space" width="100%" /> |
+| Keep useful words connected to their context for review. | Save expressions that deserve more speaking practice. |
+| Subtitle, translation, and playback settings | |
+| <img src="assets/showcase/settings.jpg" alt="Settings for subtitles, translation, and playback" width="100%" /> | |
+| Configure support around the way you study. | |
 
 Shadowing English is an English shadowing app for turning videos you already own into deliberate listening and speaking practice. Import local videos and subtitles, work through real scenes sentence by sentence, and keep your media on your own device. This project does not provide videos, courses, or subtitle packs.
 

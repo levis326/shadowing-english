@@ -1,8 +1,8 @@
-# Shadowing English
-
 <p align="center">
   <img src="assets/img/app_icon.png" alt="Shadowing English app icon" width="112" />
 </p>
+
+<h1 align="center">Shadowing English</h1>
 
 > A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
 
@@ -19,10 +19,21 @@
 
 [下载最新版](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [从源码运行](#从源码运行) · [导入学习素材](#导入学习素材)
 
-| 三遍学习法 | 导入本地视频与字幕 |
+## 功能截图
+
+| 播放与逐句精听 | 导入本地视频与字幕 |
 | :---: | :---: |
-| <img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" /> |
-| 先理解，再精听，最后跟读。 | 选择自己的媒体与字幕，确认匹配后开始学习。 |
+| <img src="assets/showcase/player.png" alt="逐句精听、播放控制和字幕面板" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" /> |
+| 点按字幕、循环难句，在视频与原句之间保持专注。 | 选择自己的媒体与字幕，确认匹配后开始学习。 |
+| 三遍学习法 | 学习成长与等级 |
+| <img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" /> | <img src="assets/showcase/growth.png" alt="学习成长、等级和学习路线" width="100%" /> |
+| 先理解，再精听，最后跟读。 | 记录练习、积累经验，清楚看到下一步。 |
+| 单词本 | 短语复习 |
+| <img src="assets/showcase/words.jpg" alt="单词本与词义查看" width="100%" /> | <img src="assets/showcase/phrases.jpg" alt="短语收藏与复习空间" width="100%" /> |
+| 将查过的重点单词留在语境中继续复习。 | 收藏值得反复开口练习的表达。 |
+| 字幕、翻译与播放设置 | |
+| <img src="assets/showcase/settings.jpg" alt="字幕、翻译和播放相关设置" width="100%" /> | |
+| 按自己的学习方式配置字幕与辅助能力。 | |
 
 Shadowing English 是一个 English shadowing app：你导入自己有权使用的本地视频和字幕，用真实场景完成听懂、重复、模仿和开口表达。项目不提供任何影视、课程或字幕资源；学习素材保留在你的设备上。
 
