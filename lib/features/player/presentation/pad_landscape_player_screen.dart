@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -200,7 +201,13 @@ class _PadLandscapePlayerScreenState
     });
 
     final Player player = Player();
-    final VideoController controller = VideoController(player);
+    final VideoController controller = VideoController(
+      player,
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration:
+            defaultTargetPlatform != TargetPlatform.macOS,
+      ),
+    );
     final int initialPositionMs = state.positionMs;
 
     try {
