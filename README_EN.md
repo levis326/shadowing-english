@@ -29,6 +29,23 @@ You do not need to understand everything at once. A few spoken lines each day bu
 
 ![Import local video and subtitles](assets/showcase/import-course.jpg)
 
+## Turn every spoken line into visible progress
+
+The lines you practice, phrases you save, episodes you complete, and days you return all become part of your learning journey. Not for empty points—so you can see English moving from something you understand to something you can actually say.
+
+| Starting out | Building momentum | Going further |
+| :---: | :---: | :---: |
+| ![English starter](assets/img/growth-level-1.png) | ![Steady practice](assets/img/growth-level-5.png) | ![Advanced growth](assets/img/growth-level-10.png) |
+| Start with one scene | Build a trail through listening, lookup, and shadowing | Make real expression a habit |
+
+### Tools that keep the practice moving
+
+- **Learning journey and achievements** — track study time, sentences, phrases, and completed episodes over time.
+- **Phrase review** — turn expressions saved during playback into cards you can revisit and say again.
+- **Word book** — keep words you encounter in subtitles and return to their original context.
+- **AI subtitles** — generate and manage subtitles for videos that do not have them, using your own provider configuration.
+- **Local first** — your media stays on your device; your own materials and progress drive the experience.
+
 ## Get started
 
 ### Install an app package
@@ -69,4 +86,3 @@ See [RESOURCE_SETUP.md](RESOURCE_SETUP.md) for the media boundary and import det
 - Imported media and learning records are kept and managed on your own device.
 
 Issues and ideas for better shadowing workflows are welcome.
-
