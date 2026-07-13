@@ -1,5 +1,9 @@
 # Shadowing English
 
+<p align="center">
+  <img src="assets/img/app_icon.png" alt="Shadowing English app icon" width="112" />
+</p>
+
 > A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
 
 > 使用自己的视频和字幕，通过逐句精听、重复播放和影子跟读练习英语听力与口语。
@@ -15,7 +19,10 @@
 
 [下载最新版](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [从源码运行](#从源码运行) · [导入学习素材](#导入学习素材)
 
-<img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" />
+| 三遍学习法 | 导入本地视频与字幕 |
+| :---: | :---: |
+| <img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" /> |
+| 先理解，再精听，最后跟读。 | 选择自己的媒体与字幕，确认匹配后开始学习。 |
 
 Shadowing English 是一个 English shadowing app：你导入自己有权使用的本地视频和字幕，用真实场景完成听懂、重复、模仿和开口表达。项目不提供任何影视、课程或字幕资源；学习素材保留在你的设备上。
 
@@ -46,14 +53,6 @@ Shadowing English 是一个 English shadowing app：你导入自己有权使用�
 - **学习成长**：查看学习时长、句子、短语、课程进度、等级与成就。
 - **可选 AI 字幕**：为没有现成字幕的视频生成或切换字幕，需要自行配置服务商。
 - **本地优先**：视频、字幕和学习记录以设备本地内容为中心。
-
-## 产品截图
-
-### 导入自己的视频与字幕
-
-<img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" />
-
-选择视频目录和可选字幕目录后，应用会展示匹配结果，再由你确认导入。它不会附带或分发第三方影视资源。
 
 ## 为什么使用它
 

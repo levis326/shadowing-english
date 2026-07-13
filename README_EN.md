@@ -1,5 +1,9 @@
 # Shadowing English
 
+<p align="center">
+  <img src="assets/img/app_icon.png" alt="Shadowing English app icon" width="112" />
+</p>
+
 > A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
 
 > 使用自己的视频和字幕，通过逐句精听、重复播放和影子跟读练习英语听力与口语。
@@ -15,7 +19,10 @@ English · [中文](README.md)
 
 [Download the latest release](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [Run from source](#run-from-source) · [Import learning materials](#import-learning-materials)
 
-<img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" />
+| The three-pass method | Import local videos and subtitles |
+| :---: | :---: |
+| <img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" /> |
+| Understand first, listen closely, then shadow the line. | Choose your own media and subtitles, review the matches, then start learning. |
 
 Shadowing English is an English shadowing app for turning videos you already own into deliberate listening and speaking practice. Import local videos and subtitles, work through real scenes sentence by sentence, and keep your media on your own device. This project does not provide videos, courses, or subtitle packs.
 
@@ -46,14 +53,6 @@ Short loops keep auditory recognition and spoken output together. A few lines at
 - **Learning progress**: Track study time, sentences, phrases, course progress, levels, and achievements.
 - **Optional AI subtitles**: Generate or switch subtitles for videos without them using your own provider configuration.
 - **Local first**: Your videos, subtitles, and learning records remain centered on your device.
-
-## Screenshots
-
-### Import your videos and subtitles
-
-<img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" />
-
-Choose a video folder and, optionally, a subtitle folder. The app shows the proposed matches before you import them. It never bundles or distributes third-party media.
 
 ## Why use Shadowing English
 
