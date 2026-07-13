@@ -9,8 +9,21 @@ permissions:
   contents: write
 
 jobs:
+  verify-version:
+    name: Verify release version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match the tag to pubspec.yaml
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(sed -nE 's/^version: ([^+]+).*/\1/p' pubspec.yaml)"
+          test -n "$package_version"
+          test "$tag_version" = "$package_version"
+
   android:
     name: Build Android APK
+    needs: verify-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +46,7 @@ jobs:
 
   linux:
     name: Build Linux bundle
+    needs: verify-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,6 +71,7 @@ jobs:
 
   macos:
     name: Build macOS app
+    needs: verify-version
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -81,6 +96,7 @@ jobs:
 
   windows:
     name: Build Windows bundle
+    needs: verify-version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +127,10 @@ jobs:
         with:
           path: release-assets
           merge-multiple: true
+      - name: Generate SHA-256 checksums
+        run: |
+          cd release-assets
+          sha256sum * > SHA256SUMS.txt
       - name: Create release with generated update notes
         uses: softprops/action-gh-release@v2
         with:

@@ -11,6 +11,7 @@
 [English](README_EN.md) · 中文
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-0F766E.svg)](LICENSE)
+[![CI](https://github.com/MarkYuanGo/shadowing-english/actions/workflows/lint.yaml/badge.svg)](https://github.com/MarkYuanGo/shadowing-english/actions/workflows/lint.yaml)
 [![Flutter 3.44.4](https://img.shields.io/badge/Flutter-3.44.4-02569B?logo=flutter&logoColor=white)](.fvmrc)
 [![Latest release](https://img.shields.io/github/v/release/MarkYuanGo/shadowing-english?display_name=tag&sort=semver)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
 [![Release platforms](https://img.shields.io/badge/Release-Android%20%7C%20macOS%20%7C%20Linux%20%7C%20Windows-475569)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
@@ -85,6 +86,8 @@ Shadowing English 是一个 English shadowing app：你导入自己有权使用�
 - Windows：x64 `.zip`
 
 前往 [Releases](https://github.com/MarkYuanGo/shadowing-english/releases/latest) 选择对应平台下载。
+
+从 v0.1.2 起，每个版本附带 `SHA256SUMS.txt`，可用于校验下载文件是否完整。
 
 ### 从源码运行
 
