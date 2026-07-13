@@ -88,14 +88,17 @@ Visit [Releases](https://github.com/MarkYuanGo/shadowing-english/releases/latest
 
 ### Run from source
 
-Flutter 3.44.4 is required and pinned through FVM.
+Flutter 3.44.4 is required and pinned through FVM. Install [FVM](https://fvm.app/documentation/getting-started/installation) before the first run.
 
 ```bash
 git clone https://github.com/MarkYuanGo/shadowing-english.git
 cd shadowing-english
+fvm use 3.44.4
 fvm flutter pub get
 fvm flutter run
 ```
+
+In VS Code, install the Flutter and Dart extensions, open the project root, select `Flutter - Prod (select device)` from Run and Debug, then press F5. The project uses the pinned SDK through `.fvm/flutter_sdk`; do not commit machine-specific SDK paths, device IDs, or secrets.
 
 If you use your own Flutter installation, run:
 

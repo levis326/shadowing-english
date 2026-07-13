@@ -88,14 +88,17 @@ Shadowing English 是一个 English shadowing app：你导入自己有权使用�
 
 ### 从源码运行
 
-需要 Flutter 3.44.4；仓库通过 FVM 固定版本。
+需要 Flutter 3.44.4；仓库通过 FVM 固定版本。首次使用请先安装 [FVM](https://fvm.app/documentation/getting-started/installation)。
 
 ```bash
 git clone https://github.com/MarkYuanGo/shadowing-english.git
 cd shadowing-english
+fvm use 3.44.4
 fvm flutter pub get
 fvm flutter run
 ```
+
+在 VS Code 中安装 Flutter 与 Dart 扩展，打开项目根目录后，选择运行和调试配置 `Flutter - Prod (select device)`，再按 F5。项目会通过 `.fvm/flutter_sdk` 使用固定的 Flutter 版本；请不要提交本机 SDK 路径、设备 ID 或密钥。
 
 如果使用自己的 Flutter 环境，也可以执行：
 
