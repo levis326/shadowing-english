@@ -1,0 +1,5 @@
+#include "Release.xcconfig"
+BUNDLE_ID = com.tidesparrow.learnenglish
+APP_DISPLAY_NAME = 语言避难所
+APP_NAME = 语言避难所
+FLAVOR = prod

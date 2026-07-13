@@ -1,0 +1,5 @@
+#include "Release.xcconfig"
+BUNDLE_ID = com.tidesparrow.learnenglish.staging
+APP_DISPLAY_NAME = 语言避难所 Staging
+APP_NAME = 语言避难所Staging
+FLAVOR = staging

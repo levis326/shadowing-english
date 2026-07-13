@@ -1,0 +1,143 @@
+import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
+import 'package:common_learn_english/features/settings/presentation/settings_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/src/framework.dart' show Override;
+
+void main() {
+  testWidgets('settings screen shows prototype sections', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置'), findsWidgets);
+    expect(find.text('播放'), findsOneWidget);
+    expect(find.text('学习').last, findsOneWidget);
+    expect(find.text('翻译'), findsOneWidget);
+    expect(find.text('默认字幕模式'), findsOneWidget);
+    expect(find.text('单词高亮样式'), findsOneWidget);
+    expect(find.text('每日打卡提醒'), findsOneWidget);
+    expect(find.text('词典来源'), findsNothing);
+    expect(find.text('翻译来源'), findsOneWidget);
+    expect(find.text('API Key'), findsOneWidget);
+    expect(find.text('获取模型'), findsWidgets);
+    expect(find.text('Model'), findsOneWidget);
+    expect(find.text('API Secret'), findsNothing);
+    expect(find.text('App ID'), findsNothing);
+    expect(find.text('AccessKey ID'), findsNothing);
+  });
+
+  testWidgets('settings screen shows AI translation fields for OpenAI', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButton<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('API Key'), findsOneWidget);
+    expect(find.text('获取模型'), findsWidgets);
+    expect(find.text('Model'), findsOneWidget);
+  });
+
+  testWidgets('settings screen shows DeepSeek as AI provider option', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButton<String>).last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('DeepSeek').last, findsOneWidget);
+  });
+
+  testWidgets('settings screen shows direct translation fields for baidu', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButton<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('百度翻译').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('App ID'), findsOneWidget);
+    expect(find.text('Secret'), findsOneWidget);
+    expect(find.text('Model'), findsNothing);
+    expect(find.text('Base URL'), findsNothing);
+    expect(find.text('自定义接口地址'), findsNothing);
+    expect(find.text('获取模型'), findsNothing);
+  });
+
+  testWidgets('settings screen shows fetched models dropdown for AI provider', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          learningSettingsProvider.overrideWith(
+            () => _TestLearningSettingsNotifier(
+              LearningSettingsState.defaults().copyWith(
+                translationProvider: 'DeepSeek',
+                translationModel: 'deepseek-v4-flash',
+                availableTranslationModels: const <String>[
+                  'deepseek-v4-flash',
+                  'deepseek-v4-pro',
+                ],
+              ),
+            ),
+          ),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('模型选择'), findsOneWidget);
+    expect(find.text('deepseek-v4-flash'), findsWidgets);
+  });
+}
+
+class _TestLearningSettingsNotifier extends LearningSettingsNotifier {
+  _TestLearningSettingsNotifier(this._state);
+
+  final LearningSettingsState _state;
+
+  @override
+  LearningSettingsState build() => _state;
+}

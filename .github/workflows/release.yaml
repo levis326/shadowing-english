@@ -1,0 +1,118 @@
+name: Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release --flavor prod -t lib/main_prod.dart
+      - name: Package APK
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir release-assets
+          cp build/app/outputs/flutter-apk/app-prod-release.apk "release-assets/shadowing-english-${TAG}-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: release-assets/*
+
+  linux:
+    name: Build Linux bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          cache: true
+      - name: Install Linux build dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libmpv-dev ninja-build
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - name: Package Linux bundle
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir release-assets
+          tar -C build/linux/x64/release -czf "release-assets/shadowing-english-${TAG}-linux-x64.tar.gz" bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: release-assets/*
+
+  macos:
+    name: Build macOS app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - name: Package macOS app
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir release-assets
+          cd build/macos/Build/Products/Release
+          hdiutil create -volname "Shadowing English" -srcfolder *.app -ov -format UDZO \
+            "${GITHUB_WORKSPACE}/release-assets/shadowing-english-${TAG}-macos.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: release-assets/*
+
+  windows:
+    name: Build Windows bundle
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.4
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Package Windows bundle
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          New-Item -ItemType Directory -Force release-assets
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath "release-assets/shadowing-english-$env:TAG-windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release-assets/*
+
+  publish:
+    name: Publish GitHub Release
+    needs: [android, linux, macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Create release with generated update notes
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/*
