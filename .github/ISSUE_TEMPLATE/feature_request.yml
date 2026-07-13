@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement to the learning experience.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What learning problem would this solve?
+      description: Describe the current friction before proposing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed experience
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Relevant platform
+      options:
+        - Android
+        - macOS
+        - Windows
+        - Linux
+        - All platforms
+    validations:
+      required: true

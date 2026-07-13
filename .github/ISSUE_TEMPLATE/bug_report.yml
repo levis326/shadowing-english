@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible problem with Shadowing English.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach copyrighted videos, subtitle packs, API keys, or personal study materials.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal, non-copyrighted example where possible.
+      placeholder: |
+        1. Import ...
+        2. Open ...
+        3. Tap ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: v0.1.1
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Android
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
