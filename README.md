@@ -1,60 +1,84 @@
-# Shadowing English · 影子跟读
+# Shadowing English
+
+> A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
+
+> 使用自己的视频和字幕，通过逐句精听、重复播放和影子跟读练习英语听力与口语。
 
 [English](README_EN.md) · 中文
 
-一款为真实影视素材而做的本地优先英语学习应用。导入自己拥有的视频和字幕，用「看懂 → 听清 → 跟读」的节奏，把一句句英语真正练到能开口。
+[![License: MIT](https://img.shields.io/badge/License-MIT-0F766E.svg)](LICENSE)
+[![Flutter 3.44.4](https://img.shields.io/badge/Flutter-3.44.4-02569B?logo=flutter&logoColor=white)](.fvmrc)
+[![Latest release](https://img.shields.io/github/v/release/MarkYuanGo/shadowing-english?display_name=tag&sort=semver)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
+[![Release platforms](https://img.shields.io/badge/Release-Android%20%7C%20macOS%20%7C%20Linux%20%7C%20Windows-475569)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/MarkYuanGo/shadowing-english?style=flat)](https://github.com/MarkYuanGo/shadowing-english/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/MarkYuanGo/shadowing-english)](https://github.com/MarkYuanGo/shadowing-english/issues)
 
-> **Shadowing English（影子跟读）** 不提供任何课程或影视资源。你的学习素材始终留在自己的设备上。
+[下载最新版](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [从源码运行](#从源码运行) · [导入学习素材](#导入学习素材)
 
-![三遍学习法](assets/showcase/learning-guide.jpg)
+<img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" />
 
-## 为什么用它
+Shadowing English 是一个 English shadowing app：你导入自己有权使用的本地视频和字幕，用真实场景完成听懂、重复、模仿和开口表达。项目不提供任何影视、课程或字幕资源；学习素材保留在你的设备上。
 
-不是背单词，也不是刷题。选择一段你愿意反复看的英文视频：
+## 什么是 Shadowing English
 
-1. 先用双语字幕看懂剧情和语气。
-2. 再切到英文字幕，逐句精听、反复播放、收藏表达。
-3. 最后关掉中文提示，模仿角色的节奏和语调开口跟读。
+影子跟读不是只跟着念一遍台词。它把英语听力练习和英语口语练习放在同一段真实视频里：先理解内容，再辨认声音，最后模仿说话者的节奏、连读、语调和发音。
 
-你不需要一次听懂全部。每天完成几句，听力、表达与语感会一起往前走。
+你可以把自己想看的内容变成字幕英语学习材料。单词和短语不会脱离语境，下一次也能回到原来的句子继续练。
 
-## 你可以做什么
+## 影子跟读怎么学
 
-- 导入本地视频与 `.srt` 字幕，按文件名自动匹配剧集
-- 在播放器中逐句定位、重复播放、切换字幕模式
-- 点按字幕查词，沉淀单词与常用短语
-- 使用跟读模式，把每一次开口练习记录进学习进度
-- 使用 AI 生成或切换字幕（需要自行配置对应服务）
-- 从课程库、短语、单词和成长页持续回到下一次练习
+1. **理解 Understand**：打开双语字幕，先了解剧情、人物关系和说话语气。
+2. **精听 Listen**：切换到英文字幕，逐句定位、重复播放，把难句听清楚。
+3. **跟读 Shadow**：减少字幕辅助，模仿原声的节奏、连读、重音与语调。
 
-![导入本地影视与字幕](assets/showcase/import-course.jpg)
+短句循环让听觉识别和口语输出不断衔接。每次只练几句，也能逐步从“看懂字幕”走到“听懂并说出来”。
 
-## 把每一次开口，变成看得见的成长
+## 核心功能
 
-你练过的句子、收藏的表达、完成的影片和坚持的天数，都会沉淀成学习进度与成长勋章。不是为了刷数值，而是让你清楚知道：英语正在从“看得懂”变成“说得出”。
+- **本地视频导入**：从设备选择自己的视频文件夹，建立个人课程库。
+- **字幕导入与匹配**：导入 `.srt` 或 `.vtt` 字幕，按文件名和集数标记匹配视频与字幕。
+- **逐句字幕导航**：点按字幕定位播放位置，在完整视频中专注当前句子。
+- **单句重复播放**：快速重播当前句子，并可开启单句循环。
+- **字幕显示模式**：根据学习阶段切换英文、双语或隐藏字幕。
+- **字幕查词**：点按字幕中的单词查看释义，并保留在原始语境里。
+- **单词与短语收藏**：将值得复习的单词和表达保存到单词本、短语库。
+- **Shadowing 跟读模式**：记录每次跟读练习，让开口练习进入学习进度。
+- **学习成长**：查看学习时长、句子、短语、课程进度、等级与成就。
+- **可选 AI 字幕**：为没有现成字幕的视频生成或切换字幕，需要自行配置服务商。
+- **本地优先**：视频、字幕和学习记录以设备本地内容为中心。
 
-| 刚开始 | 持续精进 | 走得更远 |
-| :---: | :---: | :---: |
-| ![英语启程者](assets/img/growth-level-1.png) | ![稳定练习](assets/img/growth-level-5.png) | ![高阶成长](assets/img/growth-level-10.png) |
-| 从一部剧、一个短片开始 | 用精听、查词和跟读累积足迹 | 让真实表达成为习惯 |
+## 产品截图
 
-### 一套会陪你继续练下去的工具
+### 导入自己的视频与字幕
 
-- **成长路线与勋章**：用学习时长、句子、表达和完成影片记录长期投入。
-- **短语复习**：把播放时收藏的真实表达变成可回顾、可重复开口的卡片。
-- **单词本**：在字幕中遇到的单词会沉淀下来，随时回到原来的语境复习。
-- **AI 字幕**：为没有现成字幕的视频生成并管理字幕（使用你自己的服务配置）。
-- **本地优先**：不上传你的媒体资源；课程、进度和记录都围绕你的设备与素材。
+<img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" />
 
-## 开始学习
+选择视频目录和可选字幕目录后，应用会展示匹配结果，再由你确认导入。它不会附带或分发第三方影视资源。
 
-### 直接安装
+## 为什么使用它
 
-前往 [Releases](https://github.com/MarkYuanGo/shadowing-english/releases) 下载适合你系统的安装包。首个正式版本发布后，这里会提供 Android、macOS、Linux 和 Windows 的构建产物。
+- **从你真正想看的视频开始**：看视频学英语不必依赖固定课程包。
+- **让表达留在场景中**：单词、句子和短语来自真实对话，而不是孤立列表。
+- **同一句可以反复练**：逐句定位与循环播放适合精听和 English shadowing practice。
+- **听力和口语一起练**：先听懂，再跟读，减少“认识但说不出”的断层。
+- **素材由你掌控**：本地视频和字幕不会被项目服务器收集或分发。
+
+## 开始使用
+
+### 下载应用
+
+最新版为 [v0.1.1](https://github.com/MarkYuanGo/shadowing-english/releases/tag/v0.1.1)，已提供以下安装包：
+
+- Android：APK
+- macOS：DMG
+- Linux：x64 `.tar.gz`
+- Windows：x64 `.zip`
+
+前往 [Releases](https://github.com/MarkYuanGo/shadowing-english/releases/latest) 选择对应平台下载。
 
 ### 从源码运行
 
-需要 Flutter 3.44.4（项目已通过 FVM 固定版本）。
+需要 Flutter 3.44.4；仓库通过 FVM 固定版本。
 
 ```bash
 git clone https://github.com/MarkYuanGo/shadowing-english.git
@@ -63,26 +87,39 @@ fvm flutter pub get
 fvm flutter run
 ```
 
-如果尚未安装 FVM，也可以使用本机 Flutter：
+如果使用自己的 Flutter 环境，也可以执行：
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-## 第一次使用
+## 导入学习素材
 
-1. 打开「学习」页，选择「导入新课程」。
-2. 选择你有权使用的本地视频文件夹；可选配同名的英文/中文字幕文件夹。
-3. 确认自动匹配结果，建立自己的课程库。
-4. 从「怎么学」按三遍学习法开始，先完成一小段，再坚持下一次。
+推荐让视频与字幕使用相同的集数命名，例如：
 
-详细的资源边界与导入说明请看 [RESOURCE_SETUP.md](RESOURCE_SETUP.md)。
+```text
+Friends-S01E01.mp4
+Friends-S01E01.en.srt
+Friends-S01E01.zh.srt
+```
 
-## 开源与隐私
+英文字幕可以是同名的 `Friends-S01E01.srt`，也可以通过 `.en`、`_en`、`english` 等文件名标记识别。导入前请确认你拥有相应媒体和字幕的使用权。
 
-- 本项目使用 MIT License 开源。
-- 仓库不包含影视、课程、商业字幕或其他第三方学习素材。
-- 本地导入的媒体与学习记录由你自己的设备保存和管理。
+更多说明见 [RESOURCE_SETUP.md](RESOURCE_SETUP.md)。仓库不附带影视内容、商业字幕或未经授权的学习资源。
 
-欢迎提交 Issue，分享你最想练习的 Shadowing English（影子跟读）工作流。
+## 隐私
+
+- 视频、字幕和学习记录以本地设备为中心保存和管理。
+- 项目不会提供或托管你的课程资源。
+- 如果你启用 AI 字幕或翻译，会使用你自行配置的第三方服务；相应请求由该服务商处理。
+
+## 参与贡献
+
+欢迎提交 [Issue](https://github.com/MarkYuanGo/shadowing-english/issues)，尤其是字幕匹配、播放器与跨平台问题。准备 Pull Request 前，建议先开 Issue 讨论；请不要提交未经授权的视频、字幕或课程资源。
+
+## License
+
+Shadowing English 使用 [MIT License](LICENSE) 开源。
+
+如果你正在寻找一个用本地视频练习英语听力、英语跟读和英语口语表达的工具，欢迎试试 Shadowing English。

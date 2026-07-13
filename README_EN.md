@@ -1,56 +1,80 @@
-# Shadowing English · 影子跟读
+# Shadowing English
 
-[中文](README.md) · English
+> A local-first English shadowing app for listening and speaking practice with your own videos and subtitles.
 
-A local-first English learning app built for real video material. Import videos and subtitles you already own, then turn every scene into a deliberate loop: understand it, hear it, and say it out loud.
+> 使用自己的视频和字幕，通过逐句精听、重复播放和影子跟读练习英语听力与口语。
 
-> **Shadowing English** does not distribute courses or media. Your study materials stay on your own device.
+English · [中文](README.md)
 
-![The three-pass method](assets/showcase/learning-guide.jpg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-0F766E.svg)](LICENSE)
+[![Flutter 3.44.4](https://img.shields.io/badge/Flutter-3.44.4-02569B?logo=flutter&logoColor=white)](.fvmrc)
+[![Latest release](https://img.shields.io/github/v/release/MarkYuanGo/shadowing-english?display_name=tag&sort=semver)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
+[![Release platforms](https://img.shields.io/badge/Release-Android%20%7C%20macOS%20%7C%20Linux%20%7C%20Windows-475569)](https://github.com/MarkYuanGo/shadowing-english/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/MarkYuanGo/shadowing-english?style=flat)](https://github.com/MarkYuanGo/shadowing-english/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/MarkYuanGo/shadowing-english)](https://github.com/MarkYuanGo/shadowing-english/issues)
 
-## Why Shadowing English
+[Download the latest release](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [Run from source](#run-from-source) · [Import learning materials](#import-learning-materials)
 
-This is not a flashcard app or a test feed. Pick a short scene you genuinely want to revisit:
+<img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" />
 
-1. Watch once with bilingual subtitles to understand the story and emotion.
-2. Switch to English subtitles, listen sentence by sentence, replay difficult lines, and save useful phrases.
-3. Hide the Chinese help and shadow the speaker's timing, rhythm, and tone.
+Shadowing English is an English shadowing app for turning videos you already own into deliberate listening and speaking practice. Import local videos and subtitles, work through real scenes sentence by sentence, and keep your media on your own device. This project does not provide videos, courses, or subtitle packs.
 
-You do not need to understand everything at once. A few spoken lines each day build listening, expression, and instinct together.
+## What is Shadowing English
 
-## What you can do
+English shadowing is more than repeating a line once. It puts listening and speaking in the same real-video context: understand the scene, identify what you hear, then imitate the speaker's timing, connected speech, intonation, and pronunciation.
 
-- Import local videos and `.srt` subtitles; match episodes by filename
-- Navigate and replay line by line in the player, with subtitle modes
-- Tap subtitles for word lookup and save words or useful phrases
-- Use Shadowing mode to make speaking practice part of your learning progress
-- Generate or switch AI subtitles with your own provider configuration
-- Continue through your library, phrases, words, and learning journey
+Use the videos you genuinely want to watch as subtitle-based English learning material. Saved words and phrases stay connected to the original scene instead of becoming an isolated list.
 
-![Import local video and subtitles](assets/showcase/import-course.jpg)
+## How the shadowing method works
 
-## Turn every spoken line into visible progress
+1. **Understand**: Use bilingual subtitles to grasp the scene, context, and emotion.
+2. **Listen**: Switch to English subtitles, navigate sentence by sentence, and replay difficult lines.
+3. **Shadow**: Reduce subtitle support and imitate the speaker's rhythm, linking, stress, intonation, and pronunciation.
 
-The lines you practice, phrases you save, episodes you complete, and days you return all become part of your learning journey. Not for empty points—so you can see English moving from something you understand to something you can actually say.
+Short loops keep auditory recognition and spoken output together. A few lines at a time can move you from reading subtitles to understanding and saying the line yourself.
 
-| Starting out | Building momentum | Going further |
-| :---: | :---: | :---: |
-| ![English starter](assets/img/growth-level-1.png) | ![Steady practice](assets/img/growth-level-5.png) | ![Advanced growth](assets/img/growth-level-10.png) |
-| Start with one scene | Build a trail through listening, lookup, and shadowing | Make real expression a habit |
+## Key features
 
-### Tools that keep the practice moving
+- **Local video import**: Build a personal library from video folders on your device.
+- **Subtitle import and matching**: Import `.srt` or `.vtt` files; match subtitles to videos from filenames and episode markers.
+- **Sentence-level navigation**: Tap a subtitle line to jump to the right point in the video.
+- **Replay and loop a line**: Replay the current sentence quickly or enable sentence looping.
+- **Subtitle modes**: Switch among English, bilingual, and hidden subtitles as you progress.
+- **Word lookup from subtitles**: Tap a word for its definition while it is still in context.
+- **Saved words and phrases**: Keep useful vocabulary and expressions in dedicated review spaces.
+- **Shadowing practice**: Record each shadowing session as part of your learning activity.
+- **Learning progress**: Track study time, sentences, phrases, course progress, levels, and achievements.
+- **Optional AI subtitles**: Generate or switch subtitles for videos without them using your own provider configuration.
+- **Local first**: Your videos, subtitles, and learning records remain centered on your device.
 
-- **Learning journey and achievements** — track study time, sentences, phrases, and completed episodes over time.
-- **Phrase review** — turn expressions saved during playback into cards you can revisit and say again.
-- **Word book** — keep words you encounter in subtitles and return to their original context.
-- **AI subtitles** — generate and manage subtitles for videos that do not have them, using your own provider configuration.
-- **Local first** — your media stays on your device; your own materials and progress drive the experience.
+## Screenshots
 
-## Get started
+### Import your videos and subtitles
 
-### Install an app package
+<img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" />
 
-Visit [Releases](https://github.com/MarkYuanGo/shadowing-english/releases) to download a package for your platform. Once the first stable release is available, Android, macOS, Linux, and Windows builds will appear there.
+Choose a video folder and, optionally, a subtitle folder. The app shows the proposed matches before you import them. It never bundles or distributes third-party media.
+
+## Why use Shadowing English
+
+- **Start with videos you want to watch**: Learn English with videos you care about instead of a fixed course pack.
+- **Keep language in context**: Words, lines, and phrases come from real dialogue.
+- **Repeat the exact sentence**: Sentence navigation and loops support focused English listening practice and shadowing practice.
+- **Practice listening and speaking together**: Understand first, then shadow the line, rather than leaving speaking for later.
+- **Keep control of your material**: Local videos and subtitles are not collected or distributed by this project.
+
+## Getting started
+
+### Download
+
+The latest release is [v0.1.1](https://github.com/MarkYuanGo/shadowing-english/releases/tag/v0.1.1). It includes packages for:
+
+- Android: APK
+- macOS: DMG
+- Linux: x64 `.tar.gz`
+- Windows: x64 `.zip`
+
+Visit [Releases](https://github.com/MarkYuanGo/shadowing-english/releases/latest) to download the package for your platform.
 
 ### Run from source
 
@@ -63,26 +87,39 @@ fvm flutter pub get
 fvm flutter run
 ```
 
-If you do not use FVM, run the same commands with your local Flutter installation:
+If you use your own Flutter installation, run:
 
 ```bash
 flutter pub get
 flutter run
 ```
 
-## Your first session
+## Import learning materials
 
-1. Open **Learn** and choose **Import a course**.
-2. Select a folder containing video files, then optionally a folder of matching English or bilingual subtitles.
-3. Review the matches and create your personal library.
-4. Open **How to learn** and use the three-pass method for one short scene.
+Use matching episode names for video and subtitle files when possible:
 
-See [RESOURCE_SETUP.md](RESOURCE_SETUP.md) for the media boundary and import details.
+```text
+Friends-S01E01.mp4
+Friends-S01E01.en.srt
+Friends-S01E01.zh.srt
+```
 
-## Open source and privacy
+An English subtitle can also use the exact base name, such as `Friends-S01E01.srt`. The matcher recognizes filename markers including `.en`, `_en`, and `english`. Only import media and subtitles you are allowed to use.
 
-- Shadowing English is released under the MIT License.
-- This repository contains no third-party videos, courses, commercial subtitle packs, or other study media.
-- Imported media and learning records are kept and managed on your own device.
+Read [RESOURCE_SETUP.md](RESOURCE_SETUP.md) for more detail. This repository does not include video content, commercial subtitle packs, or unauthorized learning materials.
 
-Issues and ideas for better shadowing workflows are welcome.
+## Privacy
+
+- Videos, subtitles, and learning records are stored and managed around your local device.
+- The project does not host or distribute your course materials.
+- If you enable AI subtitles or translation, requests are sent to the third-party provider you configure.
+
+## Contributing
+
+[Issues](https://github.com/MarkYuanGo/shadowing-english/issues) are welcome, especially for subtitle matching, playback, and cross-platform problems. Please open an Issue before a substantial pull request, and do not submit unauthorized video, subtitle, or course resources.
+
+## License
+
+Shadowing English is available under the [MIT License](LICENSE).
+
+For English listening practice, English speaking practice, and English shadowing with local videos, Shadowing English is ready for your own learning library.
