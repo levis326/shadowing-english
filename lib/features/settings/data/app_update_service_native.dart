@@ -6,8 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
-const String _latestReleaseUrl =
-    'https://api.github.com/repos/MarkYuanGo/shadowing-english/releases/latest';
+const String _releasesUrl =
+    'https://api.github.com/repos/MarkYuanGo/shadowing-english/releases?per_page=100';
 
 class AppUpdate {
   const AppUpdate({
@@ -30,21 +30,18 @@ class AppUpdateService {
 
   Future<AppUpdate?> checkForUpdate() async {
     final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-    final Response<Map<String, dynamic>> response = await _dio
-        .get<Map<String, dynamic>>(
-          _latestReleaseUrl,
-          options: Options(
-            headers: <String, String>{
-              'Accept': 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28',
-            },
-          ),
-        );
-    final Map<String, dynamic>? release = response.data;
-    if (release == null) {
-      throw const FormatException('GitHub 未返回 Release 信息。');
-    }
-
+    final Response<List<dynamic>> response = await _dio.get<List<dynamic>>(
+      _releasesUrl,
+      options: Options(
+        headers: <String, String>{
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+      ),
+    );
+    final Map<String, dynamic> release = _highestStableRelease(
+      response.data ?? <dynamic>[],
+    );
     final String latestVersion = _versionFromTag(release['tag_name']);
     if (_compareVersions(latestVersion, packageInfo.version) <= 0) {
       return null;
@@ -120,6 +117,30 @@ class AppUpdateService {
   }
 }
 
+Map<String, dynamic> _highestStableRelease(List<dynamic> releases) {
+  Map<String, dynamic>? newestRelease;
+  String? newestVersion;
+  for (final dynamic release in releases) {
+    if (release is! Map<String, dynamic> ||
+        release['draft'] == true ||
+        release['prerelease'] == true) {
+      continue;
+    }
+    final String? version = _tryVersionFromTag(release['tag_name']);
+    if (version == null) {
+      continue;
+    }
+    if (newestVersion == null || _compareVersions(version, newestVersion) > 0) {
+      newestRelease = release;
+      newestVersion = version;
+    }
+  }
+  if (newestRelease == null) {
+    throw const FormatException('GitHub 未返回可用的正式 Release。');
+  }
+  return newestRelease;
+}
+
 String _assetSuffixForCurrentPlatform() {
   switch (defaultTargetPlatform) {
     case TargetPlatform.android:
@@ -137,10 +158,19 @@ String _assetSuffixForCurrentPlatform() {
 }
 
 String _versionFromTag(Object? tag) {
-  if (tag is! String) {
+  final String? version = _tryVersionFromTag(tag);
+  if (version == null) {
     throw const FormatException('GitHub Release 缺少版本标签。');
   }
-  return tag.replaceFirst(RegExp('^v'), '');
+  return version;
+}
+
+String? _tryVersionFromTag(Object? tag) {
+  if (tag is! String) {
+    return null;
+  }
+  final String version = tag.replaceFirst(RegExp('^v'), '');
+  return RegExp(r'^\d+(?:\.\d+){2}$').hasMatch(version) ? version : null;
 }
 
 int _compareVersions(String left, String right) {
