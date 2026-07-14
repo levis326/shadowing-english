@@ -16,7 +16,7 @@ class AndroidImportDirectorySelection {
 }
 
 const MethodChannel _channel = MethodChannel(
-  'com.tidesparrow.learnenglish/import_picker',
+  'com.shadowing.english/import_picker',
 );
 
 Future<AndroidImportDirectorySelection?> pickAndroidImportDirectory({

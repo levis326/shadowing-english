@@ -8,7 +8,7 @@ import 'package:flutter/services.dart';
 import '../../settings/presentation/settings_provider.dart';
 
 const MethodChannel _audioToolsChannel = MethodChannel(
-  'com.tidesparrow.learnenglish/audio_tools',
+  'com.shadowing.english/audio_tools',
 );
 
 typedef AsrPostTranscriptionOverride =

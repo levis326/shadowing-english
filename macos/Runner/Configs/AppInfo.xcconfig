@@ -8,7 +8,7 @@
 PRODUCT_NAME = 语言避难所
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.tidesparrow.learnenglish
+PRODUCT_BUNDLE_IDENTIFIER = com.shadowing.english
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2025 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2025 Shadowing English. All rights reserved.

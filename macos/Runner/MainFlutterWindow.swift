@@ -23,7 +23,7 @@ class MainFlutterWindow: NSWindow, NSSpeechSynthesizerDelegate {
 
   private func configureSystemMediaControls(with controller: FlutterViewController) {
     let channel = FlutterMethodChannel(
-      name: "com.tidesparrow.learnenglish/system_media_controls",
+      name: "com.shadowing.english/system_media_controls",
       binaryMessenger: controller.engine.binaryMessenger
     )
     channel.setMethodCallHandler { [weak self] call, result in
@@ -77,7 +77,7 @@ class MainFlutterWindow: NSWindow, NSSpeechSynthesizerDelegate {
 
   private func configureNativeTts(with controller: FlutterViewController) {
     let channel = FlutterMethodChannel(
-      name: "com.tidesparrow.learnenglish/native_tts",
+      name: "com.shadowing.english/native_tts",
       binaryMessenger: controller.engine.binaryMessenger
     )
     channel.setMethodCallHandler { [weak self] call, result in

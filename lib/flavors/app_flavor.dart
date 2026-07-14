@@ -29,11 +29,11 @@ class FlavorConfig {
   static String get bundleId {
     switch (_flavor) {
       case AppFlavor.dev:
-        return 'com.tidesparrow.learnenglish.dev';
+        return 'com.shadowing.english.dev';
       case AppFlavor.staging:
-        return 'com.tidesparrow.learnenglish.staging';
+        return 'com.shadowing.english.staging';
       case AppFlavor.prod:
-        return 'com.tidesparrow.learnenglish';
+        return 'com.shadowing.english';
     }
   }
 }

@@ -1,4 +1,4 @@
-package com.tidesparrow.learnenglish
+package com.shadowing.english
 
 import android.app.Activity
 import android.content.Intent
@@ -49,17 +49,17 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler {
         super.configureFlutterEngine(flutterEngine)
         importPickerChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.tidesparrow.learnenglish/import_picker",
+            "com.shadowing.english/import_picker",
         )
         importPickerChannel.setMethodCallHandler(this)
         nativeTtsChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.tidesparrow.learnenglish/native_tts",
+            "com.shadowing.english/native_tts",
         )
         nativeTtsChannel.setMethodCallHandler(this)
         audioToolsChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            "com.tidesparrow.learnenglish/audio_tools",
+            "com.shadowing.english/audio_tools",
         )
         audioToolsChannel.setMethodCallHandler(this)
     }

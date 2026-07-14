@@ -36,7 +36,7 @@ const Duration _ttsBindRetryDelay = Duration(milliseconds: 150);
 const int _ttsBindRetryAttempts = 2;
 const double _defaultPronunciationSpeechRate = 0.75;
 const MethodChannel _nativeTtsChannel = MethodChannel(
-  'com.tidesparrow.learnenglish/native_tts',
+  'com.shadowing.english/native_tts',
 );
 
 class WordPronunciationException implements Exception {

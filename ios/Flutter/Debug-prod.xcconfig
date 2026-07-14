@@ -1,5 +1,5 @@
 #include "Debug.xcconfig"
-BUNDLE_ID = com.tidesparrow.learnenglish
+BUNDLE_ID = com.shadowing.english
 APP_DISPLAY_NAME = 语言避难所
 APP_NAME = 语言避难所
 FLAVOR = prod
