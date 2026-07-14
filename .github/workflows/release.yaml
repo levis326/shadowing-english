@@ -85,9 +85,12 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          mkdir release-assets
-          cd build/macos/Build/Products/Release
-          hdiutil create -volname "Shadowing English" -srcfolder *.app -ov -format UDZO \
+          mkdir release-assets dmg-root
+          app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' -print -quit)"
+          test -n "$app_path"
+          cp -R "$app_path" dmg-root/
+          ln -s /Applications dmg-root/Applications
+          hdiutil create -volname "Shadowing English" -srcfolder dmg-root -ov -format UDZO \
             "${GITHUB_WORKSPACE}/release-assets/shadowing-english-${TAG}-macos.dmg"
       - uses: actions/upload-artifact@v4
         with:

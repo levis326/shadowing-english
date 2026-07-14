@@ -7,6 +7,7 @@ import '../../shared/data/word_pronunciation_service.dart';
 import '../../shared/presentation/pad/pad_compact.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
+import 'app_update_provider.dart';
 import 'settings_provider.dart';
 import 'widgets/settings_group_card.dart';
 
@@ -27,6 +28,20 @@ class SettingsScreen extends ConsumerWidget {
     final AsyncValue<TtsVoiceSnapshot> ttsVoices = ref.watch(
       ttsVoiceSnapshotProvider(settings.ttsEngine),
     );
+    final AppUpdateState updateState = ref.watch(appUpdateProvider);
+    final AsyncValue<String> appVersion = ref.watch(appVersionProvider);
+    ref.listen<AppUpdateState>(appUpdateProvider, (
+      AppUpdateState? previous,
+      AppUpdateState next,
+    ) {
+      if (((previous?.isChecking ?? false) ||
+              (previous?.isDownloading ?? false)) &&
+          !next.isChecking &&
+          !next.isDownloading &&
+          next.message != null) {
+        _showMessage(context, next.message!);
+      }
+    });
 
     return PadScaffold(
       currentDestination: AppNavDestination.settings,
@@ -558,6 +573,18 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.settings_system_daydream_rounded,
             children: <Widget>[
               _ActionRow(
+                title: updateState.update == null
+                    ? (updateState.isChecking ? '正在检查更新…' : '检查更新')
+                    : (updateState.isDownloading
+                          ? '正在下载更新…'
+                          : '更新到 v${updateState.update!.version}'),
+                description: updateState.update == null
+                    ? '从 GitHub Release 检查当前平台的最新安装包。'
+                    : '已找到适用于当前平台的安装包。',
+                icon: Icons.system_update_rounded,
+                onTap: () => _handleUpdateAction(ref, updateState),
+              ),
+              _ActionRow(
                 title: '导出 AI 字幕',
                 description:
                     '复制已生成的 .words.json 到 Downloads/Shadowing English/AI Subtitles。',
@@ -593,6 +620,17 @@ class SettingsScreen extends ConsumerWidget {
               ),
             ],
           ),
+          SizedBox(height: compact ? 20 : 24),
+          Center(
+            child: Text(
+              appVersion.when(
+                data: (String version) => '当前版本 v$version',
+                loading: () => '当前版本',
+                error: (_, _) => '当前版本未知',
+              ),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF8C9890)),
+            ),
+          ),
         ],
       ),
     );
@@ -626,6 +664,17 @@ class SettingsScreen extends ConsumerWidget {
     }
     ref.read(learningSettingsProvider.notifier).resetToDefaults();
     _showMessage(context, '缓存清除成功，数据已重置！');
+  }
+
+  void _handleUpdateAction(WidgetRef ref, AppUpdateState state) {
+    if (state.isChecking || state.isDownloading) {
+      return;
+    }
+    if (state.update == null) {
+      ref.read(appUpdateProvider.notifier).check();
+      return;
+    }
+    ref.read(appUpdateProvider.notifier).download();
   }
 
   void _showMessage(BuildContext context, String message) {
