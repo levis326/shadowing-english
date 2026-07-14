@@ -17,7 +17,14 @@ class AppUpdateService {
     throw UnsupportedError('Web 版不支持从 GitHub Release 更新。');
   }
 
-  Future<String> download(AppUpdate update) {
+  Future<String> download(
+    AppUpdate update, {
+    void Function(int received, int total)? onProgress,
+  }) {
+    throw UnsupportedError('Web 版不支持从 GitHub Release 更新。');
+  }
+
+  Future<void> install(String path) {
     throw UnsupportedError('Web 版不支持从 GitHub Release 更新。');
   }
 }

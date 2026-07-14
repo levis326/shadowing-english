@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -67,7 +68,10 @@ class AppUpdateService {
     );
   }
 
-  Future<String> download(AppUpdate update) async {
+  Future<String> download(
+    AppUpdate update, {
+    void Function(int received, int total)? onProgress,
+  }) async {
     final Directory root =
         await getDownloadsDirectory() ??
         await getApplicationDocumentsDirectory();
@@ -79,7 +83,11 @@ class AppUpdateService {
       '${destination.path}${Platform.pathSeparator}${update.assetName}',
     );
 
-    await _dio.download(update.downloadUrl, file.path);
+    await _dio.download(
+      update.downloadUrl,
+      file.path,
+      onReceiveProgress: onProgress,
+    );
     final String expectedChecksum = await _checksumFor(
       update.assetName,
       update.checksumUrl,
@@ -91,6 +99,13 @@ class AppUpdateService {
       throw StateError('安装包校验失败，已删除下载文件。');
     }
     return file.path;
+  }
+
+  Future<void> install(String path) async {
+    final OpenResult result = await OpenFilex.open(path);
+    if (result.type != ResultType.done) {
+      throw StateError(result.message);
+    }
   }
 
   Future<String> _checksumFor(String assetName, String checksumUrl) async {

@@ -35,9 +35,11 @@ class SettingsScreen extends ConsumerWidget {
       AppUpdateState next,
     ) {
       if (((previous?.isChecking ?? false) ||
-              (previous?.isDownloading ?? false)) &&
+              (previous?.isDownloading ?? false) ||
+              (previous?.isInstalling ?? false)) &&
           !next.isChecking &&
           !next.isDownloading &&
+          !next.isInstalling &&
           next.message != null) {
         _showMessage(context, next.message!);
       }
@@ -573,12 +575,20 @@ class SettingsScreen extends ConsumerWidget {
             icon: Icons.settings_system_daydream_rounded,
             children: <Widget>[
               _ActionRow(
-                title: updateState.update == null
+                title: updateState.downloadedPath != null
+                    ? (updateState.isInstalling
+                          ? '正在打开安装包…'
+                          : '安装 v${updateState.update!.version}')
+                    : updateState.update == null
                     ? (updateState.isChecking ? '正在检查更新…' : '检查更新')
                     : (updateState.isDownloading
-                          ? '正在下载更新…'
+                          ? _downloadTitle(updateState)
                           : '更新到 v${updateState.update!.version}'),
-                description: updateState.update == null
+                description: updateState.isDownloading
+                    ? _downloadDescription(updateState)
+                    : updateState.downloadedPath != null
+                    ? '安装包已校验完成，点击开始安装。'
+                    : updateState.update == null
                     ? '从 GitHub Release 检查当前平台的最新安装包。'
                     : '已找到适用于当前平台的安装包。',
                 icon: Icons.system_update_rounded,
@@ -667,7 +677,11 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _handleUpdateAction(WidgetRef ref, AppUpdateState state) {
-    if (state.isChecking || state.isDownloading) {
+    if (state.isChecking || state.isDownloading || state.isInstalling) {
+      return;
+    }
+    if (state.downloadedPath != null) {
+      ref.read(appUpdateProvider.notifier).install();
       return;
     }
     if (state.update == null) {
@@ -675,6 +689,23 @@ class SettingsScreen extends ConsumerWidget {
       return;
     }
     ref.read(appUpdateProvider.notifier).download();
+  }
+
+  String _downloadTitle(AppUpdateState state) {
+    final double? progress = state.downloadProgress;
+    return progress == null
+        ? '正在下载更新…'
+        : '正在下载更新 ${(progress * 100).toStringAsFixed(0)}%';
+  }
+
+  String _downloadDescription(AppUpdateState state) {
+    final double downloaded = state.downloadedBytes / (1024 * 1024);
+    final int? totalBytes = state.totalBytes;
+    if (totalBytes == null) {
+      return '已下载 ${downloaded.toStringAsFixed(1)} MB。';
+    }
+    final double total = totalBytes / (1024 * 1024);
+    return '已下载 ${downloaded.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} MB。';
   }
 
   void _showMessage(BuildContext context, String message) {

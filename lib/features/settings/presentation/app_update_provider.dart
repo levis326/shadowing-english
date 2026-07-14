@@ -18,13 +18,25 @@ class AppUpdateState {
     this.update,
     this.isChecking = false,
     this.isDownloading = false,
+    this.isInstalling = false,
+    this.downloadedPath,
+    this.downloadedBytes = 0,
+    this.totalBytes,
     this.message,
   });
 
   final AppUpdate? update;
   final bool isChecking;
   final bool isDownloading;
+  final bool isInstalling;
+  final String? downloadedPath;
+  final int downloadedBytes;
+  final int? totalBytes;
   final String? message;
+
+  double? get downloadProgress => totalBytes == null || totalBytes! <= 0
+      ? null
+      : downloadedBytes / totalBytes!;
 }
 
 class AppUpdateNotifier extends Notifier<AppUpdateState> {
@@ -51,10 +63,51 @@ class AppUpdateNotifier extends Notifier<AppUpdateState> {
     }
     state = AppUpdateState(update: update, isDownloading: true);
     try {
-      final String path = await AppUpdateService().download(update);
-      state = AppUpdateState(update: update, message: '下载并校验完成：$path');
+      final String path = await AppUpdateService().download(
+        update,
+        onProgress: (int received, int total) {
+          state = AppUpdateState(
+            update: update,
+            isDownloading: true,
+            downloadedBytes: received,
+            totalBytes: total > 0 ? total : null,
+          );
+        },
+      );
+      state = AppUpdateState(
+        update: update,
+        downloadedPath: path,
+        message: '下载并校验完成，可以开始安装。',
+      );
     } catch (error) {
       state = AppUpdateState(update: update, message: '更新下载失败：$error');
+    }
+  }
+
+  Future<void> install() async {
+    final String? path = state.downloadedPath;
+    final AppUpdate? update = state.update;
+    if (path == null || update == null) {
+      return;
+    }
+    state = AppUpdateState(
+      update: update,
+      downloadedPath: path,
+      isInstalling: true,
+    );
+    try {
+      await AppUpdateService().install(path);
+      state = AppUpdateState(
+        update: update,
+        downloadedPath: path,
+        message: '已打开安装包，请按系统提示完成安装。',
+      );
+    } catch (error) {
+      state = AppUpdateState(
+        update: update,
+        downloadedPath: path,
+        message: '无法打开安装包：$error',
+      );
     }
   }
 }
