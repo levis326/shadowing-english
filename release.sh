@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# 参考：./release.sh v0.1.5
+
 set -euo pipefail
 
 die() {
