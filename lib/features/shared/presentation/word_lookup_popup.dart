@@ -12,9 +12,10 @@ class WordLookupPopupCard extends ConsumerStatefulWidget {
     required this.rawWord,
     required this.contextSentence,
     required this.onClose,
-    required this.onCollect,
+    this.onCollect,
     this.onFavorite,
     this.onPronounce,
+    this.fallbackDefinitionCn,
     this.showAbove = false,
     this.showSide = false,
     this.showRight = false,
@@ -25,9 +26,10 @@ class WordLookupPopupCard extends ConsumerStatefulWidget {
   final String rawWord;
   final String contextSentence;
   final VoidCallback onClose;
-  final VoidCallback onCollect;
+  final VoidCallback? onCollect;
   final VoidCallback? onFavorite;
   final VoidCallback? onPronounce;
+  final String? fallbackDefinitionCn;
   final bool showAbove;
   final bool showSide;
   final bool showRight;
@@ -54,7 +56,8 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
   void didUpdateWidget(covariant WordLookupPopupCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.rawWord != widget.rawWord ||
-        oldWidget.contextSentence != widget.contextSentence) {
+        oldWidget.contextSentence != widget.contextSentence ||
+        oldWidget.fallbackDefinitionCn != widget.fallbackDefinitionCn) {
       _loadEntry();
     }
   }
@@ -74,11 +77,27 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
             contextSentence: widget.contextSentence,
             settings: settings,
           );
+      final String fallbackDefinition =
+          widget.fallbackDefinitionCn?.trim() ?? '';
+      final WordLookupEntry resolvedEntry =
+          entry.sourceLabel == '未配置' && fallbackDefinition.isNotEmpty
+          ? WordLookupEntry(
+              word: entry.word,
+              phonetic: entry.phonetic,
+              type: entry.type,
+              definitionEn: '',
+              usageEn: entry.usageEn,
+              exampleSentenceEn: '',
+              definitionCn: fallbackDefinition,
+              sourceLabel: '字幕词义',
+              contextMeaningCn: fallbackDefinition,
+            )
+          : entry;
       if (!mounted) {
         return;
       }
       setState(() {
-        _entry = entry;
+        _entry = resolvedEntry;
         _isLoading = false;
       });
     } catch (_) {
@@ -227,7 +246,7 @@ class _WordLookupPopupBody extends StatelessWidget {
   final WordLookupEntry entry;
   final String contextSentence;
   final bool isPronouncing;
-  final VoidCallback onCollect;
+  final VoidCallback? onCollect;
   final VoidCallback? onFavorite;
   final Future<void> Function(String text, {String language, bool preferSource})
   onPronounce;
@@ -451,16 +470,18 @@ class _WordLookupPopupBody extends StatelessWidget {
                 onPressed: onFavorite,
                 icon: const Icon(Icons.bookmark_add_outlined),
               ),
-            Expanded(
-              child: FilledButton(
-                onPressed: onCollect,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppDesignTokens.brandGreen,
+            if (onCollect != null) ...<Widget>[
+              Expanded(
+                child: FilledButton(
+                  onPressed: onCollect,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppDesignTokens.brandGreen,
+                  ),
+                  child: const Text('加入短语库'),
                 ),
-                child: const Text('加入短语库'),
               ),
-            ),
-            const SizedBox(width: 10),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: OutlinedButton(
                 onPressed: isPronouncing

@@ -1,8 +1,12 @@
 import 'package:common_learn_english/features/player/presentation/full_transcript_reader.dart';
 import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
 import 'package:common_learn_english/features/player/presentation/transcript_reader_session.dart';
+import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
+import 'package:common_learn_english/features/shared/data/word_lookup_service.dart';
+import 'package:common_learn_english/features/shared/domain/word_lookup_entry.dart';
 import 'package:common_learn_english/features/words/data/offline_word_dictionary.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -189,6 +193,132 @@ void main() {
     );
   });
 
+  testWidgets('tapping a reader word opens the anchored lookup popup', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: FullTranscriptReaderScreen(
+            snapshot: const TranscriptReaderSnapshot(
+              courseTitle: '测试课程',
+              episodeTitle: '第 01 集',
+              lines: lines,
+              meanings: <String, String>{'guess': '猜测'},
+              progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+            ),
+            progressListenable: progress,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Guess'));
+    await tester.pumpAndSettle();
+
+    final Finder popup = find.byKey(
+      const ValueKey<String>('word-lookup-popup-card'),
+    );
+    expect(popup, findsOneWidget);
+    expect(find.text('翻译来源：字幕词义'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('reader-word-box-what-true')),
+      findsOneWidget,
+    );
+    final Rect popupRect = tester.getRect(popup);
+    expect(popupRect.left, greaterThanOrEqualTo(0));
+    expect(popupRect.top, greaterThanOrEqualTo(0));
+    expect(popupRect.right, lessThanOrEqualTo(900));
+    expect(popupRect.bottom, lessThanOrEqualTo(700));
+
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+    expect(popup, findsNothing);
+  });
+
+  testWidgets('reader word popup shows the english lookup explanation', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        // ignore: always_specify_types
+        overrides: [
+          learningSettingsProvider.overrideWith(
+            _ConfiguredLearningSettingsNotifier.new,
+          ),
+          wordLookupServiceProvider.overrideWith(
+            (Ref ref) => WordLookupService(
+              remoteLookupOverride:
+                  ({
+                    required String rawWord,
+                    String? contextSentence,
+                    required LearningSettingsState settings,
+                  }) async {
+                    return const WordLookupEntry(
+                      word: 'Guess',
+                      phonetic: '/ɡes/',
+                      type: 'verb',
+                      definitionEn:
+                          'To give an answer without knowing all the facts.',
+                      usageEn:
+                          'Use guess when an answer is based on limited information.',
+                      exampleSentenceEn: 'Can you guess who called me?',
+                      definitionCn: '猜测；猜想',
+                      sourceLabel: 'API',
+                    );
+                  },
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: FullTranscriptReaderScreen(
+            snapshot: const TranscriptReaderSnapshot(
+              courseTitle: '测试课程',
+              episodeTitle: '第 01 集',
+              lines: lines,
+              meanings: <String, String>{'guess': '猜测'},
+              progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+            ),
+            progressListenable: progress,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Guess'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('英文说明'), findsOneWidget);
+    expect(
+      find.textContaining('To give an answer without knowing all the facts.'),
+      findsOneWidget,
+    );
+    expect(find.text('Can you guess who called me?'), findsOneWidget);
+    expect(find.text('翻译来源：API'), findsOneWidget);
+  });
+
   testWidgets('locate button scrolls back to the current word', (
     WidgetTester tester,
   ) async {
@@ -266,5 +396,17 @@ class _TestDictionary extends OfflineWordDictionary {
       ),
       _ => null,
     };
+  }
+}
+
+class _ConfiguredLearningSettingsNotifier extends LearningSettingsNotifier {
+  @override
+  LearningSettingsState build() {
+    return LearningSettingsState.defaults().copyWith(
+      translationProvider: 'OpenAI',
+      translationApiKey: 'test-key',
+      translationBaseUrl: 'https://example.invalid/v1',
+      translationModel: 'test-model',
+    );
   }
 }

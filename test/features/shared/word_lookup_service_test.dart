@@ -5,6 +5,32 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('preserves the full lookup result when sent between windows', () {
+    const WordLookupEntry entry = WordLookupEntry(
+      word: 'Guess',
+      phonetic: '/ɡes/',
+      type: 'verb',
+      definitionEn: 'To answer without knowing all the facts.',
+      usageEn: 'Used when an answer is uncertain.',
+      exampleSentenceEn: 'Can you guess who called?',
+      definitionCn: '猜测；猜想',
+      sourceLabel: 'API',
+      contextMeaningCn: '猜一猜',
+    );
+
+    final WordLookupEntry restored = WordLookupEntry.fromJson(entry.toJson());
+
+    expect(restored.word, entry.word);
+    expect(restored.phonetic, entry.phonetic);
+    expect(restored.type, entry.type);
+    expect(restored.definitionEn, entry.definitionEn);
+    expect(restored.usageEn, entry.usageEn);
+    expect(restored.exampleSentenceEn, entry.exampleSentenceEn);
+    expect(restored.definitionCn, entry.definitionCn);
+    expect(restored.sourceLabel, entry.sourceLabel);
+    expect(restored.contextMeaningCn, entry.contextMeaningCn);
+  });
+
   test('uses api result first when api key is configured', () async {
     int remoteCallCount = 0;
     final WordLookupService service = WordLookupService(

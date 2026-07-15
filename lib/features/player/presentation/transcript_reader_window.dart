@@ -3,8 +3,13 @@ import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:riverpod/misc.dart' show Override;
 import 'package:window_manager/window_manager.dart';
 
+import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/word_lookup_service.dart';
+import '../../shared/domain/word_lookup_entry.dart';
 import 'full_transcript_reader.dart';
 import 'transcript_reader_session.dart';
 
@@ -22,6 +27,7 @@ Future<bool> maybeRunTranscriptReaderWindow() async {
   final TranscriptReaderSnapshot snapshot = TranscriptReaderSnapshot.fromJson(
     arguments!['snapshot'] as Map<dynamic, dynamic>,
   );
+  final String parentWindowId = arguments['parentWindowId'] as String? ?? '';
   const WindowOptions options = WindowOptions(
     size: Size(940, 760),
     minimumSize: Size(620, 520),
@@ -35,12 +41,57 @@ Future<bool> maybeRunTranscriptReaderWindow() async {
     await windowManager.focus();
   });
   runApp(
-    _TranscriptReaderWindowApp(
-      controller: controller,
-      initialSnapshot: snapshot,
+    ProviderScope(
+      overrides: <Override>[
+        if (parentWindowId.isNotEmpty)
+          wordLookupServiceProvider.overrideWith(
+            (Ref ref) =>
+                _TranscriptReaderProxyWordLookupService(parentWindowId),
+          ),
+      ],
+      child: _TranscriptReaderWindowApp(
+        controller: controller,
+        initialSnapshot: snapshot,
+      ),
     ),
   );
   return true;
+}
+
+class _TranscriptReaderProxyWordLookupService extends WordLookupService {
+  const _TranscriptReaderProxyWordLookupService(this.parentWindowId);
+
+  final String parentWindowId;
+
+  @override
+  Future<WordLookupEntry> lookupWord({
+    required String rawWord,
+    String? contextSentence,
+    required LearningSettingsState settings,
+  }) {
+    return _lookupWordInMainWindow(
+      parentWindowId: parentWindowId,
+      rawWord: rawWord,
+      contextSentence: contextSentence ?? '',
+    );
+  }
+}
+
+Future<WordLookupEntry> _lookupWordInMainWindow({
+  required String parentWindowId,
+  required String rawWord,
+  required String contextSentence,
+}) async {
+  final WindowController parent = WindowController.fromWindowId(parentWindowId);
+  final Map<dynamic, dynamic>? result = await parent
+      .invokeMethod<Map<dynamic, dynamic>>('lookupWord', <String, dynamic>{
+        'rawWord': rawWord,
+        'contextSentence': contextSentence,
+      });
+  if (result == null) {
+    throw StateError('Main window returned no word details');
+  }
+  return WordLookupEntry.fromJson(result);
 }
 
 Map<String, dynamic>? _decodeArguments(String raw) {

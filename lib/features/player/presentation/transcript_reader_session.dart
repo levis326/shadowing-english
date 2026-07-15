@@ -4,10 +4,18 @@ import 'dart:convert';
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../shared/domain/word_lookup_entry.dart';
 import 'full_transcript_reader.dart';
 
 const String transcriptReaderWindowType = 'full-transcript-reader';
+
+typedef TranscriptReaderWordLookup =
+    Future<WordLookupEntry> Function({
+      required String rawWord,
+      required String contextSentence,
+    });
 
 bool get supportsTranscriptReaderWindow =>
     !kIsWeb &&
@@ -22,12 +30,15 @@ class TranscriptReaderSession {
       );
 
   WindowController? _desktopWindow;
+  WindowController? _mainWindow;
+  TranscriptReaderWordLookup? _lookupWord;
   bool _sendingProgress = false;
   TranscriptReaderProgress? _lastSentProgress;
 
   Future<void> open({
     required BuildContext context,
     required TranscriptReaderSnapshot snapshot,
+    required TranscriptReaderWordLookup lookupWord,
   }) async {
     progress.value = snapshot.progress;
     if (!supportsTranscriptReaderWindow) {
@@ -44,8 +55,15 @@ class TranscriptReaderSession {
       return;
     }
 
+    final WindowController mainWindow =
+        await WindowController.fromCurrentEngine();
+    _lookupWord = lookupWord;
+    await mainWindow.setWindowMethodHandler(_handleMainWindowMethod);
+    _mainWindow = mainWindow;
+
     final String arguments = jsonEncode(<String, dynamic>{
       'type': transcriptReaderWindowType,
+      'parentWindowId': mainWindow.windowId,
       'snapshot': snapshot.toJson(),
     });
     final List<WindowController> windows = await WindowController.getAll();
@@ -133,7 +151,28 @@ class TranscriptReaderSession {
   }
 
   void dispose() {
+    final WindowController? mainWindow = _mainWindow;
+    if (mainWindow != null) {
+      unawaited(mainWindow.setWindowMethodHandler(null));
+    }
     progress.dispose();
+  }
+
+  Future<dynamic> _handleMainWindowMethod(MethodCall call) async {
+    if (call.method != 'lookupWord') {
+      throw MissingPluginException('Unknown reader request: ${call.method}');
+    }
+    final TranscriptReaderWordLookup? lookupWord = _lookupWord;
+    if (lookupWord == null) {
+      throw StateError('Transcript reader lookup is unavailable');
+    }
+    final Map<dynamic, dynamic> arguments =
+        call.arguments as Map<dynamic, dynamic>;
+    final WordLookupEntry entry = await lookupWord(
+      rawWord: arguments['rawWord'] as String? ?? '',
+      contextSentence: arguments['contextSentence'] as String? ?? '',
+    );
+    return entry.toJson();
   }
 }
 

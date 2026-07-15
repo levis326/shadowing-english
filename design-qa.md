@@ -23,7 +23,8 @@
 
 ## Interaction verification
 
-- Widget tests verify glossary priority, offline fallback, missing meanings, serialization, full-word rendering, video-time-driven active-word movement, translation visibility, manual current-word location, paragraph separation, alternating surfaces, dividers, and the current-sentence marker.
+- Widget tests verify glossary priority, offline fallback, missing meanings, serialization, full-word rendering, video-time-driven active-word movement, translation visibility, manual current-word location, paragraph separation, alternating surfaces, dividers, the current-sentence marker, and an in-bounds anchored word-detail popup that shows the English explanation and closes without changing the playback highlight.
+- Desktop word lookup runs through the main window's configured lookup service. Only the completed word-detail result is returned to the reader window; translation credentials are not copied into the secondary window.
 - A native macOS smoke run created a second Flutter engine/window and acknowledged that a subsequent progress update was applied as line 2, word 1 through the window channel.
 - The host screen-capture API returned a black native Flutter surface in this environment, so visual comparison used the Flutter-rendered component capture; native creation and channel synchronization were verified separately from the visual capture.
 

@@ -14,6 +14,7 @@ import '../../library/presentation/library_mock_data.dart';
 import '../../navigation/presentation/navigation_destination.dart';
 import '../../phrases/presentation/phrase_book_provider.dart';
 import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/word_lookup_service.dart';
 import '../../shared/presentation/app_loading_overlay.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
 import '../../words/data/offline_word_dictionary.dart';
@@ -579,7 +580,18 @@ class PadLandscapePlayerScreenState
         );
     if (!mounted) return;
     try {
-      await _transcriptReaderSession.open(context: context, snapshot: snapshot);
+      await _transcriptReaderSession.open(
+        context: context,
+        snapshot: snapshot,
+        lookupWord:
+            ({required String rawWord, required String contextSentence}) => ref
+                .read(wordLookupServiceProvider)
+                .lookupWord(
+                  rawWord: rawWord,
+                  contextSentence: contextSentence,
+                  settings: ref.read(learningSettingsProvider),
+                ),
+      );
     } catch (_) {
       _showMessage('无法打开逐词全文，请稍后重试');
     }

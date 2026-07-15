@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../shared/presentation/pad/app_design_tokens.dart';
+import '../../shared/presentation/word_lookup_popup.dart';
 import '../../words/data/offline_word_dictionary.dart';
 import 'player_mock_state.dart';
 
@@ -153,12 +154,15 @@ class _FullTranscriptReaderScreenState
   final GlobalKey _activeWordKey = GlobalKey();
   late TranscriptReaderProgress _progress;
   bool _showTranslations = true;
+  String? _activeLookupTokenId;
+  OverlayEntry? _lookupOverlayEntry;
 
   @override
   void initState() {
     super.initState();
     _progress = widget.progressListenable.value;
     widget.progressListenable.addListener(_handleProgressChanged);
+    _scrollController.addListener(_dismissWordLookup);
     WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveWord());
   }
 
@@ -174,8 +178,11 @@ class _FullTranscriptReaderScreenState
 
   @override
   void dispose() {
+    _removeWordLookupOverlay();
     widget.progressListenable.removeListener(_handleProgressChanged);
-    _scrollController.dispose();
+    _scrollController
+      ..removeListener(_dismissWordLookup)
+      ..dispose();
     super.dispose();
   }
 
@@ -199,6 +206,128 @@ class _FullTranscriptReaderScreenState
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
+  }
+
+  void _dismissWordLookup() {
+    if (_lookupOverlayEntry == null && _activeLookupTokenId == null) return;
+    _removeWordLookupOverlay();
+  }
+
+  void _removeWordLookupOverlay() {
+    _lookupOverlayEntry?.remove();
+    _lookupOverlayEntry = null;
+    _activeLookupTokenId = null;
+  }
+
+  void _toggleWordLookup({
+    required BuildContext anchorContext,
+    required String rawWord,
+    required String contextSentence,
+    required String tokenId,
+    required String fallbackDefinitionCn,
+  }) {
+    if (_activeLookupTokenId == tokenId) {
+      _removeWordLookupOverlay();
+      return;
+    }
+    _removeWordLookupOverlay();
+
+    final OverlayState overlayState = Overlay.of(context, rootOverlay: true);
+    final RenderBox overlayBox =
+        overlayState.context.findRenderObject()! as RenderBox;
+    final RenderBox anchorBox = anchorContext.findRenderObject()! as RenderBox;
+    final Offset anchorTopLeft = anchorBox.localToGlobal(
+      Offset.zero,
+      ancestor: overlayBox,
+    );
+    final Size anchorSize = anchorBox.size;
+    final Size overlaySize = overlayBox.size;
+    const double popupWidth = 336;
+    const double preferredPopupHeight = 520;
+    const double viewportPadding = 16;
+    const double popupGap = 8;
+    final double popupHeight = (overlaySize.height - (viewportPadding * 2))
+        .clamp(120.0, preferredPopupHeight);
+    final double availableRight =
+        overlaySize.width - (anchorTopLeft.dx + anchorSize.width);
+    final double availableLeft = anchorTopLeft.dx;
+    final double availableBelow =
+        overlaySize.height - (anchorTopLeft.dy + anchorSize.height);
+    final bool canShowRight = availableRight >= popupWidth + popupGap;
+    final bool canShowLeft = availableLeft >= popupWidth + popupGap;
+    final bool showRight = canShowRight || !canShowLeft;
+    final bool showSide = canShowRight || canShowLeft;
+    final bool showAbove =
+        !showSide &&
+        availableBelow < popupHeight + viewportPadding &&
+        anchorTopLeft.dy > availableBelow;
+
+    final double left;
+    final double top;
+    if (showSide) {
+      left = showRight
+          ? (anchorTopLeft.dx + anchorSize.width + popupGap).clamp(
+              viewportPadding,
+              overlaySize.width - popupWidth - viewportPadding,
+            )
+          : (anchorTopLeft.dx - popupWidth - popupGap).clamp(
+              viewportPadding,
+              overlaySize.width - popupWidth - viewportPadding,
+            );
+      top = (anchorTopLeft.dy + (anchorSize.height / 2) - (popupHeight / 2))
+          .clamp(
+            viewportPadding,
+            overlaySize.height - popupHeight - viewportPadding,
+          );
+    } else {
+      left = (anchorTopLeft.dx + (anchorSize.width / 2) - (popupWidth / 2))
+          .clamp(
+            viewportPadding,
+            overlaySize.width - popupWidth - viewportPadding,
+          );
+      top = showAbove
+          ? (anchorTopLeft.dy - popupHeight - popupGap).clamp(
+              viewportPadding,
+              overlaySize.height - popupHeight - viewportPadding,
+            )
+          : (anchorTopLeft.dy + anchorSize.height + popupGap).clamp(
+              viewportPadding,
+              overlaySize.height - popupHeight - viewportPadding,
+            );
+    }
+
+    _lookupOverlayEntry = OverlayEntry(
+      builder: (BuildContext overlayContext) => Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _dismissWordLookup,
+            ),
+          ),
+          Positioned(
+            left: left,
+            top: top,
+            width: popupWidth,
+            child: Material(
+              color: Colors.transparent,
+              child: WordLookupPopupCard(
+                rawWord: rawWord,
+                contextSentence: contextSentence,
+                fallbackDefinitionCn: fallbackDefinitionCn,
+                showAbove: showAbove,
+                showSide: showSide,
+                showRight: showRight,
+                maxHeight: popupHeight,
+                onClose: _dismissWordLookup,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    overlayState.insert(_lookupOverlayEntry!);
+    _activeLookupTokenId = tokenId;
   }
 
   @override
@@ -244,6 +373,29 @@ class _FullTranscriptReaderScreenState
                               activeWordIndex: _progress.wordIndex,
                               activeWordKey: _activeWordKey,
                               showTranslations: _showTranslations,
+                              onWordTap:
+                                  (
+                                    BuildContext anchorContext,
+                                    String token,
+                                    int wordIndex,
+                                  ) {
+                                    _toggleWordLookup(
+                                      anchorContext: anchorContext,
+                                      rawWord: token,
+                                      contextSentence: widget
+                                          .snapshot
+                                          .lines[lineIndex]
+                                          .english,
+                                      tokenId: '$lineIndex-$wordIndex',
+                                      fallbackDefinitionCn:
+                                          widget
+                                              .snapshot
+                                              .meanings[normalizeTranscriptReaderWord(
+                                            token,
+                                          )] ??
+                                          '',
+                                    );
+                                  },
                             ),
                         ],
                       ),
@@ -377,6 +529,7 @@ class _ReaderLine extends StatelessWidget {
     required this.activeWordIndex,
     required this.activeWordKey,
     required this.showTranslations,
+    required this.onWordTap,
   });
 
   final PlayerSubtitleLine line;
@@ -386,6 +539,8 @@ class _ReaderLine extends StatelessWidget {
   final int activeWordIndex;
   final GlobalKey activeWordKey;
   final bool showTranslations;
+  final void Function(BuildContext context, String token, int wordIndex)
+  onWordTap;
 
   @override
   Widget build(BuildContext context) {
@@ -415,16 +570,22 @@ class _ReaderLine extends StatelessWidget {
         runSpacing: 12,
         children: <Widget>[
           for (int wordIndex = 0; wordIndex < tokens.length; wordIndex++)
-            _WordMeaningTile(
-              key: isActive && wordIndex == activeWordIndex
-                  ? activeWordKey
-                  : ValueKey<String>('reader-word-$lineIndex-$wordIndex'),
-              token: tokens[wordIndex],
-              meaning:
-                  meanings[normalizeTranscriptReaderWord(tokens[wordIndex])] ??
-                  '—',
-              active: isActive && wordIndex == activeWordIndex,
-              showMeaning: showTranslations,
+            Builder(
+              builder: (BuildContext wordContext) => _WordMeaningTile(
+                key: isActive && wordIndex == activeWordIndex
+                    ? activeWordKey
+                    : ValueKey<String>('reader-word-$lineIndex-$wordIndex'),
+                token: tokens[wordIndex],
+                meaning:
+                    meanings[normalizeTranscriptReaderWord(
+                      tokens[wordIndex],
+                    )] ??
+                    '—',
+                active: isActive && wordIndex == activeWordIndex,
+                showMeaning: showTranslations,
+                onTap: () =>
+                    onWordTap(wordContext, tokens[wordIndex], wordIndex),
+              ),
             ),
         ],
       ),
@@ -438,6 +599,7 @@ class _WordMeaningTile extends StatelessWidget {
     required this.meaning,
     required this.active,
     required this.showMeaning,
+    required this.onTap,
     super.key,
   });
 
@@ -445,62 +607,70 @@ class _WordMeaningTile extends StatelessWidget {
   final String meaning;
   final bool active;
   final bool showMeaning;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedContainer(
-      key: ValueKey<String>('reader-word-box-$token-$active'),
-      duration: const Duration(milliseconds: 160),
-      constraints: const BoxConstraints(minWidth: 52, maxWidth: 180),
-      padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
-      decoration: BoxDecoration(
-        color: active ? const Color(0xFFDDF7EA) : Colors.transparent,
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(
-          color: active ? AppDesignTokens.brandGreen : Colors.transparent,
-          width: active ? 2 : 1,
-        ),
-        boxShadow: active
-            ? const <BoxShadow>[
-                BoxShadow(
-                  color: Color(0x2410B981),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ]
-            : const <BoxShadow>[],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(
-            token,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: active
-                  ? AppDesignTokens.brandGreenDark
-                  : AppDesignTokens.textPrimary,
-              fontSize: 25,
-              height: 1.08,
-              fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          key: ValueKey<String>('reader-word-box-$token-$active'),
+          duration: const Duration(milliseconds: 160),
+          constraints: const BoxConstraints(minWidth: 52, maxWidth: 180),
+          padding: const EdgeInsets.fromLTRB(8, 5, 8, 6),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFFDDF7EA) : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(
+              color: active ? AppDesignTokens.brandGreen : Colors.transparent,
+              width: active ? 2 : 1,
             ),
+            boxShadow: active
+                ? const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x2410B981),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ]
+                : const <BoxShadow>[],
           ),
-          if (showMeaning) ...<Widget>[
-            const SizedBox(height: 5),
-            Text(
-              meaning,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF8A5A12),
-                fontSize: 11,
-                height: 1.15,
-                fontWeight: FontWeight.w800,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                token,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: active
+                      ? AppDesignTokens.brandGreenDark
+                      : AppDesignTokens.textPrimary,
+                  fontSize: 25,
+                  height: 1.08,
+                  fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                ),
               ),
-            ),
-          ],
-        ],
+              if (showMeaning) ...<Widget>[
+                const SizedBox(height: 5),
+                Text(
+                  meaning,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF8A5A12),
+                    fontSize: 11,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
