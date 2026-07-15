@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
+import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -115,5 +116,84 @@ void main() {
       ).existsSync(),
       isTrue,
     );
+  });
+
+  test('cache rejects changed generation settings', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-identity-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults()
+        .copyWith(
+          asrProvider: '腾讯云',
+          asrBaseUrl: 'https://asr.tencentcloudapi.com',
+          asrModel: '16k_en',
+        );
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"lines":[]}',
+      settings: settings,
+    );
+
+    expect(
+      await cache.read(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        settings: settings,
+      ),
+      isNotNull,
+    );
+    expect(
+      await cache.read(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        settings: settings.copyWith(asrModel: 'changed-model'),
+      ),
+      isNull,
+    );
+  });
+
+  test('cache rejects changed video and removes corrupt json', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-video-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults();
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"lines":[]}',
+      settings: settings,
+    );
+    video.writeAsStringSync('replaced-video-content');
+
+    expect(
+      await cache.read(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        settings: settings,
+      ),
+      isNull,
+    );
+
+    final File cacheFile = await cache.cacheFileFor(
+      episodeId: 'ep01',
+      videoPath: video.path,
+    );
+    await cacheFile.create(recursive: true);
+    await cacheFile.writeAsString('{broken');
+    expect(await cache.read(episodeId: 'ep01', videoPath: video.path), isNull);
+    expect(cacheFile.existsSync(), isFalse);
   });
 }

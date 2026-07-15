@@ -172,7 +172,7 @@ class AsrSubtitleService {
         );
       }
     } finally {
-      _deleteTempChunks(chunks);
+      deleteTemporaryAudioChunks(chunks);
     }
 
     return const JsonEncoder.withIndent(
@@ -1079,6 +1079,7 @@ class AsrSubtitleService {
       );
     final List<File> chunks = files.whereType<File>().toList(growable: false);
     if (result.exitCode != 0 || chunks.isEmpty) {
+      dir.deleteSync(recursive: true);
       throw StateError('音频提取失败：${result.stderr}');
     }
     return <AsrAudioChunk>[
@@ -1105,7 +1106,7 @@ class AsrSubtitleService {
     return null;
   }
 
-  void _deleteTempChunks(List<AsrAudioChunk> chunks) {
+  void deleteTemporaryAudioChunks(List<AsrAudioChunk> chunks) {
     final Set<String> parents = chunks
         .map((AsrAudioChunk chunk) => chunk.file.parent.path)
         .where((String path) => _fileName(path).startsWith('cle_asr_'))

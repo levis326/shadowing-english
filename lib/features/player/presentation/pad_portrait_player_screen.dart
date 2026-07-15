@@ -80,6 +80,7 @@ class _PadPortraitPlayerScreenState
   bool _didAutoOpenFullscreen = false;
   bool _isFullscreenOpen = false;
   bool _generatingAiSubtitles = false;
+  AsrSubtitleCancellationToken? _aiSubtitleCancellationToken;
   double? _aiSubtitleProgressValue;
   String? _aiSubtitleProgressText;
   String? _aiSubtitlePreviewText;
@@ -114,6 +115,7 @@ class _PadPortraitPlayerScreenState
 
   @override
   void dispose() {
+    _aiSubtitleCancellationToken?.cancel();
     PlayerSystemMediaControls.unbind();
     _cancelVideoSubscriptions();
     unawaited(_videoPlayer?.dispose());
@@ -122,6 +124,7 @@ class _PadPortraitPlayerScreenState
 
   Future<void> _loadEpisodeResources() async {
     final List<LibraryCourseData> courses = ref.read(libraryCatalogProvider);
+    final LearningSettingsState settings = ref.read(learningSettingsProvider);
     final PlayerCourseLookupResult resource = resolvePlayerCourseForEpisode(
       courses: courses,
       episodeId: widget.episodeId,
@@ -158,6 +161,7 @@ class _PadPortraitPlayerScreenState
       final String? cached = await const AsrSubtitleCache().read(
         episodeId: widget.episodeId,
         videoPath: _videoAsset!,
+        settings: settings,
       );
       if (cached != null) {
         resolvedLines = parseSubtitleLines(cached);
@@ -862,10 +866,12 @@ class _PadPortraitPlayerScreenState
       _showMessage('当前视频不可用');
       return;
     }
+    final LearningSettingsState settings = ref.read(learningSettingsProvider);
     if (!_usingAiSubtitles) {
       final String? cached = await const AsrSubtitleCache().read(
         episodeId: widget.episodeId,
         videoPath: videoPath,
+        settings: settings,
       );
       if (cached != null) {
         final List<PlayerSubtitleLine> lines = parseSubtitleLines(cached);
@@ -890,7 +896,6 @@ class _PadPortraitPlayerScreenState
         }
       }
     }
-    final LearningSettingsState settings = ref.read(learningSettingsProvider);
     setState(() {
       _generatingAiSubtitles = true;
       _aiSubtitleProgressValue = null;
@@ -898,11 +903,15 @@ class _PadPortraitPlayerScreenState
       _aiSubtitlePreviewText = null;
       _aiSubtitleErrorText = null;
     });
+    final AsrSubtitleCancellationToken cancellationToken =
+        AsrSubtitleCancellationToken();
+    _aiSubtitleCancellationToken = cancellationToken;
     try {
       final String raw = await const AsrSubtitleJobRunner().run(
         episodeId: widget.episodeId,
         videoPath: videoPath,
         settings: settings,
+        cancellationToken: cancellationToken,
         onProgress: (AsrSubtitleProgress progress) {
           if (!mounted) {
             return;
@@ -934,6 +943,7 @@ class _PadPortraitPlayerScreenState
         _showReferenceReview(review, lines);
       }
     } catch (error) {
+      if (cancellationToken.isCancelled) return;
       if (mounted) {
         setState(() {
           _aiSubtitleErrorText = error.toString();
@@ -941,6 +951,9 @@ class _PadPortraitPlayerScreenState
         _showMessage('AI 字幕生成失败：$error');
       }
     } finally {
+      if (identical(_aiSubtitleCancellationToken, cancellationToken)) {
+        _aiSubtitleCancellationToken = null;
+      }
       if (mounted) {
         setState(() {
           _generatingAiSubtitles = false;
@@ -983,11 +996,26 @@ class _PadPortraitPlayerScreenState
     await const AsrSubtitleCache().write(
       episodeId: widget.episodeId,
       videoPath: videoPath,
-      content: subtitleLinesToJson(adopted),
+      content: subtitleLinesToJson(
+        adopted,
+        wordDefinitions: state.generatedWordDefinitions,
+      ),
+      settings: ref.read(learningSettingsProvider),
     );
     if (!mounted) return;
-    setState(() => state.loadLines(adopted));
-    _showMessage('已采用参考字幕');
+    setState(
+      () => state.loadLines(
+        adopted,
+        wordDefinitions: state.generatedWordDefinitions,
+      ),
+    );
+    final bool hasLineLevelFallback = adopted.any(
+      (PlayerSubtitleLine line) =>
+          line.english.trim().isNotEmpty && line.words.isEmpty,
+    );
+    _showMessage(
+      hasLineLevelFallback ? '已采用参考字幕；部分句子词数不同，已降级为句级同步' : '已采用参考字幕并保留词级同步',
+    );
   }
 
   Future<void> _handleDeleteAiSubtitles() async {

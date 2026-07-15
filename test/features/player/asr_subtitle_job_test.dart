@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -80,6 +81,65 @@ void main() {
       );
     },
   );
+
+  test('bilingual translation resumes from sentence checkpoint', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-translation-resume-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk.m4a')
+      ..writeAsStringSync('audio');
+    final Map<String, int> calls = <String, int>{};
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _twoLineChunkJson(),
+      translateSentence:
+          ({
+            required String sentence,
+            required LearningSettingsState settings,
+          }) async {
+            calls.update(sentence, (int count) => count + 1, ifAbsent: () => 1);
+            if (sentence == 'second line' && calls[sentence] == 1) return null;
+            return '翻译：$sentence';
+          },
+    );
+    final LearningSettingsState settings = _settings().copyWith(
+      generateBilingualAsrSubtitles: true,
+    );
+
+    await expectLater(
+      runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: settings,
+      ),
+      throwsA(isA<AsrSubtitleGenerationException>()),
+    );
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: settings,
+    );
+
+    expect(calls['first line'], 1);
+    expect(calls['second line'], 2);
+    expect(
+      parseSubtitleLines(raw).map((PlayerSubtitleLine line) => line.chinese),
+      <String>['翻译：first line', '翻译：second line'],
+    );
+  });
 
   test('resume skips completed chunk files', () async {
     final Directory root = Directory.systemTemp.createTempSync(
@@ -490,6 +550,246 @@ void main() {
     );
   });
 
+  test('valid short word timestamp is preserved', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-short-word-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async {
+            final Map<String, Object?> result = _chunkJson('I agree', 1000);
+            final Map<String, Object?> line =
+                (result['lines']! as List<Map<String, Object?>>).single;
+            final List<Map<String, Object?>> words =
+                line['words']! as List<Map<String, Object?>>;
+            words.first['endMs'] = 1020;
+            words.last['startMs'] = 1020;
+            return result;
+          },
+    );
+
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+
+    expect(
+      parseSubtitleLines(
+        raw,
+      ).single.words.map((PlayerSubtitleWord word) => word.text),
+      <String>['I', 'agree'],
+    );
+  });
+
+  test('large word overlap fails with segment and line location', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-word-overlap-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => <String, Object?>{
+            'version': 1,
+            'language': 'en',
+            'lines': <Map<String, Object?>>[
+              <String, Object?>{
+                'startMs': 1000,
+                'endMs': 2200,
+                'english': 'one two',
+                'chinese': '',
+                'words': const <Map<String, Object?>>[
+                  <String, Object?>{
+                    'text': 'one',
+                    'startMs': 1000,
+                    'endMs': 2000,
+                  },
+                  <String, Object?>{
+                    'text': 'two',
+                    'startMs': 1200,
+                    'endMs': 2200,
+                  },
+                ],
+              },
+            ],
+          },
+    );
+
+    await expectLater(
+      runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+      throwsA(
+        isA<StateError>().having(
+          (StateError error) => error.message,
+          'message',
+          allOf(contains('第 1 段'), contains('第 1 句'), contains('单词时间轴')),
+        ),
+      ),
+    );
+  });
+
+  test('cancellation stops before the next cloud chunk', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-cancel-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final File chunk1 = File('${root.path}/chunk1.m4a')..writeAsStringSync('1');
+    final AsrSubtitleCancellationToken cancellationToken =
+        AsrSubtitleCancellationToken();
+    int calls = 0;
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+          AsrAudioChunk(file: chunk1, offsetMs: 58000),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async {
+            calls += 1;
+            return _chunkJson('chunk', chunk.offsetMs + 1000);
+          },
+    );
+
+    await expectLater(
+      runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+        cancellationToken: cancellationToken,
+        onProgress: (AsrSubtitleProgress progress) {
+          if (progress.completedChunks == 1) cancellationToken.cancel();
+        },
+      ),
+      throwsA(isA<AsrSubtitleGenerationException>()),
+    );
+    expect(calls, 1);
+  });
+
+  test('same video cannot start two generation jobs', () async {
+    final Directory root = Directory.systemTemp.createTempSync('asr-job-lock-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final Completer<void> started = Completer<void>();
+    final Completer<void> release = Completer<void>();
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async {
+            if (!started.isCompleted) started.complete();
+            await release.future;
+            return _chunkJson('locked', 1000);
+          },
+    );
+
+    final Future<String> first = runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+    await started.future;
+    await expectLater(
+      runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+      throwsA(
+        isA<AsrSubtitleGenerationException>().having(
+          (AsrSubtitleGenerationException error) => error.message,
+          'message',
+          contains('正在生成'),
+        ),
+      ),
+    );
+    release.complete();
+    await first;
+  });
+
+  test('temporary audio chunks are cleaned after generation', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-temp-cleanup-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final Directory chunkDir = Directory('${root.path}/cle_asr_test')
+      ..createSync();
+    final File chunk = File('${chunkDir.path}/chunk0.m4a')
+      ..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('cleaned', 1000),
+    );
+
+    await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+
+    expect(chunkDir.existsSync(), isFalse);
+  });
+
   test('progress follows recognized video timestamp', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-progress-',
@@ -585,6 +885,17 @@ Map<String, Object?> _chunkJsonWithoutWords(String english, int startMs) {
         'chinese': '',
         'words': const <Object?>[],
       },
+    ],
+  };
+}
+
+Map<String, Object?> _twoLineChunkJson() {
+  return <String, Object?>{
+    'version': 1,
+    'language': 'en',
+    'lines': <Map<String, Object?>>[
+      _chunkLine('first line', 1000),
+      _chunkLine('second line', 2000),
     ],
   };
 }

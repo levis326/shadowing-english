@@ -1648,14 +1648,12 @@ void main() {
 }
 
 bool _hasCheckedMenuItem(WidgetTester tester, String value) {
-  return tester
-      .widgetList<CheckedPopupMenuItem<String>>(
-        find.byType(CheckedPopupMenuItem<String>),
-      )
-      .any(
-        (CheckedPopupMenuItem<String> item) =>
-            item.value == value && item.checked,
-      );
+  return tester.allWidgets.whereType<CheckedPopupMenuItem<dynamic>>().any((
+    CheckedPopupMenuItem<dynamic> item,
+  ) {
+    final Widget? child = item.child;
+    return item.checked && child is Text && child.data == value;
+  });
 }
 
 void _noop() {}

@@ -531,6 +531,9 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler {
                     }
                 }
             }
+        } catch (exception: Exception) {
+            outputDir.deleteRecursively()
+            throw exception
         } finally {
             closeWriter()
             codec.stop()
@@ -541,7 +544,10 @@ class MainActivity : FlutterActivity(), MethodChannel.MethodCallHandler {
         val existingChunks = chunks.filter { chunk ->
             File(chunk["path"] as String).length() > 0L
         }
-        require(existingChunks.isNotEmpty()) { "no audio chunks were created" }
+        if (existingChunks.isEmpty()) {
+            outputDir.deleteRecursively()
+            error("no audio chunks were created")
+        }
         return existingChunks
     }
 
