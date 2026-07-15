@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 
 import '../../library/presentation/library_mock_data.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
@@ -26,6 +27,9 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
     required this.onSeek,
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
+    this.embeddedSubtitleTracks = const <SubtitleTrack>[],
+    this.selectedEmbeddedSubtitleId,
+    this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
     required this.onToggleMuted,
@@ -65,6 +69,9 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
+  final List<SubtitleTrack> embeddedSubtitleTracks;
+  final String? selectedEmbeddedSubtitleId;
+  final ValueChanged<SubtitleTrack?>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
   final VoidCallback onToggleMuted;
@@ -164,6 +171,8 @@ class _PlayerFullscreenVideoScreenState
               speed: player.speed,
               subtitleMode: player.subtitleMode,
               subtitleModes: player.availableSubtitleModes,
+              embeddedSubtitleTracks: widget.embeddedSubtitleTracks,
+              selectedEmbeddedSubtitleId: widget.selectedEmbeddedSubtitleId,
               currentWordIndex: player.currentWordIndex,
               highlightWords: widget.highlightWords,
               subtitleWordHighlightStyle: widget.subtitleWordHighlightStyle,
@@ -186,6 +195,8 @@ class _PlayerFullscreenVideoScreenState
                   _refresh(() => widget.onSpeedSelected(value)),
               onSelectSubtitleMode: (String value) =>
                   _refresh(() => widget.onSelectSubtitleMode(value)),
+              onSelectEmbeddedSubtitle: (SubtitleTrack? track) =>
+                  _refresh(() => widget.onSelectEmbeddedSubtitle?.call(track)),
               onToggleShadowing: () => _refresh(widget.onToggleShadowing),
               onToggleLoop: () => _refresh(widget.onToggleLoop),
               onToggleMuted: () {

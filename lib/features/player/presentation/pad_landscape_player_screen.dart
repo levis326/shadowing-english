@@ -20,13 +20,16 @@ import '../../words/presentation/word_book_provider.dart';
 import 'asr_subtitle_cache.dart';
 import 'asr_subtitle_job.dart';
 import 'asr_subtitle_service.dart';
+import 'embedded_subtitle_reference.dart';
 import 'player_course_lookup.dart';
 import 'player_fullscreen_video_screen.dart';
 import 'player_media_source.dart';
 import 'player_mock_state.dart';
+import 'player_native_subtitles.dart';
 import 'player_subtitle_loader.dart';
 import 'player_system_media_controls.dart';
 import 'player_video_init.dart';
+import 'subtitle_reference_review.dart';
 import 'widgets/player_episode_strip.dart';
 import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
@@ -83,6 +86,10 @@ class _PadLandscapePlayerScreenState
   String? _aiSubtitlePreviewText;
   String? _aiSubtitleErrorText;
   bool _usingAiSubtitles = false;
+  List<SubtitleTrack> _embeddedSubtitleTracks = const <SubtitleTrack>[];
+  String? _selectedEmbeddedSubtitleId;
+  List<PlayerSubtitleLine> _referenceSubtitleLines =
+      const <PlayerSubtitleLine>[];
 
   @override
   void initState() {
@@ -168,6 +175,9 @@ class _PadLandscapePlayerScreenState
         ..loadLines(resolvedLines, initialStartTime: initialStartTime)
         ..isPlaying = widget.autoPlay && (_videoAsset?.isNotEmpty ?? false);
       _usingAiSubtitles = usingAiSubtitles;
+      _referenceSubtitleLines = usingAiSubtitles
+          ? const <PlayerSubtitleLine>[]
+          : resolvedLines;
       _usingAiSubtitles = usingAiSubtitles;
     });
     await _initVideo();
@@ -215,6 +225,10 @@ class _PadLandscapePlayerScreenState
         await player.open(Media(createPlayerMediaUri(_videoAsset!)));
       });
       await waitForPlayerReady(player);
+      final List<SubtitleTrack> embeddedTracks = embeddedSubtitleTracks(
+        player.state.tracks.subtitle,
+      );
+      await player.setSubtitleTrack(SubtitleTrack.no());
       await player.setRate(state.playbackRate);
       await player.setVolume(_volumeLevel * 100);
       if (!mounted) {
@@ -235,10 +249,15 @@ class _PadLandscapePlayerScreenState
       _videoPlayer = player;
       _videoController = controller;
       setState(() {
+        _embeddedSubtitleTracks = embeddedTracks;
+        _selectedEmbeddedSubtitleId = null;
         _videoReady = true;
         _videoLoading = false;
         _videoErrorText = null;
       });
+      if (_referenceSubtitleLines.isEmpty && embeddedTracks.isNotEmpty) {
+        unawaited(_loadEmbeddedSubtitleReference(embeddedTracks));
+      }
       _applyPlaybackMode();
     } catch (_) {
       _cancelVideoSubscriptions();
@@ -255,6 +274,20 @@ class _PadLandscapePlayerScreenState
       });
       _applyPlaybackMode();
     }
+  }
+
+  Future<void> _loadEmbeddedSubtitleReference(
+    List<SubtitleTrack> tracks,
+  ) async {
+    final String? videoPath = _videoAsset;
+    if (videoPath == null) return;
+    final List<PlayerSubtitleLine> lines =
+        await extractEmbeddedEnglishSubtitles(
+          videoPath: videoPath,
+          tracks: tracks,
+        );
+    if (!mounted || lines.isEmpty || _referenceSubtitleLines.isNotEmpty) return;
+    setState(() => _referenceSubtitleLines = lines);
   }
 
   Future<void> _disposeVideo() async {
@@ -397,9 +430,7 @@ class _PadLandscapePlayerScreenState
   }
 
   void _applyPlaybackMode() {
-    PlayerSystemMediaControls.updatePlaybackState(
-      isPlaying: state.isPlaying,
-    );
+    PlayerSystemMediaControls.updatePlaybackState(isPlaying: state.isPlaying);
     if (!state.isPlaying) {
       unawaited(_videoPlayer?.pause());
       return;
@@ -516,7 +547,7 @@ class _PadLandscapePlayerScreenState
     final LibraryEpisodeItem? episode = courseContext.episode;
     final LearningSettingsState settings = ref.watch(learningSettingsProvider);
     final bool canGenerateAiSubtitles =
-        (_videoAsset?.isNotEmpty ?? false) && !state.hasLines;
+        (_videoAsset?.isNotEmpty ?? false) && !_usingAiSubtitles;
     final LearningDashboardStats dashboard = ref.watch(
       learningDashboardProvider,
     );
@@ -587,6 +618,9 @@ class _PadLandscapePlayerScreenState
                               speed: state.speed,
                               subtitleMode: state.subtitleMode,
                               subtitleModes: state.availableSubtitleModes,
+                              embeddedSubtitleTracks: _embeddedSubtitleTracks,
+                              selectedEmbeddedSubtitleId:
+                                  _selectedEmbeddedSubtitleId,
                               currentWordIndex: state.currentWordIndex,
                               highlightWords: settings.highlightWords,
                               subtitleWordHighlightStyle:
@@ -607,6 +641,8 @@ class _PadLandscapePlayerScreenState
                               onSeek: _handleSeek,
                               onSpeedSelected: _handleSpeedSelected,
                               onSelectSubtitleMode: _handleSetSubtitleMode,
+                              onSelectEmbeddedSubtitle:
+                                  _handleSelectEmbeddedSubtitle,
                               onToggleShadowing: _handleToggleShadowing,
                               onToggleLoop: _handleToggleLoop,
                               onToggleMuted: _handleToggleMuted,
@@ -769,9 +805,24 @@ class _PadLandscapePlayerScreenState
   void _handleSetSubtitleMode(String mode) {
     setState(() {
       state.setSubtitleMode(mode);
+      _selectedEmbeddedSubtitleId = null;
     });
     ref.read(learningSettingsProvider.notifier).setSubtitleMode(mode);
+    unawaited(_videoPlayer?.setSubtitleTrack(SubtitleTrack.no()));
     _applyPlaybackMode();
+  }
+
+  void _handleSelectEmbeddedSubtitle(SubtitleTrack? track) {
+    setState(() {
+      _selectedEmbeddedSubtitleId = track?.id;
+      if (track != null) {
+        state.setSubtitleMode('隐藏');
+      }
+    });
+    if (track != null) {
+      ref.read(learningSettingsProvider.notifier).setSubtitleMode('隐藏');
+    }
+    unawaited(_videoPlayer?.setSubtitleTrack(track ?? SubtitleTrack.no()));
   }
 
   void _handleTogglePlaying() {
@@ -868,7 +919,15 @@ class _PadLandscapePlayerScreenState
             );
             _usingAiSubtitles = true;
           });
-          _showMessage('已切换到 AI 字幕');
+          final SubtitleReferenceReview review = reviewGeneratedSubtitles(
+            generated: lines,
+            reference: _referenceSubtitleLines,
+          );
+          if (review.differentLines > 0) {
+            _showReferenceReview(review, lines);
+          } else {
+            _showMessage('已切换到 AI 字幕');
+          }
           return;
         }
       }
@@ -905,7 +964,17 @@ class _PadLandscapePlayerScreenState
         state.loadLines(lines, wordDefinitions: parseSubtitleGlossary(raw));
         _usingAiSubtitles = true;
       });
-      _showMessage('AI 字幕已生成');
+      final SubtitleReferenceReview review = reviewGeneratedSubtitles(
+        generated: lines,
+        reference: _referenceSubtitleLines,
+      );
+      if (review.comparedLines == 0) {
+        _showMessage('AI 字幕已生成');
+      } else if (review.differentLines == 0) {
+        _showMessage('AI 字幕已生成，已通过参考字幕校对');
+      } else {
+        _showReferenceReview(review, lines);
+      }
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -923,6 +992,44 @@ class _PadLandscapePlayerScreenState
         });
       }
     }
+  }
+
+  void _showReferenceReview(
+    SubtitleReferenceReview review,
+    List<PlayerSubtitleLine> generated,
+  ) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            '参考字幕校对：${review.differentLines}/${review.comparedLines} 句存在差异',
+          ),
+          action: SnackBarAction(
+            label: '采用参考字幕',
+            onPressed: () => _adoptReferenceSubtitles(generated),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _adoptReferenceSubtitles(
+    List<PlayerSubtitleLine> generated,
+  ) async {
+    final String? videoPath = _videoAsset;
+    if (videoPath == null || _referenceSubtitleLines.isEmpty) return;
+    final List<PlayerSubtitleLine> adopted = adoptReferenceSubtitles(
+      generated: generated,
+      reference: _referenceSubtitleLines,
+    );
+    await const AsrSubtitleCache().write(
+      episodeId: widget.episodeId,
+      videoPath: videoPath,
+      content: subtitleLinesToJson(adopted),
+    );
+    if (!mounted) return;
+    setState(() => state.loadLines(adopted));
+    _showMessage('已采用参考字幕');
   }
 
   Future<void> _handleDeleteAiSubtitles() async {
@@ -1155,6 +1262,9 @@ class _PadLandscapePlayerScreenState
             onSeek: _handleSeek,
             onSpeedSelected: _handleSpeedSelected,
             onSelectSubtitleMode: _handleSetSubtitleMode,
+            embeddedSubtitleTracks: _embeddedSubtitleTracks,
+            selectedEmbeddedSubtitleId: _selectedEmbeddedSubtitleId,
+            onSelectEmbeddedSubtitle: _handleSelectEmbeddedSubtitle,
             onToggleShadowing: _handleToggleShadowing,
             onToggleLoop: _handleToggleLoop,
             onToggleMuted: _handleToggleMuted,

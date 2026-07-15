@@ -2,11 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
 import '../player_mock_state.dart';
+import '../player_native_subtitles.dart';
 import 'subtitle_word_highlight_style.dart';
 
 class PlayerVideoPanel extends StatefulWidget {
@@ -15,6 +17,8 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.isPlaying,
     required this.subtitleMode,
     required this.subtitleModes,
+    this.embeddedSubtitleTracks = const <SubtitleTrack>[],
+    this.selectedEmbeddedSubtitleId,
     this.currentWordIndex = 0,
     this.highlightWords = false,
     this.subtitleWordHighlightStyle = '绿色填充',
@@ -35,6 +39,7 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.onSeek,
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
+    this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
     required this.onToggleMuted,
@@ -69,6 +74,8 @@ class PlayerVideoPanel extends StatefulWidget {
   final bool isPlaying;
   final String subtitleMode;
   final List<String> subtitleModes;
+  final List<SubtitleTrack> embeddedSubtitleTracks;
+  final String? selectedEmbeddedSubtitleId;
   final int currentWordIndex;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
@@ -89,6 +96,7 @@ class PlayerVideoPanel extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
+  final ValueChanged<SubtitleTrack?>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
   final VoidCallback onToggleMuted;
@@ -793,25 +801,96 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                               widget.onGenerateAiSubtitles!,
                                             ),
                                     ),
-                                  PopupMenuButton<String>(
+                                  PopupMenuButton<_SubtitleMenuSelection>(
                                     tooltip: '字幕模式',
-                                    onSelected: (String value) {
-                                      widget.onSelectSubtitleMode(value);
+                                    onSelected: (_SubtitleMenuSelection value) {
+                                      if (value.mode != null) {
+                                        widget.onSelectSubtitleMode(
+                                          value.mode!,
+                                        );
+                                      } else {
+                                        widget.onSelectEmbeddedSubtitle?.call(
+                                          value.embeddedTrack,
+                                        );
+                                      }
                                       _scheduleAutoHide();
                                     },
                                     itemBuilder: (BuildContext context) =>
-                                        widget.subtitleModes
-                                            .map(
-                                              (String mode) =>
-                                                  CheckedPopupMenuItem<String>(
-                                                    value: mode,
-                                                    checked:
-                                                        mode ==
-                                                        widget.subtitleMode,
-                                                    child: Text(mode),
+                                        <
+                                          PopupMenuEntry<_SubtitleMenuSelection>
+                                        >[
+                                          const PopupMenuItem<
+                                            _SubtitleMenuSelection
+                                          >(
+                                            enabled: false,
+                                            height: 32,
+                                            child: Text('学习字幕'),
+                                          ),
+                                          ...widget.subtitleModes.map(
+                                            (String mode) =>
+                                                CheckedPopupMenuItem<
+                                                  _SubtitleMenuSelection
+                                                >(
+                                                  value:
+                                                      _SubtitleMenuSelection.mode(
+                                                        mode,
+                                                      ),
+                                                  checked:
+                                                      mode ==
+                                                      widget.subtitleMode,
+                                                  child: Text(mode),
+                                                ),
+                                          ),
+                                          if (widget
+                                              .embeddedSubtitleTracks
+                                              .isNotEmpty) ...<
+                                            PopupMenuEntry<
+                                              _SubtitleMenuSelection
+                                            >
+                                          >[
+                                            const PopupMenuDivider(),
+                                            const PopupMenuItem<
+                                              _SubtitleMenuSelection
+                                            >(
+                                              enabled: false,
+                                              height: 32,
+                                              child: Text('视频内置字幕'),
+                                            ),
+                                            CheckedPopupMenuItem<
+                                              _SubtitleMenuSelection
+                                            >(
+                                              value:
+                                                  const _SubtitleMenuSelection.embedded(
+                                                    null,
                                                   ),
-                                            )
-                                            .toList(growable: false),
+                                              checked:
+                                                  widget
+                                                      .selectedEmbeddedSubtitleId ==
+                                                  null,
+                                              child: const Text('关闭内置字幕'),
+                                            ),
+                                            ...widget.embeddedSubtitleTracks.map(
+                                              (SubtitleTrack track) =>
+                                                  CheckedPopupMenuItem<
+                                                    _SubtitleMenuSelection
+                                                  >(
+                                                    value:
+                                                        _SubtitleMenuSelection.embedded(
+                                                          track,
+                                                        ),
+                                                    checked:
+                                                        track.id ==
+                                                        widget
+                                                            .selectedEmbeddedSubtitleId,
+                                                    child: Text(
+                                                      embeddedSubtitleTrackLabel(
+                                                        track,
+                                                      ),
+                                                    ),
+                                                  ),
+                                            ),
+                                          ],
+                                        ],
                                     child: _MiniPillAction(
                                       icon: Icons.closed_caption_rounded,
                                       label: tinyControls
@@ -1178,6 +1257,15 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
       ),
     );
   }
+}
+
+class _SubtitleMenuSelection {
+  const _SubtitleMenuSelection.mode(this.mode) : embeddedTrack = null;
+
+  const _SubtitleMenuSelection.embedded(this.embeddedTrack) : mode = null;
+
+  final String? mode;
+  final SubtitleTrack? embeddedTrack;
 }
 
 enum _PlayerGestureMode { seek, volume, brightness }
