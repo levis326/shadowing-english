@@ -224,4 +224,68 @@ void main() {
     expect(await cache.read(episodeId: 'ep01', videoPath: video.path), isNull);
     expect(cacheFile.existsSync(), isFalse);
   });
+
+  test('management lists, edits, exports, and deletes a cache entry', () async {
+    final Directory supportDir = Directory.systemTemp.createTempSync(
+      'asr-cache-management-',
+    );
+    final Directory downloadsDir = Directory.systemTemp.createTempSync(
+      'asr-cache-management-downloads-',
+    );
+    addTearDown(() {
+      supportDir.deleteSync(recursive: true);
+      downloadsDir.deleteSync(recursive: true);
+    });
+    final File video = File('${supportDir.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => supportDir,
+      downloadsDirectory: () async => downloadsDir,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults()
+        .copyWith(asrProvider: '腾讯云', asrModel: '16k_en');
+    await cache.write(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      content:
+          '{"version":1,"lines":[{"english":"hello","chinese":"你好","words":[]}]}',
+      settings: settings,
+    );
+
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+    expect(entry.episodeId, 'episode-1');
+    expect(entry.videoPath, video.absolute.path);
+    expect(entry.lineCount, 1);
+    expect(entry.provider, '腾讯云');
+    expect(entry.model, '16k_en');
+
+    final Map<String, dynamic> content = await cache.readEntry(entry);
+    final List<dynamic> lines = content['lines'] as List<dynamic>;
+    (lines.single as Map<String, dynamic>)['chinese'] = '您好';
+    await cache.updateEntry(entry, content);
+    expect(await entry.cacheFile.readAsString(), contains('您好'));
+    expect((await cache.exportEntry(entry)).existsSync(), isTrue);
+
+    await cache.deleteEntry(entry);
+    expect(await cache.listEntries(), isEmpty);
+  });
+
+  test('management can delete all subtitle caches and checkpoints', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-delete-all-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    await cache.write(
+      episodeId: 'episode-1',
+      videoPath: '/videos/lesson.mp4',
+      content: '{"version":1,"lines":[]}',
+    );
+
+    await cache.deleteAll();
+
+    expect(await cache.listEntries(), isEmpty);
+  });
 }

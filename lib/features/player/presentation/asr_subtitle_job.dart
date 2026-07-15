@@ -163,6 +163,7 @@ class AsrSubtitleJobRunner {
     required String episodeId,
     required String videoPath,
     required LearningSettingsState settings,
+    bool forceRegenerate = false,
     AsrProgressCallback? onProgress,
     AsrSubtitleCancellationToken? cancellationToken,
   }) async {
@@ -188,6 +189,16 @@ class AsrSubtitleJobRunner {
     List<AsrAudioChunk> chunks = const <AsrAudioChunk>[];
     try {
       cancellationToken?.throwIfCancelled();
+      if (forceRegenerate) {
+        final Directory previousJob = await jobDirectory(
+          episodeId: episodeId,
+          videoPath: videoPath,
+          settings: settings,
+        );
+        if (previousJob.existsSync()) {
+          await previousJob.delete(recursive: true);
+        }
+      }
       chunks = await service.prepareAudioChunks(video);
       cancellationToken?.throwIfCancelled();
       return await _runPrepared(

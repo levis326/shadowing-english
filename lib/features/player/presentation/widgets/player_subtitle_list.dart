@@ -35,6 +35,7 @@ class PlayerSubtitleList extends StatefulWidget {
     this.aiSubtitlePreviewText,
     this.aiSubtitleErrorText,
     this.onGenerateAiSubtitles,
+    this.onRegenerateAiSubtitles,
     this.onDeleteAiSubtitles,
     super.key,
   });
@@ -64,6 +65,7 @@ class PlayerSubtitleList extends StatefulWidget {
   final String? aiSubtitlePreviewText;
   final String? aiSubtitleErrorText;
   final VoidCallback? onGenerateAiSubtitles;
+  final VoidCallback? onRegenerateAiSubtitles;
   final VoidCallback? onDeleteAiSubtitles;
 
   @override
@@ -583,6 +585,12 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                 icon: const Icon(Icons.my_location_rounded),
                 label: const Text('定位当前'),
               ),
+              if (widget.onRegenerateAiSubtitles != null)
+                TextButton.icon(
+                  onPressed: widget.onRegenerateAiSubtitles,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重新生成'),
+                ),
               if (widget.onDeleteAiSubtitles != null)
                 TextButton.icon(
                   onPressed: widget.onDeleteAiSubtitles,

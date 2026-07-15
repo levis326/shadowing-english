@@ -3,11 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../utils/url_utils.dart';
 import '../../navigation/presentation/navigation_destination.dart';
-import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../shared/data/word_pronunciation_service.dart';
 import '../../shared/presentation/pad/pad_compact.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
+import 'ai_subtitle_management_screen.dart';
 import 'app_update_provider.dart';
 import 'settings_provider.dart';
 import 'widgets/settings_group_card.dart';
@@ -619,27 +619,14 @@ class SettingsScreen extends ConsumerWidget {
                 onTap: () => _handleUpdateAction(ref, updateState),
               ),
               _ActionRow(
-                title: '导出 AI 字幕',
-                description:
-                    '复制已生成的 .words.json 到 Downloads/Shadowing English/AI Subtitles。',
-                icon: Icons.drive_folder_upload_rounded,
-                onTap: () async {
-                  try {
-                    final int count = await const AsrSubtitleCache()
-                        .exportAll();
-                    if (!context.mounted) {
-                      return;
-                    }
-                    _showMessage(
-                      context,
-                      count == 0 ? '暂无可导出的 AI 字幕。' : '已导出 $count 个 AI 字幕文件。',
-                    );
-                  } catch (_) {
-                    if (context.mounted) {
-                      _showMessage(context, '导出 AI 字幕失败。');
-                    }
-                  }
-                },
+                title: '管理 AI 字幕',
+                description: '查看、编辑、导出、重新生成或删除已生成的字幕。',
+                icon: Icons.subtitles_rounded,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const AiSubtitleManagementScreen(),
+                  ),
+                ),
               ),
               _ActionRow(
                 title: '备份同步云端数据',

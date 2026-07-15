@@ -23,6 +23,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
     required this.isPlaying,
     required this.onTogglePlaying,
     this.onPronounce,
+    this.onRegenerateAiSubtitles,
     this.onDeleteAiSubtitles,
     super.key,
   });
@@ -44,6 +45,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
   final bool isPlaying;
   final VoidCallback onTogglePlaying;
   final VoidCallback? onPronounce;
+  final VoidCallback? onRegenerateAiSubtitles;
   final VoidCallback? onDeleteAiSubtitles;
 
   @override
@@ -87,6 +89,7 @@ class _PlayerTranscriptPanelState extends State<PlayerTranscriptPanel> {
             isPlaying: widget.isPlaying,
             onTogglePlaying: widget.onTogglePlaying,
             onPronounce: widget.onPronounce,
+            onRegenerateAiSubtitles: widget.onRegenerateAiSubtitles,
             onDeleteAiSubtitles: widget.onDeleteAiSubtitles,
           ),
         ),

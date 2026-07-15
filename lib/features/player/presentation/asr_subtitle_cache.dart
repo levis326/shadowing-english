@@ -5,6 +5,28 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../settings/presentation/settings_provider.dart';
 
+class AiSubtitleCacheEntry {
+  const AiSubtitleCacheEntry({
+    required this.episodeId,
+    required this.videoPath,
+    required this.cacheFile,
+    required this.lineCount,
+    required this.provider,
+    required this.model,
+    required this.generatedAt,
+    required this.sizeBytes,
+  });
+
+  final String episodeId;
+  final String videoPath;
+  final File cacheFile;
+  final int lineCount;
+  final String provider;
+  final String model;
+  final DateTime generatedAt;
+  final int sizeBytes;
+}
+
 class AsrSubtitleCache {
   const AsrSubtitleCache({
     this.appSupportDirectory = getApplicationSupportDirectory,
@@ -58,12 +80,12 @@ class AsrSubtitleCache {
             videoPath: videoPath,
             settings: settings,
           )) {
-        await _deleteFiles(file);
+        _deleteFiles(file);
         return null;
       }
       return content;
     } catch (_) {
-      await _deleteFiles(file);
+      _deleteFiles(file);
       return null;
     }
   }
@@ -83,11 +105,15 @@ class AsrSubtitleCache {
     if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
       throw const FormatException('invalid-asr-subtitle-cache');
     }
-    await _writeAtomically(file, content);
+    _writeAtomically(file, content);
     if (settings != null) {
-      await _writeAtomically(
+      _writeAtomically(
         _metadataFile(file),
-        jsonEncode(_metadata(videoPath: videoPath, settings: settings)),
+        jsonEncode(<String, Object?>{
+          ..._metadata(videoPath: videoPath, settings: settings),
+          'episodeId': episodeId,
+          'generatedAtMs': DateTime.now().millisecondsSinceEpoch,
+        }),
       );
     }
     return file;
@@ -101,7 +127,92 @@ class AsrSubtitleCache {
       episodeId: episodeId,
       videoPath: videoPath,
     );
-    await _deleteFiles(file);
+    _deleteFiles(file);
+  }
+
+  Future<List<AiSubtitleCacheEntry>> listEntries() async {
+    final Directory root = await _cacheRoot();
+    if (!root.existsSync()) return const <AiSubtitleCacheEntry>[];
+    final List<AiSubtitleCacheEntry> entries = <AiSubtitleCacheEntry>[];
+    for (final FileSystemEntity entity in root.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.words.json')) continue;
+      try {
+        final Object? raw = jsonDecode(entity.readAsStringSync());
+        if (raw is! Map<String, dynamic> || raw['lines'] is! List) continue;
+        final File metadataFile = _metadataFile(entity);
+        Map<String, dynamic> metadata = <String, dynamic>{};
+        if (metadataFile.existsSync()) {
+          final Object? decoded = jsonDecode(metadataFile.readAsStringSync());
+          if (decoded is Map<String, dynamic>) metadata = decoded;
+        }
+        final FileStat stat = entity.statSync();
+        final int? generatedAtMs = metadata['generatedAtMs'] as int?;
+        entries.add(
+          AiSubtitleCacheEntry(
+            episodeId:
+                metadata['episodeId'] as String? ??
+                entity.parent.path.split(Platform.pathSeparator).last,
+            videoPath: metadata['videoPath'] as String? ?? entity.path,
+            cacheFile: entity,
+            lineCount: (raw['lines'] as List<dynamic>).length,
+            provider: metadata['asrProvider'] as String? ?? '未知服务',
+            model: metadata['asrModel'] as String? ?? '未知模型',
+            generatedAt: generatedAtMs == null
+                ? stat.modified
+                : DateTime.fromMillisecondsSinceEpoch(generatedAtMs),
+            sizeBytes: stat.size,
+          ),
+        );
+      } catch (_) {
+        // A damaged cache is ignored here and cleaned when the player reads it.
+      }
+    }
+    entries.sort(
+      (AiSubtitleCacheEntry a, AiSubtitleCacheEntry b) =>
+          b.generatedAt.compareTo(a.generatedAt),
+    );
+    return entries;
+  }
+
+  Future<Map<String, dynamic>> readEntry(AiSubtitleCacheEntry entry) async {
+    final Object? decoded = jsonDecode(entry.cacheFile.readAsStringSync());
+    if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
+      throw const FormatException('invalid-asr-subtitle-cache');
+    }
+    return decoded;
+  }
+
+  Future<void> updateEntry(
+    AiSubtitleCacheEntry entry,
+    Map<String, dynamic> content,
+  ) async {
+    if (content['lines'] is! List) {
+      throw const FormatException('invalid-asr-subtitle-cache');
+    }
+    _writeAtomically(entry.cacheFile, jsonEncode(content));
+  }
+
+  Future<File> exportEntry(AiSubtitleCacheEntry entry) async {
+    if (!entry.cacheFile.existsSync()) {
+      throw StateError('missing-asr-subtitle-cache');
+    }
+    final Directory targetDir = await _exportDirectory();
+    return entry.cacheFile.copySync(
+      _availableExportPath(targetDir, _fileName(entry.cacheFile.path)),
+    );
+  }
+
+  Future<void> deleteEntry(AiSubtitleCacheEntry entry) async {
+    _deleteFiles(entry.cacheFile);
+    final Directory jobs = Directory(
+      '${entry.cacheFile.parent.path}${Platform.pathSeparator}jobs',
+    );
+    if (jobs.existsSync()) jobs.deleteSync(recursive: true);
+  }
+
+  Future<void> deleteAll() async {
+    final Directory root = await _cacheRoot();
+    if (root.existsSync()) root.deleteSync(recursive: true);
   }
 
   Future<File> exportOne({
@@ -122,10 +233,7 @@ class AsrSubtitleCache {
   }
 
   Future<int> exportAll() async {
-    final Directory root = await appSupportDirectory();
-    final Directory sourceRoot = Directory(
-      '${root.path}${Platform.pathSeparator}asr_subtitles',
-    );
+    final Directory sourceRoot = await _cacheRoot();
     if (!sourceRoot.existsSync()) {
       return 0;
     }
@@ -151,8 +259,7 @@ class AsrSubtitleCache {
       '${(downloads ?? await appSupportDirectory()).path}'
       '${Platform.pathSeparator}Shadowing English'
       '${Platform.pathSeparator}AI Subtitles',
-    );
-    await targetDir.create(recursive: true);
+    )..createSync(recursive: true);
     return targetDir;
   }
 
@@ -165,8 +272,18 @@ class AsrSubtitleCache {
     if (!metadataFile.existsSync()) return false;
     final Object? decoded = jsonDecode(await metadataFile.readAsString());
     if (decoded is! Map<String, dynamic>) return false;
-    return jsonEncode(decoded) ==
-        jsonEncode(_metadata(videoPath: videoPath, settings: settings));
+    final Map<String, Object?> expected = _metadata(
+      videoPath: videoPath,
+      settings: settings,
+    );
+    return expected.entries.every(
+      (MapEntry<String, Object?> entry) => decoded[entry.key] == entry.value,
+    );
+  }
+
+  Future<Directory> _cacheRoot() async {
+    final Directory root = await appSupportDirectory();
+    return Directory('${root.path}${Platform.pathSeparator}asr_subtitles');
   }
 
   Map<String, Object?> _metadata({
@@ -194,21 +311,22 @@ class AsrSubtitleCache {
 
   File _metadataFile(File file) => File('${file.path}.meta.json');
 
-  Future<void> _deleteFiles(File file) async {
+  void _deleteFiles(File file) {
     for (final File target in <File>[file, _metadataFile(file)]) {
-      if (target.existsSync()) await target.delete();
+      if (target.existsSync()) target.deleteSync();
     }
   }
 
-  Future<void> _writeAtomically(File file, String content) async {
+  void _writeAtomically(File file, String content) {
     final File part = File(
       '${file.path}.${DateTime.now().microsecondsSinceEpoch}.part',
     );
     try {
-      await part.writeAsString(content, flush: true);
-      await part.rename(file.path);
+      part
+        ..writeAsStringSync(content, flush: true)
+        ..renameSync(file.path);
     } finally {
-      if (part.existsSync()) await part.delete();
+      if (part.existsSync()) part.deleteSync();
     }
   }
 
@@ -217,6 +335,29 @@ class AsrSubtitleCache {
     final int dot = fileName.lastIndexOf('.');
     final String baseName = dot <= 0 ? fileName : fileName.substring(0, dot);
     return '$baseName.words.json';
+  }
+
+  String _availableExportPath(Directory directory, String fileName) {
+    final String direct = '${directory.path}${Platform.pathSeparator}$fileName';
+    if (!File(direct).existsSync()) return direct;
+    final bool isWordsJson = fileName.endsWith('.words.json');
+    final int dot = fileName.lastIndexOf('.');
+    final String extension = isWordsJson
+        ? '.words.json'
+        : dot <= 0
+        ? ''
+        : fileName.substring(dot);
+    final String baseName = fileName.substring(
+      0,
+      fileName.length - extension.length,
+    );
+    int suffix = 2;
+    while (true) {
+      final String candidate =
+          '${directory.path}${Platform.pathSeparator}$baseName ($suffix)$extension';
+      if (!File(candidate).existsSync()) return candidate;
+      suffix += 1;
+    }
   }
 
   String _fileName(String path) {

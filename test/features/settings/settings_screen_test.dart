@@ -136,12 +136,38 @@ void main() {
     expect(find.text('模型选择'), findsOneWidget);
     expect(find.text('deepseek-v4-flash'), findsWidgets);
   });
+
+  testWidgets('settings links to AI subtitle management', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+    for (
+      int index = 0;
+      index < 8 && find.text('管理 AI 字幕').evaluate().isEmpty;
+      index++
+    ) {
+      await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('管理 AI 字幕'), findsOneWidget);
+    expect(find.text('导出 AI 字幕'), findsNothing);
+  });
 }
 
 Future<void> _scrollToTranslationSettings(WidgetTester tester) async {
-  for (int index = 0;
-      index < 4 && find.text('翻译来源').evaluate().isEmpty;
-      index++) {
+  for (
+    int index = 0;
+    index < 4 && find.text('翻译来源').evaluate().isEmpty;
+    index++
+  ) {
     await tester.drag(find.byType(ListView).last, const Offset(0, -500));
     await tester.pumpAndSettle();
   }

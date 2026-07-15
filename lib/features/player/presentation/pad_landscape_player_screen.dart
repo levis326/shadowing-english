@@ -731,6 +731,11 @@ class _PadLandscapePlayerScreenState
                                       isPlaying: state.isPlaying,
                                       onTogglePlaying: _handleTogglePlaying,
                                       onPronounce: _stopVideo,
+                                      onRegenerateAiSubtitles:
+                                          _usingAiSubtitles &&
+                                              !_generatingAiSubtitles
+                                          ? _handleRegenerateAiSubtitles
+                                          : null,
                                       onDeleteAiSubtitles: _usingAiSubtitles
                                           ? _handleDeleteAiSubtitles
                                           : null,
@@ -899,7 +904,9 @@ class _PadLandscapePlayerScreenState
     _showMessage(_isMuted ? '已静音' : '已恢复声音');
   }
 
-  Future<void> _handleGenerateAiSubtitles() async {
+  Future<void> _handleGenerateAiSubtitles({
+    bool forceRegenerate = false,
+  }) async {
     if (_generatingAiSubtitles) {
       return;
     }
@@ -909,7 +916,7 @@ class _PadLandscapePlayerScreenState
       return;
     }
     final LearningSettingsState settings = ref.read(learningSettingsProvider);
-    if (!_usingAiSubtitles) {
+    if (!forceRegenerate && !_usingAiSubtitles) {
       final String? cached = await const AsrSubtitleCache().read(
         episodeId: widget.episodeId,
         videoPath: videoPath,
@@ -945,6 +952,7 @@ class _PadLandscapePlayerScreenState
         episodeId: widget.episodeId,
         videoPath: videoPath,
         settings: settings,
+        forceRegenerate: forceRegenerate,
         cancellationToken: cancellationToken,
         onProgress: (AsrSubtitleProgress progress) {
           if (!mounted) {
@@ -997,6 +1005,31 @@ class _PadLandscapePlayerScreenState
         });
       }
     }
+  }
+
+  Future<void> _handleRegenerateAiSubtitles() async {
+    final bool confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            title: const Text('重新生成 AI 字幕？'),
+            content: const Text('这会再次调用已配置的 AI 服务，可能产生费用。生成失败时会保留当前字幕。'),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('重新生成'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+    _showMessage('正在重新生成 AI 字幕，当前字幕会保留到生成成功。');
+    await _handleGenerateAiSubtitles(forceRegenerate: true);
   }
 
   Future<void> _handleDeleteAiSubtitles() async {

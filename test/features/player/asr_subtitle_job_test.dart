@@ -755,6 +755,102 @@ void main() {
     await first;
   });
 
+  test('force regeneration ignores completed chunk checkpoints', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-force-regenerate-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    int calls = 0;
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async {
+            calls += 1;
+            return _chunkJson('generation $calls', 1000);
+          },
+    );
+
+    await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+    await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+      forceRegenerate: true,
+    );
+
+    expect(calls, 2);
+  });
+
+  test('failed force regeneration keeps the previous final cache', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-force-failure-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = _settings();
+    final String previous = _rawChunk('old subtitle', 1000);
+    await cache.write(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      content: previous,
+      settings: settings,
+    );
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: cache,
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJsonWithoutWords('broken subtitle', 1000),
+    );
+
+    await expectLater(
+      runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: settings,
+        forceRegenerate: true,
+      ),
+      throwsA(anything),
+    );
+
+    expect(
+      await cache.read(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: settings,
+      ),
+      previous,
+    );
+  });
+
   test('temporary audio chunks are cleaned after generation', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-temp-cleanup-',
