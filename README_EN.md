@@ -26,6 +26,12 @@ English · [中文](README.md)
 | :---: | :---: |
 | <img src="assets/showcase/player.png" alt="Sentence practice, playback controls, and subtitle panel" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="Import local videos and subtitles" width="100%" /> |
 | Tap a line, loop the difficult part, and stay with the original scene. | Choose your own media and subtitles, review the matches, then start learning. |
+| Word lookup in context | Full transcript, synced with playback |
+| <img src="assets/showcase/word-lookup-popup.png" alt="Translation and context popup after tapping a word in the sentence transcript" width="100%" /> | <img src="assets/showcase/full-transcript-reader.png" alt="Full word-by-word transcript reader with the current sentence and word highlighted" width="100%" /> |
+| Tap a subtitle word for its meaning, sentence context, saving, and pronunciation. | Open the complete word-by-word transcript; playback keeps the current sentence and word in view. |
+| Tap words in video subtitles | |
+| <img src="assets/showcase/video-subtitle-lookup.png" alt="Translation popup after tapping a word in the video subtitle" width="100%" /> | |
+| Look up a word directly from the subtitle over the playing video. | |
 | The three-pass method | Learning journey and levels |
 | <img src="assets/showcase/learning-guide.jpg" alt="The three-pass method in Shadowing English" width="100%" /> | <img src="assets/showcase/growth.png" alt="Learning journey, levels, and study roadmap" width="100%" /> |
 | Understand first, listen closely, then shadow the line. | Track practice, gain experience, and see the next step clearly. |
@@ -60,6 +66,8 @@ Short loops keep auditory recognition and spoken output together. A few lines at
 - **Replay and loop a line**: Replay the current sentence quickly or enable sentence looping.
 - **Subtitle modes**: Switch among English, bilingual, and hidden subtitles as you progress.
 - **Word lookup from subtitles**: Tap a word for its definition while it is still in context.
+- **Full word-by-word transcript**: The active sentence and word follow playback in the complete transcript reader.
+- **Tap words in video subtitles**: Look up words directly from the subtitle over the video.
 - **Saved words and phrases**: Keep useful vocabulary and expressions in dedicated review spaces.
 - **Shadowing practice**: Record each shadowing session as part of your learning activity.
 - **Learning progress**: Track study time, sentences, phrases, course progress, levels, and achievements.

@@ -26,6 +26,12 @@
 | :---: | :---: |
 | <img src="assets/showcase/player.png" alt="逐句精听、播放控制和字幕面板" width="100%" /> | <img src="assets/showcase/import-course.jpg" alt="导入本地视频与字幕的流程" width="100%" /> |
 | 点按字幕、循环难句，在视频与原句之间保持专注。 | 选择自己的媒体与字幕，确认匹配后开始学习。 |
+| 点词查译与上下文 | 全文逐词阅读与播放联动 |
+| <img src="assets/showcase/word-lookup-popup.png" alt="点按逐句字幕单词后显示的翻译和上下文弹窗" width="100%" /> | <img src="assets/showcase/full-transcript-reader.png" alt="逐词全文阅读器，当前播放句和单词会自动高亮" width="100%" /> |
+| 点按字幕单词，立即查看释义、原句上下文，并可收藏或播放发音。 | 打开全文逐词阅读器，播放进度会同步定位当前句和单词。 |
+| 视频字幕点词弹窗 | |
+| <img src="assets/showcase/video-subtitle-lookup.png" alt="直接点按视频字幕中的单词后显示的翻译弹窗" width="100%" /> | |
+| 视频正在播放时，也能直接点按画面字幕里的单词查看释义。 | |
 | 三遍学习法 | 学习成长与等级 |
 | <img src="assets/showcase/learning-guide.jpg" alt="Shadowing English 的三遍学习法页面" width="100%" /> | <img src="assets/showcase/growth.png" alt="学习成长、等级和学习路线" width="100%" /> |
 | 先理解，再精听，最后跟读。 | 记录练习、积累经验，清楚看到下一步。 |
@@ -60,6 +66,8 @@ Shadowing English 是一个 English shadowing app：你导入自己有权使用�
 - **单句重复播放**：快速重播当前句子，并可开启单句循环。
 - **字幕显示模式**：根据学习阶段切换英文、双语或隐藏字幕。
 - **字幕查词**：点按字幕中的单词查看释义，并保留在原始语境里。
+- **逐词全文阅读**：打开全文后，当前播放句和单词会自动高亮定位。
+- **视频字幕点词**：播放画面中的字幕单词同样可以直接点按查词。
 - **单词与短语收藏**：将值得复习的单词和表达保存到单词本、短语库。
 - **Shadowing 跟读模式**：记录每次跟读练习，让开口练习进入学习进度。
 - **学习成长**：查看学习时长、句子、短语、课程进度、等级与成就。
