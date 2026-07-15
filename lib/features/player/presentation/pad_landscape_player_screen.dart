@@ -16,11 +16,13 @@ import '../../phrases/presentation/phrase_book_provider.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../shared/presentation/app_loading_overlay.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
+import '../../words/data/offline_word_dictionary.dart';
 import '../../words/presentation/word_book_provider.dart';
 import 'asr_subtitle_cache.dart';
 import 'asr_subtitle_job.dart';
 import 'asr_subtitle_service.dart';
 import 'embedded_subtitle_reference.dart';
+import 'full_transcript_reader.dart';
 import 'player_course_lookup.dart';
 import 'player_fullscreen_video_screen.dart';
 import 'player_media_source.dart';
@@ -30,6 +32,7 @@ import 'player_subtitle_loader.dart';
 import 'player_system_media_controls.dart';
 import 'player_video_init.dart';
 import 'subtitle_reference_review.dart';
+import 'transcript_reader_session.dart';
 import 'widgets/player_episode_strip.dart';
 import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
@@ -52,12 +55,14 @@ class PadLandscapePlayerScreen extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<PadLandscapePlayerScreen> createState() =>
-      _PadLandscapePlayerScreenState();
+      PadLandscapePlayerScreenState();
 }
 
-class _PadLandscapePlayerScreenState
+class PadLandscapePlayerScreenState
     extends ConsumerState<PadLandscapePlayerScreen> {
   late final PlayerMockState state;
+  final TranscriptReaderSession _transcriptReaderSession =
+      TranscriptReaderSession();
   Player? _videoPlayer;
   VideoController? _videoController;
   StreamSubscription<Duration>? _videoPositionSubscription;
@@ -120,6 +125,7 @@ class _PadLandscapePlayerScreenState
     PlayerSystemMediaControls.unbind();
     _cancelVideoSubscriptions();
     unawaited(_videoPlayer?.dispose());
+    _transcriptReaderSession.dispose();
     super.dispose();
   }
 
@@ -335,6 +341,7 @@ class _PadLandscapePlayerScreenState
         _stopVideo();
       }
     });
+    _syncTranscriptReader();
     _videoWidthSubscription = player.stream.width.listen((int? width) {
       _syncVideoAspectRatio(width, player.state.height);
     });
@@ -393,6 +400,7 @@ class _PadLandscapePlayerScreenState
         lineChanged = state.syncWithTimestamp(position.inMilliseconds);
       }
     });
+    _syncTranscriptReader();
 
     if (wasPlaying) {
       _trackPlayProgress(position);
@@ -478,6 +486,7 @@ class _PadLandscapePlayerScreenState
         ..selectLine(index)
         ..isPlaying = true;
     });
+    _syncTranscriptReader();
     _seekToActiveLine();
     _recordCurrentSentenceStudy();
     _lastTrackedVideoPosition = _currentVideoPosition();
@@ -511,6 +520,7 @@ class _PadLandscapePlayerScreenState
         _recordCurrentSentenceStudy();
       }
     });
+    _syncTranscriptReader();
     _applyPlaybackMode();
   }
 
@@ -531,9 +541,48 @@ class _PadLandscapePlayerScreenState
     setState(() {
       state.seekToMilliseconds(targetMs);
     });
+    _syncTranscriptReader();
     _seekToActiveLine();
     _lastTrackedVideoPosition = Duration(milliseconds: state.positionMs);
     _applyPlaybackMode();
+  }
+
+  void _syncTranscriptReader() {
+    if (!state.hasLines) return;
+    _transcriptReaderSession.updateProgress(
+      lineIndex: state.activeLineIndex,
+      wordIndex: state.currentWordIndex,
+    );
+  }
+
+  @visibleForTesting
+  void debugHandleVideoProgress(Duration position) =>
+      _onVideoProgress(position);
+
+  @visibleForTesting
+  ValueListenable<TranscriptReaderProgress> get debugTranscriptReaderProgress =>
+      _transcriptReaderSession.progress;
+
+  Future<void> _handleOpenTranscriptReader({
+    required String courseTitle,
+    required String episodeTitle,
+  }) async {
+    final TranscriptReaderSnapshot snapshot =
+        await buildTranscriptReaderSnapshot(
+          courseTitle: courseTitle,
+          episodeTitle: episodeTitle,
+          lines: state.lines,
+          activeLineIndex: state.activeLineIndex,
+          currentWordIndex: state.currentWordIndex,
+          generatedMeanings: state.generatedWordDefinitions,
+          dictionary: ref.read(offlineWordDictionaryProvider),
+        );
+    if (!mounted) return;
+    try {
+      await _transcriptReaderSession.open(context: context, snapshot: snapshot);
+    } catch (_) {
+      _showMessage('无法打开逐词全文，请稍后重试');
+    }
   }
 
   @override
@@ -583,6 +632,16 @@ class _PadLandscapePlayerScreenState
         episodeTitle: episode == null ? '第 01 集' : '第 ${episode.numberStr} 集',
         episodeName: episode?.title,
         streakText: '${dashboard.streakDays} Day Streak',
+        onTranscriptPressed: state.hasLines
+            ? () => unawaited(
+                _handleOpenTranscriptReader(
+                  courseTitle: course?.title ?? '课程名称',
+                  episodeTitle: episode == null
+                      ? '第 01 集'
+                      : '第 ${episode.numberStr} 集',
+                ),
+              )
+            : null,
         onStatsPressed: () {
           final String progressMessage = dashboard.checkedIn
               ? '今日打卡已完成'
@@ -863,6 +922,7 @@ class _PadLandscapePlayerScreenState
 
   void _handlePreviousLine() {
     setState(state.previousLine);
+    _syncTranscriptReader();
     _seekToActiveLine();
     _recordCurrentSentenceStudy();
     _lastTrackedVideoPosition = _currentVideoPosition();
@@ -876,6 +936,7 @@ class _PadLandscapePlayerScreenState
 
   void _handleNextLine() {
     setState(state.nextLine);
+    _syncTranscriptReader();
     _seekToActiveLine();
     _recordCurrentSentenceStudy();
     _lastTrackedVideoPosition = _currentVideoPosition();

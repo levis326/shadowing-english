@@ -1,9 +1,12 @@
 import 'package:common_learn_english/features/home/presentation/pad_home_screen.dart';
+import 'package:common_learn_english/features/player/presentation/full_transcript_reader.dart';
+import 'package:common_learn_english/features/player/presentation/pad_landscape_player_screen.dart';
 import 'package:common_learn_english/features/player/presentation/pad_portrait_player_screen.dart';
 import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
 import 'package:common_learn_english/features/player/presentation/player_screen.dart';
 import 'package:common_learn_english/features/player/presentation/widgets/player_subtitle_list.dart';
 import 'package:common_learn_english/features/player/presentation/widgets/player_video_panel.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -158,6 +161,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Slider), findsOneWidget);
+  });
+
+  testWidgets('video progress updates the full transcript reader position', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(
+        child: MaterialApp(home: PlayerScreen(episodeId: 'intern-ep3')),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final PadLandscapePlayerScreenState playerState = tester.state(
+      find.byType(PadLandscapePlayerScreen),
+    );
+    playerState.state.loadLines(PlayerMockState.fallbackLines);
+    playerState.debugHandleVideoProgress(const Duration(milliseconds: 169000));
+    await tester.pump();
+
+    final ValueListenable<TranscriptReaderProgress> readerProgress =
+        playerState.debugTranscriptReaderProgress;
+    expect(readerProgress.value.lineIndex, 3);
+    expect(readerProgress.value.wordIndex, greaterThanOrEqualTo(0));
   });
 
   testWidgets('renders portrait player shell', (WidgetTester tester) async {

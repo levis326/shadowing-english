@@ -1,0 +1,270 @@
+import 'package:common_learn_english/features/player/presentation/full_transcript_reader.dart';
+import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
+import 'package:common_learn_english/features/player/presentation/transcript_reader_session.dart';
+import 'package:common_learn_english/features/words/data/offline_word_dictionary.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  const List<PlayerSubtitleLine> lines = <PlayerSubtitleLine>[
+    PlayerSubtitleLine(
+      startTime: '00:01',
+      english: 'Guess what I bought?',
+      chinese: '猜猜我买了什么？',
+      startMs: 1000,
+      endMs: 3000,
+      words: <PlayerSubtitleWord>[
+        PlayerSubtitleWord(text: 'Guess', startMs: 1000, endMs: 1400),
+        PlayerSubtitleWord(text: 'what', startMs: 1400, endMs: 1800),
+        PlayerSubtitleWord(text: 'I', startMs: 1800, endMs: 2100),
+        PlayerSubtitleWord(text: 'bought', startMs: 2100, endMs: 3000),
+      ],
+    ),
+  ];
+
+  test(
+    'AI glossary wins and offline dictionary fills missing meanings',
+    () async {
+      final TranscriptReaderSnapshot snapshot =
+          await buildTranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '第 01 集',
+            lines: lines,
+            activeLineIndex: 0,
+            currentWordIndex: 1,
+            generatedMeanings: const <String, String>{'guess': '猜测；猜想'},
+            dictionary: _TestDictionary(),
+          );
+
+      expect(snapshot.meanings['guess'], '猜测；猜想');
+      expect(snapshot.meanings['what'], '什么');
+      expect(snapshot.meanings.containsKey('i'), isFalse);
+
+      final TranscriptReaderSnapshot restored =
+          TranscriptReaderSnapshot.fromJson(snapshot.toJson());
+      expect(restored.lines.single.words.length, 4);
+      expect(restored.progress.wordIndex, 1);
+    },
+  );
+
+  test('progress delivery retries while the reader window starts', () async {
+    int attempts = 0;
+    TranscriptReaderProgress? received;
+
+    final bool sent = await sendTranscriptReaderProgressWithRetry(
+      progress: const TranscriptReaderProgress(lineIndex: 2, wordIndex: 5),
+      retryDelay: Duration.zero,
+      send: (TranscriptReaderProgress progress) async {
+        attempts += 1;
+        if (attempts < 3) throw StateError('window handler is not ready');
+        received = progress;
+      },
+    );
+
+    expect(sent, isTrue);
+    expect(attempts, 3);
+    expect(received?.lineIndex, 2);
+    expect(received?.wordIndex, 5);
+  });
+
+  testWidgets('renders every word meaning and moves the active word box', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullTranscriptReaderScreen(
+          snapshot: const TranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '第 01 集',
+            lines: lines,
+            meanings: <String, String>{
+              'guess': '猜测',
+              'what': '什么',
+              'bought': '购买',
+            },
+            progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+          ),
+          progressListenable: progress,
+          onClose: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Guess'), findsOneWidget);
+    expect(find.text('购买'), findsOneWidget);
+    expect(find.text('—'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('reader-locate-current-word')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('reader-word-box-what-true')),
+      findsOneWidget,
+    );
+
+    progress.value = const TranscriptReaderProgress(lineIndex: 0, wordIndex: 3);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('reader-word-box-what-false')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('reader-word-box-bought?-true')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('reader-translation-toggle')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('购买'), findsNothing);
+    expect(find.text('Guess'), findsOneWidget);
+  });
+
+  testWidgets('separates subtitle lines into readable paragraphs', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+        );
+    addTearDown(progress.dispose);
+    const List<PlayerSubtitleLine> paragraphLines = <PlayerSubtitleLine>[
+      ...lines,
+      PlayerSubtitleLine(
+        startTime: '00:04',
+        english: 'This is the next sentence.',
+        chinese: '这是下一句。',
+        startMs: 4000,
+        endMs: 6000,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullTranscriptReaderScreen(
+          snapshot: const TranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '第 01 集',
+            lines: paragraphLines,
+            meanings: <String, String>{},
+            progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+          ),
+          progressListenable: progress,
+          onClose: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder activeLine = find.byKey(
+      const ValueKey<String>('reader-line-0-true'),
+    );
+    final Finder alternateLine = find.byKey(
+      const ValueKey<String>('reader-line-1-false'),
+    );
+    final BoxDecoration activeDecoration =
+        tester.widget<AnimatedContainer>(activeLine).decoration!
+            as BoxDecoration;
+    final BoxDecoration alternateDecoration =
+        tester.widget<AnimatedContainer>(alternateLine).decoration!
+            as BoxDecoration;
+
+    expect(activeDecoration.color, const Color(0xFFE8F7ED));
+    expect((activeDecoration.border! as Border).left.width, 3);
+    expect((activeDecoration.border! as Border).bottom.width, 1);
+    expect(alternateDecoration.color, const Color(0x99FFFFFF));
+    expect(
+      tester.widget<AnimatedContainer>(activeLine).margin,
+      const EdgeInsets.only(bottom: 14),
+    );
+  });
+
+  testWidgets('locate button scrolls back to the current word', (
+    WidgetTester tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(600, 420));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 1),
+        );
+    addTearDown(progress.dispose);
+    final List<PlayerSubtitleLine> longTranscript =
+        List<PlayerSubtitleLine>.generate(
+          24,
+          (int index) => PlayerSubtitleLine(
+            startTime: '00:${index.toString().padLeft(2, '0')}',
+            english: 'Guess what I bought?',
+            chinese: '',
+            startMs: index * 1000,
+            endMs: (index + 1) * 1000,
+          ),
+        );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullTranscriptReaderScreen(
+          snapshot: TranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '第 01 集',
+            lines: longTranscript,
+            meanings: const <String, String>{'what': '什么'},
+            progress: const TranscriptReaderProgress(
+              lineIndex: 0,
+              wordIndex: 1,
+            ),
+          ),
+          progressListenable: progress,
+          onClose: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -1800),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder activeWord = find.byKey(
+      const ValueKey<String>('reader-word-box-what-true'),
+    );
+    expect(tester.getCenter(activeWord).dy, lessThan(0));
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('reader-locate-current-word')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.getCenter(activeWord).dy, inInclusiveRange(80, 360));
+  });
+}
+
+class _TestDictionary extends OfflineWordDictionary {
+  @override
+  Future<OfflineWordDefinition?> lookup(String rawWord) async {
+    return switch (rawWord) {
+      'what' => const OfflineWordDefinition(
+        translation: '什么',
+        phonetic: '',
+        partOfSpeech: '',
+      ),
+      'bought' => const OfflineWordDefinition(
+        translation: '购买',
+        phonetic: '',
+        partOfSpeech: '',
+      ),
+      _ => null,
+    };
+  }
+}

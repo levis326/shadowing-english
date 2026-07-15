@@ -10,6 +10,7 @@ class PlayerTopBar extends StatelessWidget {
     this.episodeName,
     this.streakText = '0 Day Streak',
     required this.onBack,
+    this.onTranscriptPressed,
     this.onStatsPressed,
     super.key,
   });
@@ -19,6 +20,7 @@ class PlayerTopBar extends StatelessWidget {
   final String? episodeName;
   final String streakText;
   final VoidCallback onBack;
+  final VoidCallback? onTranscriptPressed;
   final VoidCallback? onStatsPressed;
 
   @override
@@ -121,6 +123,7 @@ class PlayerTopBar extends StatelessWidget {
           _PlayerTopStatus(
             episodeName: episodeName,
             streakText: streakText,
+            onTranscriptPressed: onTranscriptPressed,
             onStatsPressed: onStatsPressed,
           ),
         ],
@@ -133,11 +136,13 @@ class _PlayerTopStatus extends StatelessWidget {
   const _PlayerTopStatus({
     required this.streakText,
     this.episodeName,
+    this.onTranscriptPressed,
     this.onStatsPressed,
   });
 
   final String? episodeName;
   final String streakText;
+  final VoidCallback? onTranscriptPressed;
   final VoidCallback? onStatsPressed;
 
   @override
@@ -174,6 +179,16 @@ class _PlayerTopStatus extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
+          if (onTranscriptPressed != null)
+            IconButton(
+              onPressed: onTranscriptPressed,
+              tooltip: '打开逐词全文',
+              icon: const Icon(
+                Icons.menu_book_outlined,
+                size: 22,
+                color: AppDesignTokens.brandGreenDark,
+              ),
+            ),
           IconButton(
             onPressed: onStatsPressed,
             tooltip: '查看学习统计',

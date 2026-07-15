@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import MediaPlayer
+import desktop_multi_window
 
 class MainFlutterWindow: NSWindow, NSSpeechSynthesizerDelegate {
   private let nativeTts = NSSpeechSynthesizer()
@@ -15,6 +16,9 @@ class MainFlutterWindow: NSWindow, NSSpeechSynthesizerDelegate {
     nativeTts.delegate = self
 
     RegisterGeneratedPlugins(registry: flutterViewController)
+    FlutterMultiWindowPlugin.setOnWindowCreatedCallback { controller in
+      RegisterGeneratedPlugins(registry: controller)
+    }
     configureNativeTts(with: flutterViewController)
     configureSystemMediaControls(with: flutterViewController)
 

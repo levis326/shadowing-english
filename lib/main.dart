@@ -12,20 +12,24 @@ import 'package:window_manager/window_manager.dart';
 import 'constants/strings.dart';
 import 'features/import_course/domain/video_cover_extractor.dart';
 import 'features/player/presentation/player_backend.dart';
+import 'features/player/presentation/transcript_reader_window.dart';
 import 'flavors/app_flavor.dart';
 import 'hive/hive.dart';
 import 'my_app.dart';
 
 /// Try using const constructors as much as possible!
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   FlavorConfig.setFlavor(AppFlavor.prod);
-  await bootstrap();
+  await bootstrap(args: args);
 }
 
-Future<void> bootstrap() async {
+Future<void> bootstrap({List<String> args = const <String>[]}) async {
   /// Initialize packages
   WidgetsFlutterBinding.ensureInitialized();
+  if (await maybeRunTranscriptReaderWindow()) {
+    return;
+  }
   await _configureDesktopWindow();
   await EasyLocalization.ensureInitialized();
   initializeVideoPlayerBackend();
