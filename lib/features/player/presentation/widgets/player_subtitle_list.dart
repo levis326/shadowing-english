@@ -25,6 +25,7 @@ class PlayerSubtitleList extends StatefulWidget {
     required this.onLoopFromLine,
     required this.onDictationLine,
     required this.onAiExplain,
+    this.loopingLineIndex,
     this.isPlaying = false,
     this.onTogglePlaying,
     this.onPronounce,
@@ -55,6 +56,7 @@ class PlayerSubtitleList extends StatefulWidget {
   final ValueChanged<int> onLoopFromLine;
   final ValueChanged<int> onDictationLine;
   final ValueChanged<int> onAiExplain;
+  final int? loopingLineIndex;
   final bool isPlaying;
   final VoidCallback? onTogglePlaying;
   final VoidCallback? onPronounce;
@@ -378,6 +380,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
 
           final PlayerSubtitleLine line = widget.lines[originalIndex];
           final bool active = originalIndex == widget.activeIndex;
+          final bool isLooping = originalIndex == widget.loopingLineIndex;
           final bool isPast = originalIndex < widget.activeIndex;
           final double textOpacity = active ? 1 : (isPast ? 0.84 : 0.60);
           final double chineseFontSize =
@@ -477,6 +480,27 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                               ),
                             ),
                           ),
+                          FilledButton.tonal(
+                            key: ValueKey<String>(
+                              'subtitle-line-loop-$originalIndex',
+                            ),
+                            onPressed: () =>
+                                widget.onLoopFromLine(originalIndex),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: isLooping
+                                  ? const Color(0xFFDFF8C8)
+                                  : AppDesignTokens.softWhite,
+                              foregroundColor: isLooping
+                                  ? AppDesignTokens.brandGreenDark
+                                  : AppDesignTokens.textSecondary,
+                              minimumSize: const Size(44, 44),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Icon(Icons.repeat_one_rounded),
+                          ),
+                          const SizedBox(width: 8),
                           FilledButton.tonal(
                             onPressed: () =>
                                 widget.onBookmarkLine(originalIndex),

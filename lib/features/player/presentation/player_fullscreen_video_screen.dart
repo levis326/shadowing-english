@@ -312,7 +312,8 @@ class _PlayerFullscreenVideoScreenState
                 onCollectWord: widget.onCollectWord,
                 onFavoriteWord: widget.onFavoriteWord,
                 onBookmarkLine: widget.onBookmarkLine,
-                onLoopFromLine: widget.onLoopFromLine,
+                onLoopFromLine: (int index) =>
+                    _refresh(() => widget.onLoopFromLine(index)),
                 onDictationLine: widget.onDictationLine,
                 onAiExplain: widget.onAiExplain,
                 onTogglePlaying: () => _refresh(widget.onTogglePlaying),
@@ -384,6 +385,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
           onLoopFromLine: onLoopFromLine,
           onDictationLine: onDictationLine,
           onAiExplain: onAiExplain,
+          loopingLineIndex: player.isLooping ? player.activeLineIndex : null,
           isPlaying: player.isPlaying,
           onTogglePlaying: onTogglePlaying,
           onPronounce: onPronounce,

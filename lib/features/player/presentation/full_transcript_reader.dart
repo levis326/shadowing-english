@@ -10,21 +10,25 @@ class TranscriptReaderProgress {
   const TranscriptReaderProgress({
     required this.lineIndex,
     required this.wordIndex,
+    this.loopingLineIndex,
   });
 
   factory TranscriptReaderProgress.fromJson(Map<dynamic, dynamic> json) {
     return TranscriptReaderProgress(
       lineIndex: json['lineIndex'] as int? ?? 0,
       wordIndex: json['wordIndex'] as int? ?? 0,
+      loopingLineIndex: json['loopingLineIndex'] as int?,
     );
   }
 
   final int lineIndex;
   final int wordIndex;
+  final int? loopingLineIndex;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'lineIndex': lineIndex,
     'wordIndex': wordIndex,
+    'loopingLineIndex': loopingLineIndex,
   };
 }
 
@@ -80,6 +84,7 @@ Future<TranscriptReaderSnapshot> buildTranscriptReaderSnapshot({
   required List<PlayerSubtitleLine> lines,
   required int activeLineIndex,
   required int currentWordIndex,
+  int? loopingLineIndex,
   required Map<String, String> generatedMeanings,
   required OfflineWordDictionary dictionary,
 }) async {
@@ -116,6 +121,7 @@ Future<TranscriptReaderSnapshot> buildTranscriptReaderSnapshot({
     progress: TranscriptReaderProgress(
       lineIndex: activeLineIndex,
       wordIndex: currentWordIndex,
+      loopingLineIndex: loopingLineIndex,
     ),
   );
 }
@@ -136,12 +142,14 @@ class FullTranscriptReaderScreen extends StatefulWidget {
     required this.snapshot,
     required this.progressListenable,
     required this.onClose,
+    this.onToggleLineLoop,
     super.key,
   });
 
   final TranscriptReaderSnapshot snapshot;
   final ValueListenable<TranscriptReaderProgress> progressListenable;
   final VoidCallback onClose;
+  final ValueChanged<int>? onToggleLineLoop;
 
   @override
   State<FullTranscriptReaderScreen> createState() =>
@@ -189,7 +197,8 @@ class _FullTranscriptReaderScreenState
   void _handleProgressChanged() {
     final TranscriptReaderProgress next = widget.progressListenable.value;
     if (next.lineIndex == _progress.lineIndex &&
-        next.wordIndex == _progress.wordIndex) {
+        next.wordIndex == _progress.wordIndex &&
+        next.loopingLineIndex == _progress.loopingLineIndex) {
       return;
     }
     setState(() => _progress = next);
@@ -373,6 +382,11 @@ class _FullTranscriptReaderScreenState
                               activeWordIndex: _progress.wordIndex,
                               activeWordKey: _activeWordKey,
                               showTranslations: _showTranslations,
+                              isLooping:
+                                  _progress.loopingLineIndex == lineIndex,
+                              onToggleLoop: widget.onToggleLineLoop == null
+                                  ? null
+                                  : () => widget.onToggleLineLoop!(lineIndex),
                               onWordTap:
                                   (
                                     BuildContext anchorContext,
@@ -529,6 +543,8 @@ class _ReaderLine extends StatelessWidget {
     required this.activeWordIndex,
     required this.activeWordKey,
     required this.showTranslations,
+    required this.isLooping,
+    required this.onToggleLoop,
     required this.onWordTap,
   });
 
@@ -539,6 +555,8 @@ class _ReaderLine extends StatelessWidget {
   final int activeWordIndex;
   final GlobalKey activeWordKey;
   final bool showTranslations;
+  final bool isLooping;
+  final VoidCallback? onToggleLoop;
   final void Function(BuildContext context, String token, int wordIndex)
   onWordTap;
 
@@ -565,28 +583,61 @@ class _ReaderLine extends StatelessWidget {
           bottom: const BorderSide(color: Color(0xFFD7E4DA)),
         ),
       ),
-      child: Wrap(
-        spacing: 7,
-        runSpacing: 12,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          for (int wordIndex = 0; wordIndex < tokens.length; wordIndex++)
-            Builder(
-              builder: (BuildContext wordContext) => _WordMeaningTile(
-                key: isActive && wordIndex == activeWordIndex
-                    ? activeWordKey
-                    : ValueKey<String>('reader-word-$lineIndex-$wordIndex'),
-                token: tokens[wordIndex],
-                meaning:
-                    meanings[normalizeTranscriptReaderWord(
-                      tokens[wordIndex],
-                    )] ??
-                    '—',
-                active: isActive && wordIndex == activeWordIndex,
-                showMeaning: showTranslations,
-                onTap: () =>
-                    onWordTap(wordContext, tokens[wordIndex], wordIndex),
+          Row(
+            children: <Widget>[
+              Text(
+                line.startTime,
+                style: const TextStyle(
+                  color: AppDesignTokens.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
-            ),
+              const Spacer(),
+              IconButton.filledTonal(
+                key: ValueKey<String>('reader-line-loop-$lineIndex'),
+                onPressed: onToggleLoop,
+                tooltip: isLooping ? '关闭单句循环' : '循环播放这一句',
+                style: IconButton.styleFrom(
+                  backgroundColor: isLooping
+                      ? const Color(0xFFDFF8C8)
+                      : const Color(0xFFF4F6F4),
+                  foregroundColor: isLooping
+                      ? AppDesignTokens.brandGreenDark
+                      : AppDesignTokens.textSecondary,
+                ),
+                icon: const Icon(Icons.repeat_one_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 7,
+            runSpacing: 12,
+            children: <Widget>[
+              for (int wordIndex = 0; wordIndex < tokens.length; wordIndex++)
+                Builder(
+                  builder: (BuildContext wordContext) => _WordMeaningTile(
+                    key: isActive && wordIndex == activeWordIndex
+                        ? activeWordKey
+                        : ValueKey<String>('reader-word-$lineIndex-$wordIndex'),
+                    token: tokens[wordIndex],
+                    meaning:
+                        meanings[normalizeTranscriptReaderWord(
+                          tokens[wordIndex],
+                        )] ??
+                        '—',
+                    active: isActive && wordIndex == activeWordIndex,
+                    showMeaning: showTranslations,
+                    onTap: () =>
+                        onWordTap(wordContext, tokens[wordIndex], wordIndex),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );

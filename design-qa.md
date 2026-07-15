@@ -14,7 +14,7 @@
 - Spacing and layout rhythm: each subtitle sentence is now an independent paragraph with 14 px separation, 18–20 px internal breathing room, and a bottom divider. Sentence boundaries remain clear after word wrapping.
 - Colors and tokens: alternating paragraphs use a subtle white wash instead of competing text colors. The current sentence uses a pale green surface and a green left rule, while the current word keeps its existing green box.
 - Image quality and assets: this screen contains no required raster imagery. Material icons are used for the book and close controls.
-- Copy and content: the header identifies the course, episode, and reading mode. It also provides translation visibility and current-word location controls. Missing dictionary entries display `—`.
+- Copy and content: the header identifies the course, episode, and reading mode. It also provides translation visibility and current-word location controls. Every sentence exposes a single-line loop button, with a green selected state for the looping sentence. Missing dictionary entries display `—`.
 
 ## Comparison history
 
@@ -25,6 +25,7 @@
 
 - Widget tests verify glossary priority, offline fallback, missing meanings, serialization, full-word rendering, video-time-driven active-word movement, translation visibility, manual current-word location, paragraph separation, alternating surfaces, dividers, the current-sentence marker, and an in-bounds anchored word-detail popup that shows the English explanation and closes without changing the playback highlight.
 - Desktop word lookup runs through the main window's configured lookup service. Only the completed word-detail result is returned to the reader window; translation credentials are not copied into the secondary window.
+- The player sidebar and full transcript both expose a loop button on every sentence. Tests verify that the button selects the requested sentence, starts playback, updates the shared selected state, and toggles off when pressed again.
 - A native macOS smoke run created a second Flutter engine/window and acknowledged that a subsequent progress update was applied as line 2, word 1 through the window channel.
 - The host screen-capture API returned a black native Flutter surface in this environment, so visual comparison used the Flutter-rendered component capture; native creation and channel synchronization were verified separately from the visual capture.
 

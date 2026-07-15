@@ -51,6 +51,7 @@ Future<bool> maybeRunTranscriptReaderWindow() async {
       ],
       child: _TranscriptReaderWindowApp(
         controller: controller,
+        parentWindowId: parentWindowId,
         initialSnapshot: snapshot,
       ),
     ),
@@ -106,10 +107,12 @@ Map<String, dynamic>? _decodeArguments(String raw) {
 class _TranscriptReaderWindowApp extends StatefulWidget {
   const _TranscriptReaderWindowApp({
     required this.controller,
+    required this.parentWindowId,
     required this.initialSnapshot,
   });
 
   final WindowController controller;
+  final String parentWindowId;
   final TranscriptReaderSnapshot initialSnapshot;
 
   @override
@@ -173,8 +176,20 @@ class _TranscriptReaderWindowAppState
       home: FullTranscriptReaderScreen(
         snapshot: _snapshot,
         progressListenable: _progress,
+        onToggleLineLoop: widget.parentWindowId.isEmpty
+            ? null
+            : _toggleLineLoop,
         onClose: windowManager.close,
       ),
     );
+  }
+
+  Future<void> _toggleLineLoop(int lineIndex) async {
+    final Map<dynamic, dynamic>? result = await WindowController.fromWindowId(
+      widget.parentWindowId,
+    ).invokeMethod<Map<dynamic, dynamic>>('toggleLineLoop', lineIndex);
+    if (result != null) {
+      _progress.value = TranscriptReaderProgress.fromJson(result);
+    }
   }
 }

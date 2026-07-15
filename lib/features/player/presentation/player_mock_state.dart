@@ -41,12 +41,7 @@ class PlayerMockState {
     _syncCurrentWordIndex(forceLineStart: true);
   }
 
-  static const List<String> subtitleModes = <String>[
-    '双语',
-    '单英',
-    '单中',
-    '隐藏',
-  ];
+  static const List<String> subtitleModes = <String>['双语', '单英', '单中', '隐藏'];
 
   static const List<PlayerSubtitleLine> fallbackLines = <PlayerSubtitleLine>[
     PlayerSubtitleLine(
@@ -209,6 +204,20 @@ class PlayerMockState {
 
   void toggleLoop() {
     isLooping = !isLooping;
+  }
+
+  bool toggleLineLoopAt(int index) {
+    if (index < 0 || index >= lines.length) {
+      return isLooping;
+    }
+    if (isLooping && activeLineIndex == index) {
+      isLooping = false;
+      return false;
+    }
+    selectLine(index);
+    isLooping = true;
+    isPlaying = true;
+    return true;
   }
 
   void toggleShadowing() {

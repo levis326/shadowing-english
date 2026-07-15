@@ -551,6 +551,7 @@ class _PadPortraitPlayerScreenState
     _transcriptReaderSession.updateProgress(
       lineIndex: state.activeLineIndex,
       wordIndex: state.currentWordIndex,
+      loopingLineIndex: state.isLooping ? state.activeLineIndex : null,
     );
   }
 
@@ -565,6 +566,7 @@ class _PadPortraitPlayerScreenState
           lines: state.lines,
           activeLineIndex: state.activeLineIndex,
           currentWordIndex: state.currentWordIndex,
+          loopingLineIndex: state.isLooping ? state.activeLineIndex : null,
           generatedMeanings: state.generatedWordDefinitions,
           dictionary: ref.read(offlineWordDictionaryProvider),
         );
@@ -581,6 +583,9 @@ class _PadPortraitPlayerScreenState
                   contextSentence: contextSentence,
                   settings: ref.read(learningSettingsProvider),
                 ),
+        toggleLineLoop: (int lineIndex) async {
+          _handleLoopFromLine(lineIndex);
+        },
       );
     } catch (_) {
       _showMessage('无法打开逐词全文，请稍后重试');
@@ -763,6 +768,9 @@ class _PadPortraitPlayerScreenState
                                   onLoopFromLine: _handleLoopFromLine,
                                   onDictationLine: _handleDictationLine,
                                   onAiExplain: _handleAiExplain,
+                                  loopingLineIndex: state.isLooping
+                                      ? state.activeLineIndex
+                                      : null,
                                   isPlaying: state.isPlaying,
                                   onTogglePlaying: _handleTogglePlaying,
                                   onPronounce: _stopVideo,
@@ -915,6 +923,7 @@ class _PadPortraitPlayerScreenState
 
   void _handleToggleLoop() {
     setState(state.toggleLoop);
+    _syncTranscriptReader();
     _showMessage(state.isLooping ? '已开启单句循环' : '已关闭单句循环');
     if (state.isLooping && state.hasLines) {
       _seekToActiveLine();
@@ -1209,15 +1218,16 @@ class _PadPortraitPlayerScreenState
   }
 
   void _handleLoopFromLine(int index) {
+    late bool enabled;
     setState(() {
-      state.selectLine(index);
-      if (!state.isLooping) {
-        state.toggleLoop();
-      }
+      enabled = state.toggleLineLoopAt(index);
     });
-    _seekToActiveLine();
+    _syncTranscriptReader();
+    if (enabled) {
+      _seekToActiveLine();
+    }
     _applyPlaybackMode();
-    _showMessage('已从当前句开始循环');
+    _showMessage(enabled ? '已开启单句循环' : '已关闭单句循环');
   }
 
   void _handleDictationLine(int index) {

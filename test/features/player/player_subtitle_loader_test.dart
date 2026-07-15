@@ -212,6 +212,36 @@ Hello from file
     expect(state.positionMs, 1000);
   });
 
+  test('sentence loop button starts, switches, and stops line playback', () {
+    final PlayerMockState state = PlayerMockState()
+      ..loadLines(const <PlayerSubtitleLine>[
+        PlayerSubtitleLine(
+          startTime: '00:01',
+          english: 'First line',
+          chinese: '第一句',
+          startMs: 1000,
+          endMs: 2000,
+        ),
+        PlayerSubtitleLine(
+          startTime: '00:03',
+          english: 'Second line',
+          chinese: '第二句',
+          startMs: 3000,
+          endMs: 4000,
+        ),
+      ]);
+
+    expect(state.toggleLineLoopAt(1), isTrue);
+    expect(state.activeLineIndex, 1);
+    expect(state.positionMs, 3000);
+    expect(state.isPlaying, isTrue);
+    expect(state.isLooping, isTrue);
+
+    expect(state.toggleLineLoopAt(1), isFalse);
+    expect(state.isPlaying, isTrue);
+    expect(state.isLooping, isFalse);
+  });
+
   test(
     'player state starts from zero when subtitles load without initial time',
     () {

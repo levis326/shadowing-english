@@ -17,6 +17,8 @@ typedef TranscriptReaderWordLookup =
       required String contextSentence,
     });
 
+typedef TranscriptReaderLineLoop = Future<void> Function(int lineIndex);
+
 bool get supportsTranscriptReaderWindow =>
     !kIsWeb &&
     (defaultTargetPlatform == TargetPlatform.macOS ||
@@ -32,6 +34,7 @@ class TranscriptReaderSession {
   WindowController? _desktopWindow;
   WindowController? _mainWindow;
   TranscriptReaderWordLookup? _lookupWord;
+  TranscriptReaderLineLoop? _toggleLineLoop;
   bool _sendingProgress = false;
   TranscriptReaderProgress? _lastSentProgress;
 
@@ -39,6 +42,7 @@ class TranscriptReaderSession {
     required BuildContext context,
     required TranscriptReaderSnapshot snapshot,
     required TranscriptReaderWordLookup lookupWord,
+    required TranscriptReaderLineLoop toggleLineLoop,
   }) async {
     progress.value = snapshot.progress;
     if (!supportsTranscriptReaderWindow) {
@@ -48,6 +52,7 @@ class TranscriptReaderSession {
           builder: (BuildContext routeContext) => FullTranscriptReaderScreen(
             snapshot: snapshot,
             progressListenable: progress,
+            onToggleLineLoop: toggleLineLoop,
             onClose: () => Navigator.of(routeContext).pop(),
           ),
         ),
@@ -58,6 +63,7 @@ class TranscriptReaderSession {
     final WindowController mainWindow =
         await WindowController.fromCurrentEngine();
     _lookupWord = lookupWord;
+    _toggleLineLoop = toggleLineLoop;
     await mainWindow.setWindowMethodHandler(_handleMainWindowMethod);
     _mainWindow = mainWindow;
 
@@ -89,13 +95,19 @@ class TranscriptReaderSession {
     _scheduleProgressSend();
   }
 
-  void updateProgress({required int lineIndex, required int wordIndex}) {
+  void updateProgress({
+    required int lineIndex,
+    required int wordIndex,
+    int? loopingLineIndex,
+  }) {
     final TranscriptReaderProgress next = TranscriptReaderProgress(
       lineIndex: lineIndex,
       wordIndex: wordIndex,
+      loopingLineIndex: loopingLineIndex,
     );
     if (progress.value.lineIndex == next.lineIndex &&
-        progress.value.wordIndex == next.wordIndex) {
+        progress.value.wordIndex == next.wordIndex &&
+        progress.value.loopingLineIndex == next.loopingLineIndex) {
       return;
     }
     progress.value = next;
@@ -159,6 +171,14 @@ class TranscriptReaderSession {
   }
 
   Future<dynamic> _handleMainWindowMethod(MethodCall call) async {
+    if (call.method == 'toggleLineLoop') {
+      final TranscriptReaderLineLoop? toggleLineLoop = _toggleLineLoop;
+      if (toggleLineLoop == null) {
+        throw StateError('Transcript reader line loop is unavailable');
+      }
+      await toggleLineLoop(call.arguments as int? ?? 0);
+      return progress.value.toJson();
+    }
     if (call.method != 'lookupWord') {
       throw MissingPluginException('Unknown reader request: ${call.method}');
     }
@@ -198,7 +218,10 @@ Future<bool> sendTranscriptReaderProgressWithRetry({
 bool _sameProgress(
   TranscriptReaderProgress? left,
   TranscriptReaderProgress right,
-) => left?.lineIndex == right.lineIndex && left?.wordIndex == right.wordIndex;
+) =>
+    left?.lineIndex == right.lineIndex &&
+    left?.wordIndex == right.wordIndex &&
+    left?.loopingLineIndex == right.loopingLineIndex;
 
 bool _isTranscriptReaderArguments(String arguments) {
   try {

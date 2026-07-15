@@ -134,6 +134,67 @@ const PlayerSubtitleLine _dictionaryLine = PlayerSubtitleLine(
 );
 
 void main() {
+  testWidgets('each sidebar sentence has a visible loop button', (
+    WidgetTester tester,
+  ) async {
+    int? requestedLineIndex;
+    const List<PlayerSubtitleLine> lines = <PlayerSubtitleLine>[
+      PlayerSubtitleLine(
+        startTime: '00:01',
+        english: 'First sentence.',
+        chinese: '第一句。',
+        startMs: 1000,
+        endMs: 2000,
+      ),
+      PlayerSubtitleLine(
+        startTime: '00:03',
+        english: 'Second sentence.',
+        chinese: '第二句。',
+        startMs: 3000,
+        endMs: 4000,
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 600,
+            child: PlayerSubtitleList(
+              lines: lines,
+              activeIndex: 1,
+              subtitleMode: '双语',
+              currentWordIndex: 0,
+              fontScale: 1,
+              highlightWords: false,
+              onTapLine: (_) {},
+              onCollectWord: (_) {},
+              onBookmarkLine: (_) {},
+              onLoopFromLine: (int index) => requestedLineIndex = index,
+              onDictationLine: (_) {},
+              onAiExplain: (_) {},
+              loopingLineIndex: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.byKey(const ValueKey<String>('subtitle-line-loop-0')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('subtitle-line-loop-1')),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('subtitle-line-loop-0')),
+    );
+    expect(requestedLineIndex, 0);
+  });
+
   testWidgets('transcript view switch belongs to the right-side list', (
     WidgetTester tester,
   ) async {
@@ -183,7 +244,8 @@ void main() {
 
     expect(find.text('完整'), findsOneWidget);
     expect(
-      tester.widget<PlayerSubtitleList>(find.byType(PlayerSubtitleList))
+      tester
+          .widget<PlayerSubtitleList>(find.byType(PlayerSubtitleList))
           .showCurrentOnly,
       isFalse,
     );
@@ -192,7 +254,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      tester.widget<PlayerSubtitleList>(find.byType(PlayerSubtitleList))
+      tester
+          .widget<PlayerSubtitleList>(find.byType(PlayerSubtitleList))
           .showCurrentOnly,
       isTrue,
     );
@@ -781,12 +844,8 @@ void main() {
       ),
     );
 
-    expect(
-      tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dx,
-      20,
-    );
-    expect(
-      tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dy, 52);
+    expect(tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dx, 20);
+    expect(tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dy, 52);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     await tester.pump();

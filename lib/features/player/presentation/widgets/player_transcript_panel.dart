@@ -20,6 +20,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
     required this.onLoopFromLine,
     required this.onDictationLine,
     required this.onAiExplain,
+    this.loopingLineIndex,
     required this.isPlaying,
     required this.onTogglePlaying,
     this.onPronounce,
@@ -42,6 +43,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
   final ValueChanged<int> onLoopFromLine;
   final ValueChanged<int> onDictationLine;
   final ValueChanged<int> onAiExplain;
+  final int? loopingLineIndex;
   final bool isPlaying;
   final VoidCallback onTogglePlaying;
   final VoidCallback? onPronounce;
@@ -86,6 +88,7 @@ class _PlayerTranscriptPanelState extends State<PlayerTranscriptPanel> {
             onLoopFromLine: widget.onLoopFromLine,
             onDictationLine: widget.onDictationLine,
             onAiExplain: widget.onAiExplain,
+            loopingLineIndex: widget.loopingLineIndex,
             isPlaying: widget.isPlaying,
             onTogglePlaying: widget.onTogglePlaying,
             onPronounce: widget.onPronounce,

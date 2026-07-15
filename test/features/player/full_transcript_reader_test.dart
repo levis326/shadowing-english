@@ -193,6 +193,59 @@ void main() {
     );
   });
 
+  testWidgets('each full transcript sentence can toggle single-line loop', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+        );
+    addTearDown(progress.dispose);
+    int? requestedLineIndex;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullTranscriptReaderScreen(
+          snapshot: const TranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '第 01 集',
+            lines: lines,
+            meanings: <String, String>{},
+            progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+          ),
+          progressListenable: progress,
+          onToggleLineLoop: (int index) {
+            requestedLineIndex = index;
+            progress.value = TranscriptReaderProgress(
+              lineIndex: index,
+              wordIndex: 0,
+              loopingLineIndex: index,
+            );
+          },
+          onClose: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder loopButton = find.byKey(
+      const ValueKey<String>('reader-line-loop-0'),
+    );
+    expect(loopButton, findsOneWidget);
+
+    await tester.tap(loopButton);
+    await tester.pumpAndSettle();
+
+    expect(requestedLineIndex, 0);
+    expect(find.byTooltip('关闭单句循环'), findsOneWidget);
+    expect(
+      TranscriptReaderProgress.fromJson(
+        progress.value.toJson(),
+      ).loopingLineIndex,
+      0,
+    );
+  });
+
   testWidgets('tapping a reader word opens the anchored lookup popup', (
     WidgetTester tester,
   ) async {
