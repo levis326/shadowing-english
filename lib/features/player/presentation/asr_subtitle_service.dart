@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 
 import '../../settings/presentation/settings_provider.dart';
+import 'desktop_ffmpeg.dart';
 
 const MethodChannel _audioToolsChannel = MethodChannel(
   'com.shadowing.english/audio_tools',
@@ -1049,9 +1050,9 @@ class AsrSubtitleService {
           )
           .toList(growable: false);
     }
-    final String? ffmpeg = await _ffmpegPath();
+    final String? ffmpeg = await findDesktopFfmpeg();
     if (ffmpeg == null) {
-      throw StateError('当前视频过大，需要安装 ffmpeg 后提取音频再生成字幕。');
+      throw StateError('应用内置音频组件缺失或无法运行，请重新安装最新版本。');
     }
     final Directory dir = await Directory.systemTemp.createTemp('cle_asr_');
     final ProcessResult result = await Process.run(ffmpeg, <String>[
@@ -1086,24 +1087,6 @@ class AsrSubtitleService {
       for (int index = 0; index < chunks.length; index += 1)
         AsrAudioChunk(file: chunks[index], offsetMs: index * _chunkMs),
     ];
-  }
-
-  Future<String?> _ffmpegPath() async {
-    for (final String candidate in <String>[
-      'ffmpeg',
-      '/opt/homebrew/bin/ffmpeg',
-      '/usr/local/bin/ffmpeg',
-    ]) {
-      try {
-        final ProcessResult result = await Process.run(candidate, <String>[
-          '-version',
-        ]);
-        if (result.exitCode == 0) {
-          return candidate;
-        }
-      } catch (_) {}
-    }
-    return null;
   }
 
   void deleteTemporaryAudioChunks(List<AsrAudioChunk> chunks) {

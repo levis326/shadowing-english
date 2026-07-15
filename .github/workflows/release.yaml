@@ -55,9 +55,32 @@ jobs:
           flutter-version: 3.44.4
           cache: true
       - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libmpv-dev ninja-build
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libmpv-dev nasm ninja-build
+      - name: Cache subtitle FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-bundle/linux-x64
+          key: ffmpeg-8.1.2-linux-x64-${{ hashFiles('tool/ffmpeg/build_ffmpeg.sh') }}
+      - name: Build subtitle FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: bash tool/ffmpeg/build_ffmpeg.sh linux-x64 build/ffmpeg-bundle/linux-x64
+      - name: Smoke test subtitle FFmpeg
+        run: |
+          ffmpeg_bin="build/ffmpeg-bundle/linux-x64/ffmpeg"
+          smoke_dir="$(mktemp -d)"
+          "$ffmpeg_bin" -y -f lavfi -i sine=frequency=1000:duration=2 -c:a pcm_s16le "$smoke_dir/input.wav"
+          "$ffmpeg_bin" -y -i "$smoke_dir/input.wav" -vn -ac 1 -ar 16000 -b:a 24k -f segment -segment_time 1 -reset_timestamps 1 "$smoke_dir/chunk_%05d.m4a"
+          test -s "$smoke_dir/chunk_00000.m4a"
+          "$ffmpeg_bin" -y -i "$smoke_dir/input.wav" -i tool/ffmpeg/smoke.srt -c:a aac -c:s mov_text -f ipod "$smoke_dir/embedded.mp4"
+          "$ffmpeg_bin" -v error -i "$smoke_dir/embedded.mp4" -map 0:s:0 -f srt - | grep -q "Hello from the subtitle smoke test"
       - run: flutter pub get
       - run: flutter build linux --release
+      - name: Bundle subtitle FFmpeg
+        run: |
+          mkdir -p build/linux/x64/release/bundle/lib/ffmpeg
+          cp -a build/ffmpeg-bundle/linux-x64/. build/linux/x64/release/bundle/lib/ffmpeg/
+          test -x build/linux/x64/release/bundle/lib/ffmpeg/ffmpeg
       - name: Package Linux bundle
         env:
           TAG: ${{ github.ref_name }}
@@ -79,6 +102,24 @@ jobs:
         with:
           flutter-version: 3.44.4
           cache: true
+      - name: Cache subtitle FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-bundle/macos-universal
+          key: ffmpeg-8.1.2-macos-universal-${{ hashFiles('tool/ffmpeg/build_ffmpeg.sh') }}
+      - name: Build subtitle FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: bash tool/ffmpeg/build_ffmpeg.sh macos-universal build/ffmpeg-bundle/macos-universal
+      - name: Smoke test subtitle FFmpeg
+        run: |
+          ffmpeg_bin="build/ffmpeg-bundle/macos-universal/ffmpeg"
+          smoke_dir="$(mktemp -d)"
+          "$ffmpeg_bin" -y -f lavfi -i sine=frequency=1000:duration=2 -c:a pcm_s16le "$smoke_dir/input.wav"
+          "$ffmpeg_bin" -y -i "$smoke_dir/input.wav" -vn -ac 1 -ar 16000 -b:a 24k -f segment -segment_time 1 -reset_timestamps 1 "$smoke_dir/chunk_%05d.m4a"
+          test -s "$smoke_dir/chunk_00000.m4a"
+          "$ffmpeg_bin" -y -i "$smoke_dir/input.wav" -i tool/ffmpeg/smoke.srt -c:a aac -c:s mov_text -f ipod "$smoke_dir/embedded.mp4"
+          "$ffmpeg_bin" -v error -i "$smoke_dir/embedded.mp4" -map 0:s:0 -f srt - | grep -q "Hello from the subtitle smoke test"
       - run: flutter pub get
       - run: flutter build macos --release
       - name: Package macOS app
@@ -88,6 +129,11 @@ jobs:
           mkdir release-assets dmg-root
           app_path="$(find build/macos/Build/Products/Release -maxdepth 1 -type d -name '*.app' -print -quit)"
           test -n "$app_path"
+          mkdir -p "$app_path/Contents/Resources/ffmpeg"
+          cp -a build/ffmpeg-bundle/macos-universal/. "$app_path/Contents/Resources/ffmpeg/"
+          test -x "$app_path/Contents/Resources/ffmpeg/ffmpeg"
+          codesign --force --deep --sign - "$app_path"
+          codesign --verify --deep --strict "$app_path"
           cp -R "$app_path" dmg-root/
           ln -s /Applications dmg-root/Applications
           hdiutil create -volname "Shadowing English" -srcfolder dmg-root -ov -format UDZO \
@@ -107,8 +153,42 @@ jobs:
         with:
           flutter-version: 3.44.4
           cache: true
+      - name: Cache subtitle FFmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: build/ffmpeg-bundle/windows-x64
+          key: ffmpeg-8.1.2-windows-x64-${{ hashFiles('tool/ffmpeg/build_ffmpeg.sh') }}
+      - uses: msys2/setup-msys2@v2
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        with:
+          install: make diffutils nasm mingw-w64-x86_64-gcc
+          msystem: MINGW64
+      - name: Build subtitle FFmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash tool/ffmpeg/build_ffmpeg.sh windows-x64 build/ffmpeg-bundle/windows-x64
+      - name: Smoke test subtitle FFmpeg
+        shell: pwsh
+        run: |
+          $ffmpeg = "build/ffmpeg-bundle/windows-x64/ffmpeg.exe"
+          $smoke = "build/ffmpeg-smoke"
+          New-Item -ItemType Directory -Force $smoke | Out-Null
+          & $ffmpeg -y -f lavfi -i "sine=frequency=1000:duration=2" -c:a pcm_s16le "$smoke/input.wav"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $ffmpeg -y -i "$smoke/input.wav" -vn -ac 1 -ar 16000 -b:a 24k -f segment -segment_time 1 -reset_timestamps 1 "$smoke/chunk_%05d.m4a"
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$smoke/chunk_00000.m4a")) { exit 1 }
+          & $ffmpeg -y -i "$smoke/input.wav" -i tool/ffmpeg/smoke.srt -c:a aac -c:s mov_text -f ipod "$smoke/embedded.mp4"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $subtitle = & $ffmpeg -v error -i "$smoke/embedded.mp4" -map 0:s:0 -f srt -
+          if ($LASTEXITCODE -ne 0 -or ($subtitle -join "`n") -notmatch "Hello from the subtitle smoke test") { exit 1 }
       - run: flutter pub get
       - run: flutter build windows --release
+      - name: Bundle subtitle FFmpeg
+        shell: pwsh
+        run: |
+          Copy-Item build/ffmpeg-bundle/windows-x64 build/windows/x64/runner/Release/ffmpeg -Recurse
+          if (-not (Test-Path build/windows/x64/runner/Release/ffmpeg/ffmpeg.exe)) { exit 1 }
       - name: Package Windows bundle
         shell: pwsh
         env:

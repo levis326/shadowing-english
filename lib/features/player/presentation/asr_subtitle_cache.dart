@@ -49,6 +49,9 @@ class AsrSubtitleCache {
       if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
         throw const FormatException('invalid-asr-subtitle-cache');
       }
+      if (settings != null && decoded['version'] != 1) {
+        throw const FormatException('obsolete-asr-subtitle-cache');
+      }
       if (settings != null &&
           !await _metadataMatches(
             file: file,

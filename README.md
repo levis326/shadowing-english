@@ -89,6 +89,8 @@ Shadowing English 是一个 English shadowing app：你导入自己有权使用�
 
 从 v0.1.2 起，每个版本附带 `SHA256SUMS.txt`，可用于校验下载文件是否完整。
 
+桌面安装包内置了用于本地音频提取的精简版 FFmpeg，无需用户额外安装；许可证和构建信息会随应用一起发布。
+
 ### 从源码运行
 
 需要 Flutter 3.44.4；仓库通过 FVM 固定版本。首次使用请先安装 [FVM](https://fvm.app/documentation/getting-started/installation)。

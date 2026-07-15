@@ -925,15 +925,7 @@ class _PadLandscapePlayerScreenState
             );
             _usingAiSubtitles = true;
           });
-          final SubtitleReferenceReview review = reviewGeneratedSubtitles(
-            generated: lines,
-            reference: _referenceSubtitleLines,
-          );
-          if (review.differentLines > 0) {
-            _showReferenceReview(review, lines);
-          } else {
-            _showMessage('已切换到 AI 字幕');
-          }
+          _showMessage('已切换到 AI 字幕');
           return;
         }
       }
@@ -982,7 +974,7 @@ class _PadLandscapePlayerScreenState
       } else if (review.differentLines == 0) {
         _showMessage('AI 字幕已生成，已通过参考字幕校对');
       } else {
-        _showReferenceReview(review, lines);
+        _showMessage('AI 字幕已生成');
       }
     } catch (error) {
       if (cancellationToken.isCancelled) return;
@@ -1005,59 +997,6 @@ class _PadLandscapePlayerScreenState
         });
       }
     }
-  }
-
-  void _showReferenceReview(
-    SubtitleReferenceReview review,
-    List<PlayerSubtitleLine> generated,
-  ) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            '参考字幕校对：${review.differentLines}/${review.comparedLines} 句存在差异',
-          ),
-          action: SnackBarAction(
-            label: '采用参考字幕',
-            onPressed: () => _adoptReferenceSubtitles(generated),
-          ),
-        ),
-      );
-  }
-
-  Future<void> _adoptReferenceSubtitles(
-    List<PlayerSubtitleLine> generated,
-  ) async {
-    final String? videoPath = _videoAsset;
-    if (videoPath == null || _referenceSubtitleLines.isEmpty) return;
-    final List<PlayerSubtitleLine> adopted = adoptReferenceSubtitles(
-      generated: generated,
-      reference: _referenceSubtitleLines,
-    );
-    await const AsrSubtitleCache().write(
-      episodeId: widget.episodeId,
-      videoPath: videoPath,
-      content: subtitleLinesToJson(
-        adopted,
-        wordDefinitions: state.generatedWordDefinitions,
-      ),
-      settings: ref.read(learningSettingsProvider),
-    );
-    if (!mounted) return;
-    setState(
-      () => state.loadLines(
-        adopted,
-        wordDefinitions: state.generatedWordDefinitions,
-      ),
-    );
-    final bool hasLineLevelFallback = adopted.any(
-      (PlayerSubtitleLine line) =>
-          line.english.trim().isNotEmpty && line.words.isEmpty,
-    );
-    _showMessage(
-      hasLineLevelFallback ? '已采用参考字幕；部分句子词数不同，已降级为句级同步' : '已采用参考字幕并保留词级同步',
-    );
   }
 
   Future<void> _handleDeleteAiSubtitles() async {

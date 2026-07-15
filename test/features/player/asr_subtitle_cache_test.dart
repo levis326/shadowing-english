@@ -137,7 +137,7 @@ void main() {
     await cache.write(
       episodeId: 'ep01',
       videoPath: video.path,
-      content: '{"lines":[]}',
+      content: '{"version":1,"lines":[]}',
       settings: settings,
     );
 
@@ -159,6 +159,34 @@ void main() {
     );
   });
 
+  test('cache removes old adopted reference subtitles', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-adopted-reference-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults();
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"lines":[]}',
+      settings: settings,
+    );
+
+    expect(
+      await cache.read(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        settings: settings,
+      ),
+      isNull,
+    );
+  });
+
   test('cache rejects changed video and removes corrupt json', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-cache-video-',
@@ -173,7 +201,7 @@ void main() {
     await cache.write(
       episodeId: 'ep01',
       videoPath: video.path,
-      content: '{"lines":[]}',
+      content: '{"version":1,"lines":[]}',
       settings: settings,
     );
     video.writeAsStringSync('replaced-video-content');
