@@ -260,13 +260,21 @@ class _AiSubtitleManagementScreenState
     if (!confirmed || !mounted) return;
     setState(() => _regeneratingPath = entry.cacheFile.path);
     try {
-      await const AsrSubtitleJobRunner().run(
+      const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
+      final LearningSettingsState settings = ref.read(learningSettingsProvider);
+      await runner.run(
         episodeId: entry.episodeId,
         videoPath: entry.videoPath,
-        settings: ref.read(learningSettingsProvider),
+        settings: settings,
         forceRegenerate: true,
       );
-      _message('AI 字幕已重新生成。');
+      final AsrSubtitleRepairSummary repairSummary = await runner
+          .readRepairSummary(
+            episodeId: entry.episodeId,
+            videoPath: entry.videoPath,
+            settings: settings,
+          );
+      _message(repairSummary.appendTo('AI 字幕已重新生成'));
       _reload();
     } catch (error) {
       _message('重新生成失败：$error');

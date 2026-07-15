@@ -344,7 +344,7 @@ void main() {
     expect(report['chunks'], hasLength(1));
   });
 
-  test('invalid final subtitle fails check and keeps cache empty', () async {
+  test('overlapping final subtitle is repaired and cached', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-invalid-',
     );
@@ -374,25 +374,20 @@ void main() {
           },
     );
 
-    await expectLater(
-      runner.run(
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
         episodeId: 'episode-1',
         videoPath: video.path,
         settings: _settings(),
       ),
-      throwsA(
-        isA<StateError>().having(
-          (StateError error) => error.message,
-          'message',
-          contains('时间轴乱序或重叠过多'),
-        ),
-      ),
     );
+    expect(lines, hasLength(2));
+    expect(lines.last.startMs, lines.first.endMs);
     expect(
       await cache.exists(episodeId: 'episode-1', videoPath: video.path),
-      isFalse,
+      isTrue,
     );
-    expect(calls, 2);
+    expect(calls, 1);
     final Directory jobDir = await runner.jobDirectory(
       episodeId: 'episode-1',
       videoPath: video.path,
@@ -405,13 +400,21 @@ void main() {
               ).readAsString(),
             )
             as Map<String, dynamic>;
-    expect(report['finalStatus'], 'FAILED');
-    expect(report['wordOverlap'], greaterThan(0));
+    expect(report['finalStatus'], 'PASS');
+    expect(report['repairCount'], greaterThan(0));
     expect(report['sentenceOverlap'], greaterThan(0));
     final Map<String, dynamic> anomaly =
         (report['anomalies'] as List<dynamic>).first as Map<String, dynamic>;
     expect(anomaly, containsPair('provider', _settings().asrProvider));
     expect(anomaly, containsPair('sourceChunk', 0));
+    final AsrSubtitleRepairSummary repairSummary = await runner
+        .readRepairSummary(
+          episodeId: 'episode-1',
+          videoPath: video.path,
+          settings: _settings(),
+        );
+    expect(repairSummary.itemCount, greaterThan(0));
+    expect(repairSummary.appendTo('AI 字幕已生成'), contains('已自动修复'));
   });
 
   test('merge sorts, deduplicates, and repairs small overlaps', () async {
@@ -463,6 +466,84 @@ void main() {
     ]);
   });
 
+  test(
+    'merge trims a previous chunk word that overruns the next chunk',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-job-chunk-overrun-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('video');
+      final File chunk0 = File('${root.path}/chunk0.m4a')
+        ..writeAsStringSync('0');
+      final File chunk1 = File('${root.path}/chunk1.m4a')
+        ..writeAsStringSync('1');
+      final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+        supportDirectory: () async => root,
+        cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+        service: AsrSubtitleService(
+          prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+            AsrAudioChunk(file: chunk0, offsetMs: 0),
+            AsrAudioChunk(file: chunk1, offsetMs: 290000),
+          ],
+        ),
+        cloudTranscribeChunk:
+            ({
+              required AsrAudioChunk chunk,
+              required LearningSettingsState settings,
+            }) async => chunk.file.path == chunk0.path
+            ? <String, Object?>{
+                'version': 1,
+                'language': 'en',
+                'lines': <Map<String, Object?>>[
+                  <String, Object?>{
+                    'startMs': 273068,
+                    'endMs': 294108,
+                    'english': 'Ha ha',
+                    'chinese': '',
+                    'words': <Map<String, Object?>>[
+                      <String, Object?>{
+                        'text': 'Ha',
+                        'startMs': 273068,
+                        'endMs': 273488,
+                      },
+                      <String, Object?>{
+                        'text': 'ha',
+                        'startMs': 278508,
+                        'endMs': 294108,
+                      },
+                    ],
+                  },
+                ],
+              }
+            : <String, Object?>{
+                'version': 1,
+                'language': 'en',
+                'lines': <Map<String, Object?>>[
+                  _chunkLine('Peppa Pig', 291000),
+                ],
+              },
+      );
+
+      final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+        await runner.run(
+          episodeId: 'episode-1',
+          videoPath: video.path,
+          settings: _settings(),
+        ),
+      );
+
+      expect(lines.map((PlayerSubtitleLine line) => line.english), <String>[
+        'Ha ha',
+        'Peppa Pig',
+      ]);
+      expect(lines.first.endMs, 290000);
+      expect(lines.first.words.last.endMs, 290000);
+      expect(lines.last.startMs, 291000);
+    },
+  );
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',
@@ -487,7 +568,7 @@ void main() {
           }) async {
             calls += 1;
             return calls == 1
-                ? _overlappingChunkJson()
+                ? _chunkJsonWithoutWords('', 1000)
                 : _chunkJson('retried subtitle', 1000);
           },
     );
@@ -502,7 +583,7 @@ void main() {
     expect(parseSubtitleLines(raw).single.english, 'retried subtitle');
   });
 
-  test('final subtitle without word timestamps fails check', () async {
+  test('missing word timestamps are synthesized from usable text', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-no-words-',
     );
@@ -530,24 +611,59 @@ void main() {
           },
     );
 
-    await expectLater(
-      runner.run(
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
         episodeId: 'episode-1',
         videoPath: video.path,
         settings: _settings(),
       ),
-      throwsA(
-        isA<StateError>().having(
-          (StateError error) => error.message,
-          'message',
-          contains('未返回词级时间戳'),
-        ),
-      ),
+    );
+    expect(lines.single.english, 'no words');
+    expect(
+      lines.single.words.map((PlayerSubtitleWord word) => word.text),
+      <String>['no', 'words'],
     );
     expect(
       await cache.exists(episodeId: 'episode-1', videoPath: video.path),
-      isFalse,
+      isTrue,
     );
+  });
+
+  test('fully out-of-range timestamps are rebuilt inside the chunk', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-out-of-range-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('outside range', 70000),
+    );
+
+    final PlayerSubtitleLine line = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    ).single;
+
+    expect(line.english, 'outside range');
+    expect(line.startMs, 0);
+    expect(line.endMs, lessThanOrEqualTo(58000));
+    expect(line.words, hasLength(2));
   });
 
   test('valid short word timestamp is preserved', () async {
@@ -596,7 +712,7 @@ void main() {
     );
   });
 
-  test('large word overlap fails with segment and line location', () async {
+  test('large word overlap is repaired locally', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-word-overlap-',
     );
@@ -642,20 +758,14 @@ void main() {
           },
     );
 
-    await expectLater(
-      runner.run(
+    final PlayerSubtitleLine line = parseSubtitleLines(
+      await runner.run(
         episodeId: 'episode-1',
         videoPath: video.path,
         settings: _settings(),
       ),
-      throwsA(
-        isA<StateError>().having(
-          (StateError error) => error.message,
-          'message',
-          allOf(contains('第 1 段'), contains('第 1 句'), contains('单词时间轴')),
-        ),
-      ),
-    );
+    ).single;
+    expect(line.words.first.endMs, line.words.last.startMs);
   });
 
   test('cancellation stops before the next cloud chunk', () async {
@@ -828,7 +938,7 @@ void main() {
           ({
             required AsrAudioChunk chunk,
             required LearningSettingsState settings,
-          }) async => _chunkJsonWithoutWords('broken subtitle', 1000),
+          }) async => _chunkJsonWithoutWords('', 1000),
     );
 
     await expectLater(

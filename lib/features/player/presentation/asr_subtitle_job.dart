@@ -46,6 +46,15 @@ class AsrSubtitleCancellationToken {
   }
 }
 
+class AsrSubtitleRepairSummary {
+  const AsrSubtitleRepairSummary(this.itemCount);
+
+  final int itemCount;
+
+  String appendTo(String message) =>
+      itemCount > 0 ? '$message，已自动修复 $itemCount 项时间轴数据' : message;
+}
+
 class _SubtitleQualityReport {
   _SubtitleQualityReport(this.provider);
 
@@ -58,6 +67,7 @@ class _SubtitleQualityReport {
   int wordFix = 0;
   int wordDeleted = 0;
   int chunkBoundaryFix = 0;
+  int repairCount = 0;
 
   void addOverlap({
     required String kind,
@@ -133,6 +143,7 @@ class _SubtitleQualityReport {
         'wordFix': wordFix,
         'wordDeleted': wordDeleted,
         'chunkBoundaryFix': chunkBoundaryFix,
+        'repairCount': repairCount,
         'chunks': chunks,
         'anomalies': anomalies,
         'finalStatus': finalStatus,
@@ -265,6 +276,9 @@ class AsrSubtitleJobRunner {
         await _loadOrTranscribeValidChunk(
           chunkFile: chunkFile,
           chunk: chunks[index],
+          chunkEndMs: index + 1 < chunks.length
+              ? chunks[index + 1].offsetMs
+              : chunks[index].offsetMs + 58000,
           settings: settings,
           sourceChunk: index,
           report: report,
@@ -493,6 +507,38 @@ class AsrSubtitleJobRunner {
     );
   }
 
+  Future<AsrSubtitleRepairSummary> readRepairSummary({
+    required String episodeId,
+    required String videoPath,
+    required LearningSettingsState settings,
+  }) async {
+    final Directory jobDir = await jobDirectory(
+      episodeId: episodeId,
+      videoPath: videoPath,
+      settings: settings,
+    );
+    final File reportFile = File(
+      '${jobDir.path}${Platform.pathSeparator}subtitle_quality_report.json',
+    );
+    if (!reportFile.existsSync()) {
+      return const AsrSubtitleRepairSummary(0);
+    }
+    try {
+      final Object? decoded = jsonDecode(await reportFile.readAsString());
+      if (decoded is! Map<String, dynamic>) {
+        return const AsrSubtitleRepairSummary(0);
+      }
+      final int count =
+          decoded['repairCount'] as int? ??
+          (decoded['wordFix'] as int? ?? 0) +
+              (decoded['wordDeleted'] as int? ?? 0) +
+              (decoded['chunkBoundaryFix'] as int? ?? 0);
+      return AsrSubtitleRepairSummary(count);
+    } catch (_) {
+      return const AsrSubtitleRepairSummary(0);
+    }
+  }
+
   Future<Map<String, Object?>> _transcribe({
     required AsrAudioChunk chunk,
     required LearningSettingsState settings,
@@ -506,6 +552,7 @@ class AsrSubtitleJobRunner {
   Future<void> _loadOrTranscribeValidChunk({
     required File chunkFile,
     required AsrAudioChunk chunk,
+    required int chunkEndMs,
     required LearningSettingsState settings,
     required int sourceChunk,
     required _SubtitleQualityReport report,
@@ -534,6 +581,8 @@ class AsrSubtitleJobRunner {
       try {
         final Map<String, Object?> normalized = _normalizeChunkTimeline(
           chunkJson,
+          chunkStartMs: chunk.offsetMs,
+          chunkEndMs: chunkEndMs,
           sourceChunk: sourceChunk,
           report: report,
         );
@@ -708,8 +757,18 @@ class AsrSubtitleJobRunner {
           previousSourceChunk: previousSourceChunk,
         );
       }
-      if (overlapMs > 0 && overlapMs <= _repairableOverlapMs) {
-        line = _shiftLine(line, overlapMs);
+      if (overlapMs > 0) {
+        report?.repairCount += 1;
+        if (overlapMs <= _repairableOverlapMs) {
+          line = _shiftLine(line, overlapMs);
+        } else if (_trimLineAtBoundary(
+          previous,
+          _timelineMs(line['startMs']),
+        )) {
+          report?.wordFix += 1;
+        } else {
+          line = _shiftLine(line, overlapMs);
+        }
         if (_sourceChunk(previous) != _sourceChunk(line)) {
           report?.chunkBoundaryFix += 1;
         }
@@ -761,7 +820,16 @@ class AsrSubtitleJobRunner {
             chunkLines = chunkLines
                 .map((Map<String, Object?> line) => _shiftLine(line, overlapMs))
                 .toList(growable: false);
-            report.chunkBoundaryFix += 1;
+            report
+              ..chunkBoundaryFix += 1
+              ..repairCount += 1;
+          } else if (_trimPreviousLineAtBoundary(
+            result,
+            _timelineMs(firstWord['startMs']),
+          )) {
+            report
+              ..chunkBoundaryFix += 1
+              ..repairCount += 1;
           }
         }
       }
@@ -773,6 +841,32 @@ class AsrSubtitleJobRunner {
       result.addAll(chunkLines);
     }
     return result;
+  }
+
+  bool _trimPreviousLineAtBoundary(
+    List<Map<String, Object?>> lines,
+    int boundaryMs,
+  ) {
+    for (int index = lines.length - 1; index >= 0; index -= 1) {
+      final Map<String, Object?> line = lines[index];
+      if (_lineWords(line).isEmpty) continue;
+      return _trimLineAtBoundary(line, boundaryMs);
+    }
+    return false;
+  }
+
+  bool _trimLineAtBoundary(Map<String, Object?> line, int boundaryMs) {
+    final List<Map<String, Object?>> words = _lineWords(line);
+    if (words.isEmpty) return false;
+    final Map<String, Object?> lastWord = words.last;
+    if (_timelineMs(lastWord['startMs']) >= boundaryMs ||
+        _timelineMs(lastWord['endMs']) <= boundaryMs) {
+      return false;
+    }
+    lastWord['endMs'] = boundaryMs;
+    line['words'] = words;
+    line['endMs'] = boundaryMs;
+    return true;
   }
 
   Map<String, Object?>? _firstWord(List<Map<String, Object?>> lines) {
@@ -799,6 +893,8 @@ class AsrSubtitleJobRunner {
 
   Map<String, Object?> _normalizeChunkTimeline(
     Map<String, Object?> chunk, {
+    required int chunkStartMs,
+    required int chunkEndMs,
     required int sourceChunk,
     required _SubtitleQualityReport report,
   }) {
@@ -812,8 +908,14 @@ class AsrSubtitleJobRunner {
               },
             )
             .toList(growable: false);
-    final List<Map<String, Object?>> normalized = _normalizeWords(
+    final List<Map<String, Object?>> constrained = _constrainChunkTimeline(
       lines,
+      chunkStartMs: chunkStartMs,
+      chunkEndMs: chunkEndMs,
+      report: report,
+    );
+    final List<Map<String, Object?>> normalized = _normalizeWords(
+      constrained,
       report: report,
     );
     return <String, Object?>{
@@ -823,6 +925,72 @@ class AsrSubtitleJobRunner {
         report: report,
       ).map(_withoutSourceChunk).toList(growable: false),
     };
+  }
+
+  List<Map<String, Object?>> _constrainChunkTimeline(
+    List<Map<String, Object?>> lines, {
+    required int chunkStartMs,
+    required int chunkEndMs,
+    required _SubtitleQualityReport report,
+  }) {
+    final List<Map<String, Object?>> result = <Map<String, Object?>>[];
+    for (final Map<String, Object?> original in lines) {
+      bool repaired = false;
+      final Map<String, Object?> line = Map<String, Object?>.from(original);
+      final List<Map<String, Object?>> originalWords = _lineWords(line);
+      final List<Map<String, Object?>> words = <Map<String, Object?>>[];
+      for (final Map<String, Object?> originalWord in originalWords) {
+        final int startMs = _timelineMs(originalWord['startMs']);
+        final int endMs = _timelineMs(originalWord['endMs']);
+        if (endMs <= chunkStartMs || startMs >= chunkEndMs) {
+          report.wordDeleted += 1;
+          repaired = true;
+          continue;
+        }
+        final Map<String, Object?> word = Map<String, Object?>.from(
+          originalWord,
+        );
+        word['startMs'] = startMs < chunkStartMs ? chunkStartMs : startMs;
+        word['endMs'] = endMs > chunkEndMs ? chunkEndMs : endMs;
+        repaired =
+            repaired || word['startMs'] != startMs || word['endMs'] != endMs;
+        if (_timelineMs(word['endMs']) > _timelineMs(word['startMs'])) {
+          words.add(word);
+        } else {
+          report.wordDeleted += 1;
+          repaired = true;
+        }
+      }
+      if (words.length != originalWords.length) {
+        words.clear();
+      }
+      if (words.isNotEmpty) {
+        line['words'] = words;
+        line['startMs'] = _timelineMs(words.first['startMs']);
+        line['endMs'] = _timelineMs(words.last['endMs']);
+      } else {
+        line['words'] = const <Map<String, Object?>>[];
+        int startMs = _timelineMs(line['startMs']);
+        int endMs = _timelineMs(line['endMs']);
+        if (startMs < chunkStartMs || startMs >= chunkEndMs) {
+          startMs = chunkStartMs;
+          repaired = true;
+        }
+        if (endMs <= startMs || endMs > chunkEndMs) {
+          final int tokenCount = _wordCount(line['english'] as String? ?? '');
+          final int fallbackEndMs =
+              startMs + (tokenCount > 0 ? tokenCount * 400 : 1000);
+          endMs = fallbackEndMs < chunkEndMs ? fallbackEndMs : chunkEndMs;
+          repaired = true;
+        }
+        if (endMs <= startMs) continue;
+        line['startMs'] = startMs;
+        line['endMs'] = endMs;
+      }
+      if (repaired) report.repairCount += 1;
+      result.add(line);
+    }
+    return result;
   }
 
   List<Map<String, Object?>> _normalizeWords(
@@ -835,13 +1003,11 @@ class AsrSubtitleJobRunner {
               _timelineMs(a['startMs']).compareTo(_timelineMs(b['startMs'])),
         );
     final List<Map<String, Object?>> result = <Map<String, Object?>>[];
-    Map<String, Object?>? previousWord;
-    Map<String, Object?>? previousLine;
     for (final Map<String, Object?> line in sorted) {
       if (result.isNotEmpty && _sameOverlappingLine(result.last, line)) {
         continue;
       }
-      final List<Map<String, Object?>> words =
+      List<Map<String, Object?>> words =
           (line['words'] as List<dynamic>? ?? const <dynamic>[])
               .whereType<Map<String, dynamic>>()
               .map(Map<String, Object?>.from)
@@ -858,6 +1024,24 @@ class AsrSubtitleJobRunner {
       final int originalCount =
           (line['words'] as List<dynamic>? ?? const <dynamic>[]).length;
       report.wordDeleted += originalCount - words.length;
+      final String english = line['english'] as String? ?? '';
+      bool repaired = false;
+      if (words.isEmpty ||
+          _comparableText(english) !=
+              _comparableText(
+                words
+                    .map((Map<String, Object?> word) => word['text'] ?? '')
+                    .join(' '),
+              )) {
+        words = _synthesizeWords(
+          english,
+          _timelineMs(line['startMs']),
+          _timelineMs(line['endMs']),
+        );
+        report.wordFix += words.length;
+        repaired = true;
+      }
+      Map<String, Object?>? previousWord;
       for (final Map<String, Object?> word in words) {
         if (previousWord != null &&
             _timelineMs(word['startMs']) < _timelineMs(previousWord['endMs'])) {
@@ -873,29 +1057,83 @@ class AsrSubtitleJobRunner {
             currentEnd: _timelineMs(word['endMs']),
             overlapMs: overlapMs,
             sourceChunk: _sourceChunk(line),
-            previousSourceChunk: previousLine == null
-                ? -1
-                : _sourceChunk(previousLine),
+            previousSourceChunk: _sourceChunk(line),
           );
-          if (overlapMs <= _repairableOverlapMs) {
-            final int durationMs =
-                _timelineMs(word['endMs']) - _timelineMs(word['startMs']);
-            word['startMs'] = _timelineMs(previousWord['endMs']);
-            word['endMs'] = _timelineMs(word['startMs']) + durationMs;
-            report.wordFix += 1;
+          final int currentStartMs = _timelineMs(word['startMs']);
+          if (currentStartMs > _timelineMs(previousWord['startMs'])) {
+            previousWord['endMs'] = currentStartMs;
+          } else {
+            final int latestEndMs =
+                _timelineMs(previousWord['endMs']) > _timelineMs(word['endMs'])
+                ? _timelineMs(previousWord['endMs'])
+                : _timelineMs(word['endMs']);
+            final int boundaryMs =
+                _timelineMs(previousWord['startMs']) +
+                ((latestEndMs - _timelineMs(previousWord['startMs'])) ~/ 2);
+            previousWord['endMs'] = boundaryMs;
+            word['startMs'] = boundaryMs;
           }
+          report.wordFix += 1;
+          repaired = true;
         }
         previousWord = word;
-        previousLine = line;
+      }
+      if (!_hasValidWordTimeline(words)) {
+        words = _synthesizeWords(
+          english,
+          _timelineMs(line['startMs']),
+          _timelineMs(line['endMs']),
+        );
+        report.wordFix += words.length;
+        repaired = true;
       }
       if (words.isNotEmpty) {
         line['words'] = words;
         line['startMs'] = _timelineMs(words.first['startMs']);
         line['endMs'] = _timelineMs(words.last['endMs']);
       }
+      if (repaired) report.repairCount += 1;
       result.add(line);
     }
     return result;
+  }
+
+  List<Map<String, Object?>> _synthesizeWords(
+    String english,
+    int startMs,
+    int endMs,
+  ) {
+    final List<String> tokens = RegExp("[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)?")
+        .allMatches(english)
+        .map((Match match) => match.group(0)!)
+        .toList(growable: false);
+    if (tokens.isEmpty || endMs <= startMs) {
+      return const <Map<String, Object?>>[];
+    }
+    final int durationMs = endMs - startMs < tokens.length
+        ? tokens.length
+        : endMs - startMs;
+    return <Map<String, Object?>>[
+      for (int index = 0; index < tokens.length; index += 1)
+        <String, Object?>{
+          'text': tokens[index],
+          'startMs': startMs + (durationMs * index ~/ tokens.length),
+          'endMs': startMs + (durationMs * (index + 1) ~/ tokens.length),
+        },
+    ];
+  }
+
+  bool _hasValidWordTimeline(List<Map<String, Object?>> words) {
+    int previousEndMs = -1;
+    for (final Map<String, Object?> word in words) {
+      final int startMs = _timelineMs(word['startMs']);
+      final int endMs = _timelineMs(word['endMs']);
+      if (endMs <= startMs || (previousEndMs >= 0 && startMs < previousEndMs)) {
+        return false;
+      }
+      previousEndMs = endMs;
+    }
+    return true;
   }
 
   int _sourceChunk(Map<String, Object?> line) {

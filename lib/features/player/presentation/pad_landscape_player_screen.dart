@@ -1030,7 +1030,8 @@ class PadLandscapePlayerScreenState
         AsrSubtitleCancellationToken();
     _aiSubtitleCancellationToken = cancellationToken;
     try {
-      final String raw = await const AsrSubtitleJobRunner().run(
+      const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
+      final String raw = await runner.run(
         episodeId: widget.episodeId,
         videoPath: videoPath,
         settings: settings,
@@ -1059,12 +1060,18 @@ class PadLandscapePlayerScreenState
         generated: lines,
         reference: _referenceSubtitleLines,
       );
+      final AsrSubtitleRepairSummary repairSummary = await runner
+          .readRepairSummary(
+            episodeId: widget.episodeId,
+            videoPath: videoPath,
+            settings: settings,
+          );
       if (review.comparedLines == 0) {
-        _showMessage('AI 字幕已生成');
+        _showMessage(repairSummary.appendTo('AI 字幕已生成'));
       } else if (review.differentLines == 0) {
-        _showMessage('AI 字幕已生成，已通过参考字幕校对');
+        _showMessage(repairSummary.appendTo('AI 字幕已生成，已通过参考字幕校对'));
       } else {
-        _showMessage('AI 字幕已生成');
+        _showMessage(repairSummary.appendTo('AI 字幕已生成'));
       }
     } catch (error) {
       if (cancellationToken.isCancelled) return;
