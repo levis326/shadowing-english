@@ -193,6 +193,54 @@ void main() {
     );
   });
 
+  testWidgets('lazily builds a long transcript', (WidgetTester tester) async {
+    final List<PlayerSubtitleLine> longTranscript =
+        List<PlayerSubtitleLine>.generate(
+          200,
+          (int index) => PlayerSubtitleLine(
+            startTime: '00:${index.toString().padLeft(2, '0')}',
+            english: 'Sentence number $index',
+            chinese: '第 $index 句',
+            startMs: index * 1000,
+            endMs: (index + 1) * 1000,
+          ),
+        );
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FullTranscriptReaderScreen(
+          snapshot: TranscriptReaderSnapshot(
+            courseTitle: '测试课程',
+            episodeTitle: '长字幕',
+            lines: longTranscript,
+            meanings: const <String, String>{},
+            progress: const TranscriptReaderProgress(
+              lineIndex: 0,
+              wordIndex: 0,
+            ),
+          ),
+          progressListenable: progress,
+          onClose: () {},
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('reader-line-0-true')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('reader-line-199-false')),
+      findsNothing,
+    );
+  });
+
   testWidgets('each full transcript sentence can toggle single-line loop', (
     WidgetTester tester,
   ) async {
@@ -413,22 +461,20 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.drag(
-      find.byType(SingleChildScrollView),
-      const Offset(0, -1800),
-    );
+    await tester.drag(find.byType(ListView), const Offset(0, -1800));
     await tester.pumpAndSettle();
 
     final Finder activeWord = find.byKey(
       const ValueKey<String>('reader-word-box-what-true'),
     );
-    expect(tester.getCenter(activeWord).dy, lessThan(0));
+    expect(activeWord, findsNothing);
 
     await tester.tap(
       find.byKey(const ValueKey<String>('reader-locate-current-word')),
     );
     await tester.pumpAndSettle();
 
+    expect(activeWord, findsOneWidget);
     expect(tester.getCenter(activeWord).dy, inInclusiveRange(80, 360));
   });
 }

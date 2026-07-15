@@ -205,16 +205,39 @@ class _FullTranscriptReaderScreenState
     WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveWord());
   }
 
-  void _revealActiveWord() {
+  Future<void> _revealActiveWord() async {
     if (!mounted) return;
     final BuildContext? activeContext = _activeWordKey.currentContext;
-    if (activeContext == null) return;
-    Scrollable.ensureVisible(
-      activeContext,
-      alignment: 0.42,
+    if (activeContext != null) {
+      await Scrollable.ensureVisible(
+        activeContext,
+        alignment: 0.42,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+      return;
+    }
+    if (!_scrollController.hasClients || widget.snapshot.lines.length < 2) {
+      return;
+    }
+    final double target =
+        _scrollController.position.maxScrollExtent *
+        (_progress.lineIndex / (widget.snapshot.lines.length - 1));
+    await _scrollController.animateTo(
+      target,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
+    if (!mounted) return;
+    final BuildContext? revealedContext = _activeWordKey.currentContext;
+    if (revealedContext != null && revealedContext.mounted) {
+      await Scrollable.ensureVisible(
+        revealedContext,
+        alignment: 0.42,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   void _dismissWordLookup() {
@@ -360,58 +383,46 @@ class _FullTranscriptReaderScreenState
               child: Scrollbar(
                 controller: _scrollController,
                 thumbVisibility: true,
-                child: SingleChildScrollView(
+                child: ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(32, 28, 32, 80),
-                  child: Center(
+                  itemCount: widget.snapshot.lines.length,
+                  itemBuilder: (BuildContext context, int lineIndex) => Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1180),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: <Widget>[
-                          for (
-                            int lineIndex = 0;
-                            lineIndex < widget.snapshot.lines.length;
-                            lineIndex++
-                          )
-                            _ReaderLine(
-                              line: widget.snapshot.lines[lineIndex],
-                              meanings: widget.snapshot.meanings,
-                              lineIndex: lineIndex,
-                              activeLineIndex: _progress.lineIndex,
-                              activeWordIndex: _progress.wordIndex,
-                              activeWordKey: _activeWordKey,
-                              showTranslations: _showTranslations,
-                              isLooping:
-                                  _progress.loopingLineIndex == lineIndex,
-                              onToggleLoop: widget.onToggleLineLoop == null
-                                  ? null
-                                  : () => widget.onToggleLineLoop!(lineIndex),
-                              onWordTap:
-                                  (
-                                    BuildContext anchorContext,
-                                    String token,
-                                    int wordIndex,
-                                  ) {
-                                    _toggleWordLookup(
-                                      anchorContext: anchorContext,
-                                      rawWord: token,
-                                      contextSentence: widget
-                                          .snapshot
-                                          .lines[lineIndex]
-                                          .english,
-                                      tokenId: '$lineIndex-$wordIndex',
-                                      fallbackDefinitionCn:
-                                          widget
-                                              .snapshot
-                                              .meanings[normalizeTranscriptReaderWord(
-                                            token,
-                                          )] ??
-                                          '',
-                                    );
-                                  },
-                            ),
-                        ],
+                      child: _ReaderLine(
+                        line: widget.snapshot.lines[lineIndex],
+                        meanings: widget.snapshot.meanings,
+                        lineIndex: lineIndex,
+                        activeLineIndex: _progress.lineIndex,
+                        activeWordIndex: _progress.wordIndex,
+                        activeWordKey: _activeWordKey,
+                        showTranslations: _showTranslations,
+                        isLooping: _progress.loopingLineIndex == lineIndex,
+                        onToggleLoop: widget.onToggleLineLoop == null
+                            ? null
+                            : () => widget.onToggleLineLoop!(lineIndex),
+                        onWordTap:
+                            (
+                              BuildContext anchorContext,
+                              String token,
+                              int wordIndex,
+                            ) {
+                              _toggleWordLookup(
+                                anchorContext: anchorContext,
+                                rawWord: token,
+                                contextSentence:
+                                    widget.snapshot.lines[lineIndex].english,
+                                tokenId: '$lineIndex-$wordIndex',
+                                fallbackDefinitionCn:
+                                    widget
+                                        .snapshot
+                                        .meanings[normalizeTranscriptReaderWord(
+                                      token,
+                                    )] ??
+                                    '',
+                              );
+                            },
                       ),
                     ),
                   ),
