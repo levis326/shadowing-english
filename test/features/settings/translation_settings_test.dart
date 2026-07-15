@@ -235,7 +235,7 @@ void main() {
           .read(learningSettingsProvider.notifier)
           .setAsrProvider('MiMo Token Plan');
 
-      expect(container.read(learningSettingsProvider).asrProvider, 'OpenAI');
+      expect(container.read(learningSettingsProvider).asrProvider, '阿里云百炼');
 
       await Hive.box<String>('prefs').put(
         'learning_settings_v1',
@@ -250,9 +250,9 @@ void main() {
       addTearDown(legacy.dispose);
 
       final LearningSettingsState state = legacy.read(learningSettingsProvider);
-      expect(state.asrProvider, 'OpenAI');
-      expect(state.asrBaseUrl, 'https://api.openai.com/v1');
-      expect(state.asrModel, 'whisper-1');
+      expect(state.asrProvider, '阿里云百炼');
+      expect(state.asrBaseUrl, 'https://dashscope.aliyuncs.com');
+      expect(state.asrModel, 'qwen3-asr-flash-filetrans');
     },
   );
 

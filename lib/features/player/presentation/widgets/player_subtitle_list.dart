@@ -347,7 +347,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
       return _SubtitlePlaceholder(
         icon: Icons.auto_awesome_rounded,
         title: '当前视频没有字幕',
-        body: '可以为当前视频生成带单词时间戳的 AI 字幕。',
+        body: '可生成可随播放逐词高亮的 AI 词级同步字幕。',
         showAiGenerateSubtitles: widget.showAiGenerateSubtitles,
         generatingAiSubtitles: widget.generatingAiSubtitles,
         progressValue: widget.aiSubtitleProgressValue,
@@ -896,7 +896,9 @@ class _SubtitlePlaceholder extends StatelessWidget {
               FilledButton.icon(
                 onPressed: generatingAiSubtitles ? null : onGenerateAiSubtitles,
                 icon: const Icon(Icons.auto_awesome_rounded),
-                label: Text(generatingAiSubtitles ? '正在生成字幕...' : 'AI 生成字幕'),
+                label: Text(
+                  generatingAiSubtitles ? '正在生成词级同步字幕...' : 'AI生成可跟读的词级同步字幕',
+                ),
               ),
             ],
           ],

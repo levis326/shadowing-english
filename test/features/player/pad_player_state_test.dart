@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:common_learn_english/features/library/presentation/library_catalog_provider.dart';
 import 'package:common_learn_english/features/library/presentation/library_mock_data.dart';
@@ -286,6 +287,49 @@ void main() {
     );
   });
 
+  testWidgets('episode strip supports mouse dragging', (
+    WidgetTester tester,
+  ) async {
+    final List<LibraryEpisodeItem> episodes = List<LibraryEpisodeItem>.generate(
+      5,
+      (int index) => LibraryEpisodeItem(
+        id: 'episode-$index',
+        numberStr: '${index + 1}'.padLeft(2, '0'),
+        title: '第${index + 1}集',
+        durationMinutes: 10,
+        hasChineseSubtitles: true,
+        hasEnglishSubtitles: true,
+        completed: false,
+        progressPercent: 0,
+        coverImage: '',
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlayerEpisodeStrip(
+            episodes: episodes,
+            activeEpisodeId: 'episode-0',
+            onOpenEpisode: (LibraryEpisodeItem _) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.dragFrom(
+      tester.getCenter(find.byType(ListView)),
+      const Offset(-200, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.state<ScrollableState>(find.byType(Scrollable)).position.pixels,
+      greaterThan(0),
+    );
+  });
+
   test('player state can play video-only lesson without subtitles', () {
     final PlayerMockState state = PlayerMockState()
       ..loadLines(const <PlayerSubtitleLine>[])
@@ -480,7 +524,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('1.25'), findsOneWidget);
-    expect(find.text('AI 生成字幕'), findsOneWidget);
+    expect(find.text('AI生成可跟读的词级同步字幕'), findsOneWidget);
   });
 
   testWidgets('video subtitle word is boxed when highlighting is enabled', (
@@ -742,9 +786,7 @@ void main() {
       20,
     );
     expect(
-      tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dy,
-      52,
-    );
+      tester.getTopLeft(find.byIcon(Icons.arrow_back_rounded)).dy, 52);
     expect(find.byIcon(Icons.play_arrow_rounded), findsOneWidget);
     await tester.tap(find.byIcon(Icons.play_arrow_rounded));
     await tester.pump();

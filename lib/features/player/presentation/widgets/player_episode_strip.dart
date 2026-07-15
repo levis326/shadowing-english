@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../../library/presentation/library_mock_data.dart';
@@ -91,21 +93,31 @@ class _PlayerEpisodeStripState extends State<PlayerEpisodeStrip> {
         const SizedBox(height: 10),
         SizedBox(
           height: 108,
-          child: ListView.separated(
-            controller: _scrollController,
-            padding: EdgeInsets.zero,
-            scrollDirection: Axis.horizontal,
-            itemBuilder: (BuildContext context, int index) {
-              final LibraryEpisodeItem episode = widget.episodes[index];
-              final bool isActive = episode.id == widget.activeEpisodeId;
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(context).copyWith(
+              dragDevices: <PointerDeviceKind>{
+                PointerDeviceKind.touch,
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.trackpad,
+                PointerDeviceKind.stylus,
+              },
+            ),
+            child: ListView.separated(
+              controller: _scrollController,
+              padding: EdgeInsets.zero,
+              scrollDirection: Axis.horizontal,
+              itemBuilder: (BuildContext context, int index) {
+                final LibraryEpisodeItem episode = widget.episodes[index];
+                final bool isActive = episode.id == widget.activeEpisodeId;
 
-              return GestureDetector(
-                onTap: () => widget.onOpenEpisode(episode),
-                child: _EpisodeCard(episode: episode, isActive: isActive),
-              );
-            },
-            separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemCount: widget.episodes.length,
+                return GestureDetector(
+                  onTap: () => widget.onOpenEpisode(episode),
+                  child: _EpisodeCard(episode: episode, isActive: isActive),
+                );
+              },
+              separatorBuilder: (_, __) => const SizedBox(width: 12),
+              itemCount: widget.episodes.length,
+            ),
           ),
         ),
       ],

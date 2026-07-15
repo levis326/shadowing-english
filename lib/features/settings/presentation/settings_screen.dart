@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../utils/url_utils.dart';
 import '../../navigation/presentation/navigation_destination.dart';
 import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../shared/data/word_pronunciation_service.dart';
@@ -391,12 +392,13 @@ class SettingsScreen extends ConsumerWidget {
           ),
           SizedBox(height: compact ? 20 : 24),
           SettingsGroupCard(
-            title: 'AI 生成字幕',
+            title: 'AI生成可跟读的词级同步字幕',
             icon: Icons.auto_awesome_rounded,
             children: <Widget>[
               Builder(
                 builder: (BuildContext context) {
                   final bool isTencentAsr = settings.asrProvider == '腾讯云';
+                  final bool isAlibabaAsr = settings.asrProvider == '阿里云百炼';
                   final ({String secretId, String secretKey})
                   tencentCredential = _splitTencentCredential(
                     settings.asrApiKey,
@@ -464,8 +466,10 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ] else
                         _InputRow(
-                          title: 'ASR API Key',
-                          description: '用于调用当前 ASR 接口。',
+                          title: isAlibabaAsr ? '百炼 API Key' : 'ASR API Key',
+                          description: isAlibabaAsr
+                              ? '在阿里云百炼创建 API Key；音频仅临时上传用于转写。'
+                              : '用于调用当前 ASR 接口。',
                           value: settings.asrApiKey,
                           hintText: 'YOUR_ASR_API_KEY_HERE',
                           obscureText: true,
@@ -473,6 +477,20 @@ class SettingsScreen extends ConsumerWidget {
                             ref
                                 .read(learningSettingsProvider.notifier)
                                 .setAsrApiKey(value);
+                          },
+                        ),
+                      if (isAlibabaAsr)
+                        _ActionRow(
+                          title: '申请百炼 API Key',
+                          description:
+                              '1. 登录阿里云并开通百炼；2. 在 API Key 管理页创建；3. 复制到上方。',
+                          icon: Icons.open_in_new_rounded,
+                          onTap: () {
+                            openUrl(
+                              Uri.parse(
+                                'https://help.aliyun.com/zh/model-studio/get-api-key',
+                              ),
+                            );
                           },
                         ),
                       _SwitchRow(
@@ -497,7 +515,7 @@ class SettingsScreen extends ConsumerWidget {
                               .setAsrBaseUrl(value);
                         },
                       ),
-                      if (!isTencentAsr)
+                      if (!isTencentAsr && !isAlibabaAsr)
                         _ModelFetchRow(
                           title: '获取 ASR 模型',
                           emptyDescription: '从当前 ASR provider 拉取可用模型列表。',
@@ -554,9 +572,15 @@ class SettingsScreen extends ConsumerWidget {
                         title: 'ASR Model',
                         description: isTencentAsr
                             ? '腾讯英文识别使用 16k_en。'
+                            : isAlibabaAsr
+                            ? '默认使用 qwen3-asr-flash-filetrans，提供词级时间戳。'
                             : '可手动输入模型名；已获取模型后也可以直接覆盖。',
                         value: settings.asrModel,
-                        hintText: isTencentAsr ? '16k_en' : 'whisper-1',
+                        hintText: isTencentAsr
+                            ? '16k_en'
+                            : isAlibabaAsr
+                            ? 'qwen3-asr-flash-filetrans'
+                            : 'whisper-1',
                         onChanged: (String value) {
                           ref
                               .read(learningSettingsProvider.notifier)

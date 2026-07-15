@@ -268,6 +268,20 @@ void main() {
       raw,
     );
     expect(parseSubtitleLines(raw).single.english, 'done');
+    final Directory jobDir = await runner.jobDirectory(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+    final Map<String, dynamic> report =
+        jsonDecode(
+              await File(
+                '${jobDir.path}/subtitle_quality_report.json',
+              ).readAsString(),
+            )
+            as Map<String, dynamic>;
+    expect(report['finalStatus'], 'PASS');
+    expect(report['chunks'], hasLength(1));
   });
 
   test('invalid final subtitle fails check and keeps cache empty', () async {
@@ -319,6 +333,25 @@ void main() {
       isFalse,
     );
     expect(calls, 2);
+    final Directory jobDir = await runner.jobDirectory(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings(),
+    );
+    final Map<String, dynamic> report =
+        jsonDecode(
+              await File(
+                '${jobDir.path}/subtitle_quality_report.json',
+              ).readAsString(),
+            )
+            as Map<String, dynamic>;
+    expect(report['finalStatus'], 'FAILED');
+    expect(report['wordOverlap'], greaterThan(0));
+    expect(report['sentenceOverlap'], greaterThan(0));
+    final Map<String, dynamic> anomaly =
+        (report['anomalies'] as List<dynamic>).first as Map<String, dynamic>;
+    expect(anomaly, containsPair('provider', _settings().asrProvider));
+    expect(anomaly, containsPair('sourceChunk', 0));
   });
 
   test('merge sorts, deduplicates, and repairs small overlaps', () async {

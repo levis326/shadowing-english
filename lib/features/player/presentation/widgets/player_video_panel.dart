@@ -790,7 +790,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                       !compactControls)
                                     _RoundActionButton(
                                       icon: Icons.auto_awesome_rounded,
-                                      tooltip: 'AI 生成字幕',
+                                      tooltip: 'AI生成可跟读的词级同步字幕',
                                       compact: compactControls,
                                       tiny: tinyControls,
                                       fullscreen: widget.isFullscreen,
@@ -1006,7 +1006,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                           const <PopupMenuEntry<String>>[
                                             PopupMenuItem<String>(
                                               value: 'ai',
-                                              child: Text('AI 生成字幕'),
+                                              child: Text('AI生成可跟读的词级同步字幕'),
                                             ),
                                           ],
                                       child: _MiniPillAction(

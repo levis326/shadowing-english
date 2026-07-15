@@ -28,6 +28,17 @@ typedef AsrPostJsonOverride =
       required Map<String, Object?> data,
       required Map<String, String> headers,
     });
+typedef AsrPostFormOverride =
+    Future<Response<dynamic>> Function({
+      required String url,
+      required FormData data,
+    });
+typedef AsrGetJsonOverride =
+    Future<Response<dynamic>> Function({
+      required BaseOptions options,
+      required String path,
+      required Map<String, String> headers,
+    });
 typedef AsrPrepareAudioOverride = Future<File> Function(File file);
 typedef AsrPrepareAudioChunksOverride =
     Future<List<AsrAudioChunk>> Function(File file);
@@ -72,7 +83,7 @@ class AsrSubtitleProgress {
     }
     return totalChunks == 0
         ? '正在准备音频...'
-        : '正在生成字幕 $completedChunks/$totalChunks';
+        : '正在生成词级同步字幕 $completedChunks/$totalChunks';
   }
 
   String _formatPosition(int ms) {
@@ -88,6 +99,8 @@ class AsrSubtitleService {
     this.postTranscriptionOverride,
     this.postChatCompletionOverride,
     this.postJsonOverride,
+    this.postFormOverride,
+    this.getJsonOverride,
     this.prepareAudioOverride,
     this.prepareAudioChunksOverride,
     this.now,
@@ -100,6 +113,8 @@ class AsrSubtitleService {
   final AsrPostTranscriptionOverride? postTranscriptionOverride;
   final AsrPostChatCompletionOverride? postChatCompletionOverride;
   final AsrPostJsonOverride? postJsonOverride;
+  final AsrPostFormOverride? postFormOverride;
+  final AsrGetJsonOverride? getJsonOverride;
   final AsrPrepareAudioOverride? prepareAudioOverride;
   final AsrPrepareAudioChunksOverride? prepareAudioChunksOverride;
   final DateTime Function()? now;
@@ -183,7 +198,13 @@ class AsrSubtitleService {
             'Accept': 'application/json',
           },
         );
-    final Object? normalized = _usesTencentCloudAsr(settings)
+    final Object? normalized = _usesAlibabaCloudAsr(settings)
+        ? await _generateAlibabaQwenChunk(
+            file: chunk.file,
+            settings: settings,
+            offsetMs: chunk.offsetMs,
+          )
+        : _usesTencentCloudAsr(settings)
         ? await _generateTencentSentenceChunk(
             file: chunk.file,
             settings: settings,
@@ -345,6 +366,192 @@ class AsrSubtitleService {
     } on DioException catch (error) {
       throw StateError(_dioErrorMessage(error));
     }
+  }
+
+  Future<Object?> _generateAlibabaQwenChunk({
+    required File file,
+    required LearningSettingsState settings,
+    required int offsetMs,
+  }) async {
+    final BaseOptions options = BaseOptions(
+      baseUrl: settings.asrBaseUrl,
+      headers: <String, String>{
+        'Authorization': 'Bearer ${settings.asrApiKey}',
+        'Accept': 'application/json',
+      },
+    );
+    final Map<String, String> headers = <String, String>{
+      'Authorization': 'Bearer ${settings.asrApiKey}',
+      'Content-Type': 'application/json',
+    };
+    try {
+      final Response<dynamic> policyResponse = await _getJson(
+        options: options,
+        path: '/api/v1/uploads?action=getPolicy&model=${settings.asrModel}',
+        headers: headers,
+      );
+      final Map<String, dynamic> policyBody = _asMap(policyResponse.data);
+      final Map<String, dynamic> policy = _asMap(policyBody['data']);
+      final String uploadHost = policy['upload_host'] as String? ?? '';
+      final String uploadDir = policy['upload_dir'] as String? ?? '';
+      if (uploadHost.isEmpty || uploadDir.isEmpty) {
+        throw StateError('阿里云 ASR 文件上传凭证无效。');
+      }
+      final String key = '$uploadDir/${_fileName(file.path)}';
+      final FormData uploadData = FormData.fromMap(<String, dynamic>{
+        'OSSAccessKeyId': policy['oss_access_key_id'],
+        'policy': policy['policy'],
+        'Signature': policy['signature'],
+        'x-oss-object-acl': policy['x_oss_object_acl'],
+        'x-oss-forbid-overwrite': policy['x_oss_forbid_overwrite'],
+        'key': key,
+        'success_action_status': '200',
+        'file': await MultipartFile.fromFile(file.path),
+      });
+      if (postFormOverride != null) {
+        await postFormOverride!(url: uploadHost, data: uploadData);
+      } else {
+        await Dio().post<dynamic>(uploadHost, data: uploadData);
+      }
+
+      final Response<dynamic> submitted = await _postJson(
+        options: options,
+        path: '/api/v1/services/audio/asr/transcription',
+        data: <String, Object?>{
+          'model': settings.asrModel,
+          'input': <String, Object?>{'file_url': 'oss://$key'},
+          'parameters': <String, Object?>{
+            'channel_id': <int>[0],
+            'enable_itn': false,
+            'enable_words': true,
+            'language': 'en',
+          },
+        },
+        headers: <String, String>{
+          ...headers,
+          'X-DashScope-Async': 'enable',
+          'X-DashScope-OssResourceResolve': 'enable',
+        },
+      );
+      final String taskId =
+          _asMap(_asMap(submitted.data)['output'])['task_id'] as String? ?? '';
+      if (taskId.isEmpty) {
+        throw StateError('阿里云 ASR 未返回任务 ID。');
+      }
+
+      for (int attempt = 0; attempt < 240; attempt += 1) {
+        final Response<dynamic> taskResponse = await _getJson(
+          options: options,
+          path: '/api/v1/tasks/$taskId',
+          headers: headers,
+        );
+        final Map<String, dynamic> output = _asMap(
+          _asMap(taskResponse.data)['output'],
+        );
+        final String status = output['task_status'] as String? ?? '';
+        if (status == 'SUCCEEDED') {
+          final String resultUrl =
+              _asMap(output['result'])['transcription_url'] as String? ?? '';
+          if (resultUrl.isEmpty) {
+            throw StateError('阿里云 ASR 未返回识别结果。');
+          }
+          final Response<dynamic> resultResponse = await _getJson(
+            options: BaseOptions(),
+            path: resultUrl,
+            headers: const <String, String>{},
+          );
+          return _offsetNormalized(
+            _normalizeAlibabaQwenResult(resultResponse.data),
+            offsetMs,
+          );
+        }
+        if (status == 'FAILED' || status == 'CANCELED') {
+          final String message = output['message'] as String? ?? '未知错误';
+          throw StateError('阿里云 ASR 失败：$message');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+      throw StateError('阿里云 ASR 任务超时，请重试。');
+    } on DioException catch (error) {
+      throw StateError(_dioErrorMessage(error));
+    }
+  }
+
+  Future<Response<dynamic>> _postJson({
+    required BaseOptions options,
+    required String path,
+    required Map<String, Object?> data,
+    required Map<String, String> headers,
+  }) {
+    if (postJsonOverride != null) {
+      return postJsonOverride!(
+        options: options,
+        path: path,
+        data: data,
+        headers: headers,
+      );
+    }
+    return Dio(options).post<dynamic>(
+      path,
+      data: data,
+      options: Options(headers: headers),
+    );
+  }
+
+  Future<Response<dynamic>> _getJson({
+    required BaseOptions options,
+    required String path,
+    required Map<String, String> headers,
+  }) {
+    if (getJsonOverride != null) {
+      return getJsonOverride!(options: options, path: path, headers: headers);
+    }
+    return Dio(options).get<dynamic>(path, options: Options(headers: headers));
+  }
+
+  Map<String, dynamic> _asMap(Object? value) =>
+      value is Map<String, dynamic> ? value : <String, dynamic>{};
+
+  Map<String, Object?> _normalizeAlibabaQwenResult(Object? data) {
+    final List<Map<String, Object?>> lines = <Map<String, Object?>>[];
+    for (final Object? transcript
+        in _asMap(data)['transcripts'] as List<dynamic>? ?? const <dynamic>[]) {
+      if (transcript is! Map<String, dynamic>) continue;
+      for (final Object? sentence
+          in transcript['sentences'] as List<dynamic>? ?? const <dynamic>[]) {
+        if (sentence is! Map<String, dynamic>) continue;
+        final List<Map<String, Object?>> words =
+            (sentence['words'] as List<dynamic>? ?? const <dynamic>[])
+                .whereType<Map<String, dynamic>>()
+                .map((Map<String, dynamic> word) {
+                  final String text = (word['text'] as String? ?? '').trim();
+                  final int? startMs = _intMs(word['begin_time']);
+                  final int? endMs = _intMs(word['end_time']);
+                  if (text.isEmpty ||
+                      startMs == null ||
+                      endMs == null ||
+                      endMs <= startMs) {
+                    return null;
+                  }
+                  return <String, Object?>{
+                    'text': text,
+                    'startMs': startMs,
+                    'endMs': endMs,
+                  };
+                })
+                .whereType<Map<String, Object?>>()
+                .toList(growable: false);
+        if (words.isEmpty) continue;
+        lines.add(<String, Object?>{
+          'startMs': words.first['startMs'],
+          'endMs': words.last['endMs'],
+          'english': _joinTencentWords(words),
+          'chinese': '',
+          'words': words,
+        });
+      }
+    }
+    return <String, Object?>{'version': 1, 'language': 'en', 'lines': lines};
   }
 
   ({String secretId, String secretKey}) _tencentCredentials(String value) {
@@ -763,6 +970,11 @@ class AsrSubtitleService {
   bool _usesMimoChatAsr(LearningSettingsState settings) {
     return settings.asrProvider == 'MiMo Token Plan' ||
         settings.asrModel.toLowerCase().startsWith('mimo-v2.5-asr');
+  }
+
+  bool _usesAlibabaCloudAsr(LearningSettingsState settings) {
+    return settings.asrProvider == '阿里云百炼' ||
+        settings.asrProvider == 'Alibaba Cloud';
   }
 
   bool _usesTencentCloudAsr(LearningSettingsState settings) {

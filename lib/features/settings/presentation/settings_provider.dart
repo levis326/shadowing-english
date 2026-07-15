@@ -31,7 +31,7 @@ const List<String> translationProviderOptions = <String>[
   '百度翻译',
   '阿里云翻译',
 ];
-const List<String> asrProviderOptions = <String>['OpenAI', '腾讯云'];
+const List<String> asrProviderOptions = <String>['阿里云百炼', 'OpenAI', '腾讯云'];
 
 const String _learningSettingsStorageKey = 'learning_settings_v1';
 
@@ -88,6 +88,11 @@ const Map<String, TranslationProviderPreset> translationProviderPresets =
 
 const Map<String, TranslationProviderPreset> asrProviderPresets =
     <String, TranslationProviderPreset>{
+      '阿里云百炼': TranslationProviderPreset(
+        name: '阿里云百炼',
+        baseUrl: 'https://dashscope.aliyuncs.com',
+        model: 'qwen3-asr-flash-filetrans',
+      ),
       'OpenAI': TranslationProviderPreset(
         name: 'OpenAI',
         baseUrl: 'https://api.openai.com/v1',
@@ -135,7 +140,7 @@ class LearningSettingsState {
     final TranslationProviderPreset defaultPreset =
         translationProviderPresets['OpenAI']!;
     final TranslationProviderPreset defaultAsrPreset =
-        asrProviderPresets['OpenAI']!;
+        asrProviderPresets['阿里云百炼']!;
     return LearningSettingsState(
       subtitleMode: '双语',
       playbackSpeed: '0.8×',
@@ -716,7 +721,9 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
   }
 
   String _normalizeAsrProvider(String value) {
-    return value == 'Tencent Cloud' ? '腾讯云' : value;
+    if (value == 'Tencent Cloud') return '腾讯云';
+    if (value == 'Alibaba Cloud') return '阿里云百炼';
+    return value;
   }
 
   bool _isAiProvider(String provider) {

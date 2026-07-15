@@ -52,6 +52,7 @@ void main() {
         videoPath: video.path,
         settings: LearningSettingsState.defaults().copyWith(
           asrApiKey: 'demo-key',
+          asrProvider: 'OpenAI',
           asrBaseUrl: 'https://api.example.com/v1',
           asrModel: 'asr-demo',
         ),
@@ -152,6 +153,131 @@ void main() {
     final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
     expect(lines.single.english, 'I want to learn English.');
     expect(lines.single.words.single.startMs, 70000);
+  });
+
+  test('阿里云百炼 ASR uploads chunks and parses word timestamps', () async {
+    final File video = File(
+      '${Directory.systemTemp.createTempSync('alibaba-asr-service-test-').path}/lesson.mp4',
+    )..writeAsStringSync('demo');
+    final File chunk = File('${video.parent.path}/chunk.m4a')
+      ..writeAsStringSync('audio-bytes');
+    addTearDown(() => video.parent.deleteSync(recursive: true));
+
+    final AsrSubtitleService service = AsrSubtitleService(
+      prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+        AsrAudioChunk(file: chunk, offsetMs: 60000),
+      ],
+      postFormOverride: ({required String url, required FormData data}) async {
+        expect(url, 'https://upload.example.com');
+        return Response<dynamic>(
+          requestOptions: RequestOptions(path: url),
+          statusCode: 200,
+        );
+      },
+      postJsonOverride:
+          ({
+            required BaseOptions options,
+            required String path,
+            required Map<String, Object?> data,
+            required Map<String, String> headers,
+          }) async {
+            expect(options.baseUrl, 'https://dashscope.aliyuncs.com');
+            expect(path, '/api/v1/services/audio/asr/transcription');
+            expect(data['model'], 'qwen3-asr-flash-filetrans');
+            expect(headers['X-DashScope-Async'], 'enable');
+            expect(headers['X-DashScope-OssResourceResolve'], 'enable');
+            return Response<dynamic>(
+              requestOptions: RequestOptions(path: path),
+              data: <String, dynamic>{
+                'output': <String, dynamic>{'task_id': 'task-1'},
+              },
+            );
+          },
+      getJsonOverride:
+          ({
+            required BaseOptions options,
+            required String path,
+            required Map<String, String> headers,
+          }) async {
+            if (path.startsWith('/api/v1/uploads?')) {
+              expect(headers['Authorization'], 'Bearer dashscope-key');
+              return Response<dynamic>(
+                requestOptions: RequestOptions(path: path),
+                data: <String, dynamic>{
+                  'data': <String, dynamic>{
+                    'upload_host': 'https://upload.example.com',
+                    'upload_dir': 'dashscope-instant/test',
+                    'oss_access_key_id': 'temporary-id',
+                    'policy': 'temporary-policy',
+                    'signature': 'temporary-signature',
+                    'x_oss_object_acl': 'private',
+                    'x_oss_forbid_overwrite': 'true',
+                  },
+                },
+              );
+            }
+            if (path == '/api/v1/tasks/task-1') {
+              return Response<dynamic>(
+                requestOptions: RequestOptions(path: path),
+                data: <String, dynamic>{
+                  'output': <String, dynamic>{
+                    'task_status': 'SUCCEEDED',
+                    'result': <String, dynamic>{
+                      'transcription_url': 'https://result.example.com/task-1',
+                    },
+                  },
+                },
+              );
+            }
+            expect(path, 'https://result.example.com/task-1');
+            return Response<dynamic>(
+              requestOptions: RequestOptions(path: path),
+              data: <String, dynamic>{
+                'transcripts': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'sentences': <Map<String, dynamic>>[
+                      <String, dynamic>{
+                        'begin_time': 100,
+                        'end_time': 700,
+                        'words': <Map<String, dynamic>>[
+                          <String, dynamic>{
+                            'text': 'Hello',
+                            'begin_time': 100,
+                            'end_time': 400,
+                          },
+                          <String, dynamic>{
+                            'text': 'world',
+                            'begin_time': 410,
+                            'end_time': 700,
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            );
+          },
+    );
+
+    final String raw = await service.generateWordsJson(
+      videoPath: video.path,
+      settings: LearningSettingsState.defaults().copyWith(
+        asrProvider: '阿里云百炼',
+        asrApiKey: 'dashscope-key',
+        asrBaseUrl: 'https://dashscope.aliyuncs.com',
+        asrModel: 'qwen3-asr-flash-filetrans',
+      ),
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
+    expect(lines, hasLength(1));
+    expect(lines.single.english, 'Hello world');
+    expect(lines.single.startMs, 60100);
+    expect(
+      lines.single.words.map((PlayerSubtitleWord word) => word.text),
+      <String>['Hello', 'world'],
+    );
   });
 
   test('腾讯云 ASR uploads audio and parses word timestamps', () async {
