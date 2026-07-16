@@ -571,18 +571,26 @@ class _PadPortraitPlayerScreenState
           dictionary: ref.read(offlineWordDictionaryProvider),
         );
     if (!mounted) return;
+    final LearningSettingsState lookupSettings = ref.read(
+      learningSettingsProvider,
+    );
+    final WordLookupService lookupService = ref.read(wordLookupServiceProvider);
     try {
       await _transcriptReaderSession.open(
         context: context,
         snapshot: snapshot,
         lookupWord:
-            ({required String rawWord, required String contextSentence}) => ref
-                .read(wordLookupServiceProvider)
-                .lookupWord(
+            ({required String rawWord, required String contextSentence}) =>
+                lookupService.lookupWord(
                   rawWord: rawWord,
                   contextSentence: contextSentence,
-                  settings: ref.read(learningSettingsProvider),
+                  settings: lookupSettings,
                 ),
+        translateSentence: (String sentence) => lookupService.translateSentence(
+          sentence: sentence,
+          settings: lookupSettings,
+        ),
+        playFullTranscript: _handlePlayFullTranscript,
         toggleLineLoop: (int lineIndex) async {
           _handleLoopFromLine(lineIndex);
         },
@@ -1222,6 +1230,22 @@ class _PadPortraitPlayerScreenState
 
   String _makeSentenceKey(PlayerSubtitleLine line) {
     return '${widget.episodeId}-${line.startMs}-${line.endMs}-${line.english}';
+  }
+
+  Future<void> _handlePlayFullTranscript() async {
+    if (!state.hasLines || _videoPlayer == null || !_videoReady) {
+      throw StateError('Original video playback is unavailable');
+    }
+    setState(() {
+      if (state.isLooping) state.toggleLoop();
+      state
+        ..selectLine(0)
+        ..isPlaying = true;
+    });
+    _syncTranscriptReader();
+    _seekToActiveLine();
+    _lastTrackedVideoPosition = _currentVideoPosition();
+    _applyPlaybackMode();
   }
 
   void _handleLoopFromLine(int index) {

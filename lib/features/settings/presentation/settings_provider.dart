@@ -165,7 +165,7 @@ class LearningSettingsState {
       availableAsrModels: const <String>[],
       isFetchingAsrModels: false,
       useCustomAsrEndpoint: false,
-      generateBilingualAsrSubtitles: false,
+      generateBilingualAsrSubtitles: true,
       ttsEngine: '',
       ttsVoice: '',
       ttsRate: 0.75,

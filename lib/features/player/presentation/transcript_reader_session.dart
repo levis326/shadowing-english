@@ -18,6 +18,9 @@ typedef TranscriptReaderWordLookup =
     });
 
 typedef TranscriptReaderLineLoop = Future<void> Function(int lineIndex);
+typedef TranscriptReaderFullPlayback = Future<void> Function();
+typedef TranscriptReaderSentenceTranslation =
+    Future<String?> Function(String sentence);
 
 bool get supportsTranscriptReaderWindow =>
     !kIsWeb &&
@@ -35,6 +38,8 @@ class TranscriptReaderSession {
   WindowController? _mainWindow;
   TranscriptReaderWordLookup? _lookupWord;
   TranscriptReaderLineLoop? _toggleLineLoop;
+  TranscriptReaderFullPlayback? _playFullTranscript;
+  TranscriptReaderSentenceTranslation? _translateSentence;
   bool _sendingProgress = false;
   TranscriptReaderProgress? _lastSentProgress;
 
@@ -42,7 +47,9 @@ class TranscriptReaderSession {
     required BuildContext context,
     required TranscriptReaderSnapshot snapshot,
     required TranscriptReaderWordLookup lookupWord,
-    required TranscriptReaderLineLoop toggleLineLoop,
+    TranscriptReaderLineLoop? toggleLineLoop,
+    TranscriptReaderFullPlayback? playFullTranscript,
+    TranscriptReaderSentenceTranslation? translateSentence,
   }) async {
     progress.value = snapshot.progress;
     if (!supportsTranscriptReaderWindow) {
@@ -52,6 +59,7 @@ class TranscriptReaderSession {
           builder: (BuildContext routeContext) => FullTranscriptReaderScreen(
             snapshot: snapshot,
             progressListenable: progress,
+            onPlayFullTranscript: playFullTranscript,
             onToggleLineLoop: toggleLineLoop,
             onClose: () => Navigator.of(routeContext).pop(),
           ),
@@ -64,6 +72,8 @@ class TranscriptReaderSession {
         await WindowController.fromCurrentEngine();
     _lookupWord = lookupWord;
     _toggleLineLoop = toggleLineLoop;
+    _playFullTranscript = playFullTranscript;
+    _translateSentence = translateSentence;
     await mainWindow.setWindowMethodHandler(_handleMainWindowMethod);
     _mainWindow = mainWindow;
 
@@ -164,13 +174,24 @@ class TranscriptReaderSession {
 
   void dispose() {
     final WindowController? mainWindow = _mainWindow;
-    if (mainWindow != null) {
+    _toggleLineLoop = null;
+    _playFullTranscript = null;
+    if (mainWindow != null && _desktopWindow == null) {
       unawaited(mainWindow.setWindowMethodHandler(null));
     }
     progress.dispose();
   }
 
   Future<dynamic> _handleMainWindowMethod(MethodCall call) async {
+    if (call.method == 'playFullTranscript') {
+      final TranscriptReaderFullPlayback? playFullTranscript =
+          _playFullTranscript;
+      if (playFullTranscript == null) {
+        throw StateError('Transcript reader full playback is unavailable');
+      }
+      await playFullTranscript();
+      return null;
+    }
     if (call.method == 'toggleLineLoop') {
       final TranscriptReaderLineLoop? toggleLineLoop = _toggleLineLoop;
       if (toggleLineLoop == null) {
@@ -178,6 +199,12 @@ class TranscriptReaderSession {
       }
       await toggleLineLoop(call.arguments as int? ?? 0);
       return progress.value.toJson();
+    }
+    if (call.method == 'translateSentence') {
+      final TranscriptReaderSentenceTranslation? translateSentence =
+          _translateSentence;
+      if (translateSentence == null) return null;
+      return translateSentence(call.arguments as String? ?? '');
     }
     if (call.method != 'lookupWord') {
       throw MissingPluginException('Unknown reader request: ${call.method}');

@@ -256,6 +256,20 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final Finder selectionArea = find.byKey(
+      const ValueKey<String>('subtitle-list-selection-area'),
+    );
+    expect(selectionArea, findsOneWidget);
+    expect(
+      find.descendant(of: selectionArea, matching: find.text('chaotic')),
+      findsOneWidget,
+    );
+
+    expect(
+      find.descendant(of: selectionArea, matching: find.text('\n')),
+      findsWidgets,
+    );
+
     await tester.tap(find.text('chaotic'));
     await tester.pumpAndSettle();
 

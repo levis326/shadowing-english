@@ -1042,6 +1042,7 @@ LearningSettingsState _settings() {
     asrApiKey: 'demo-key',
     asrBaseUrl: 'https://api.example.com/v1',
     asrModel: 'whisper-1',
+    generateBilingualAsrSubtitles: false,
   );
 }
 

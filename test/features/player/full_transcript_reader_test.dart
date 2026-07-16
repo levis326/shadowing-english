@@ -1,13 +1,17 @@
+import 'dart:async';
+
 import 'package:common_learn_english/features/player/presentation/full_transcript_reader.dart';
 import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
 import 'package:common_learn_english/features/player/presentation/transcript_reader_session.dart';
 import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
 import 'package:common_learn_english/features/shared/data/word_lookup_service.dart';
+import 'package:common_learn_english/features/shared/data/word_pronunciation_service.dart';
 import 'package:common_learn_english/features/shared/domain/word_lookup_entry.dart';
 import 'package:common_learn_english/features/words/data/offline_word_dictionary.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:riverpod/misc.dart' show Override;
 
 void main() {
   const List<PlayerSubtitleLine> lines = <PlayerSubtitleLine>[
@@ -170,6 +174,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    final Finder selectionArea = find.byKey(
+      const ValueKey<String>('full-transcript-selection-area'),
+    );
+    expect(selectionArea, findsOneWidget);
+    expect(
+      find.descendant(of: selectionArea, matching: find.text('Guess')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: selectionArea, matching: find.text('This')),
+      findsOneWidget,
+    );
+
+    expect(
+      find.descendant(of: selectionArea, matching: find.text('\n')),
+      findsWidgets,
+    );
+
     final Finder activeLine = find.byKey(
       const ValueKey<String>('reader-line-0-true'),
     );
@@ -241,7 +263,7 @@ void main() {
     );
   });
 
-  testWidgets('each full transcript sentence can toggle single-line loop', (
+  testWidgets('full transcript playback keeps the per-line loop control', (
     WidgetTester tester,
   ) async {
     final ValueNotifier<TranscriptReaderProgress> progress =
@@ -249,6 +271,7 @@ void main() {
           const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
         );
     addTearDown(progress.dispose);
+    bool requestedFullPlayback = false;
     int? requestedLineIndex;
 
     await tester.pumpWidget(
@@ -262,6 +285,9 @@ void main() {
             progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
           ),
           progressListenable: progress,
+          onPlayFullTranscript: () {
+            requestedFullPlayback = true;
+          },
           onToggleLineLoop: (int index) {
             requestedLineIndex = index;
             progress.value = TranscriptReaderProgress(
@@ -275,6 +301,12 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('reader-play-full-transcript')),
+    );
+    await tester.pumpAndSettle();
+    expect(requestedFullPlayback, isTrue);
 
     final Finder loopButton = find.byKey(
       const ValueKey<String>('reader-line-loop-0'),
@@ -292,6 +324,194 @@ void main() {
       ).loopingLineIndex,
       0,
     );
+  });
+
+  testWidgets('shows the full sentence translation below word meanings', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: FullTranscriptReaderScreen(
+            snapshot: const TranscriptReaderSnapshot(
+              courseTitle: '测试课程',
+              episodeTitle: '第 01 集',
+              lines: lines,
+              meanings: <String, String>{'guess': '猜测'},
+              progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+            ),
+            progressListenable: progress,
+            onClose: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('猜猜我买了什么？'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('reader-sentence-translation')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'full transcript TTS pauses between lines and highlights narrated words',
+    (WidgetTester tester) async {
+      final ValueNotifier<TranscriptReaderProgress> progress =
+          ValueNotifier<TranscriptReaderProgress>(
+            const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+          );
+      addTearDown(progress.dispose);
+      final List<String> spokenLines = <String>[];
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: <Override>[
+            wordPronunciationServiceProvider.overrideWith(
+              (Ref ref) => WordPronunciationService(
+                speakOverride: (String text) async => spokenLines.add(text),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            home: FullTranscriptReaderScreen(
+              snapshot: const TranscriptReaderSnapshot(
+                courseTitle: '测试课程',
+                episodeTitle: '第 01 集',
+                lines: <PlayerSubtitleLine>[
+                  ...lines,
+                  PlayerSubtitleLine(
+                    startTime: '00:04',
+                    english: 'This is the next sentence.',
+                    chinese: '这是下一句。',
+                    startMs: 4000,
+                    endMs: 6000,
+                  ),
+                ],
+                meanings: <String, String>{},
+                progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+              ),
+              progressListenable: progress,
+              onClose: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('reader-play-full-transcript')),
+      );
+      await tester.pump();
+
+      expect(spokenLines, <String>['Guess what I bought?']);
+
+      await tester.pump(const Duration(milliseconds: 750));
+      expect(
+        find.byKey(const ValueKey<String>('reader-word-box-what-true')),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(milliseconds: 2200));
+      expect(spokenLines, <String>['Guess what I bought?']);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(spokenLines, <String>[
+        'Guess what I bought?',
+        'This is the next sentence.',
+      ]);
+      expect(
+        find.byKey(const ValueKey<String>('reader-line-1-true')),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(milliseconds: 2800));
+      await tester.pumpAndSettle();
+    },
+  );
+
+  testWidgets('full transcript TTS can pause, continue, and stop on close', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<TranscriptReaderProgress> progress =
+        ValueNotifier<TranscriptReaderProgress>(
+          const TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+        );
+    addTearDown(progress.dispose);
+    final List<String> spokenLines = <String>[];
+    Completer<void>? activeSpeech;
+    int stopCount = 0;
+    bool closed = false;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: <Override>[
+          wordPronunciationServiceProvider.overrideWith(
+            (Ref ref) => WordPronunciationService(
+              speakOverride: (String text) async {
+                spokenLines.add(text);
+                activeSpeech = Completer<void>();
+                await activeSpeech!.future;
+              },
+              stopOverride: () async {
+                stopCount += 1;
+                final Completer<void>? speech = activeSpeech;
+                if (speech != null && !speech.isCompleted) {
+                  speech.complete();
+                }
+              },
+            ),
+          ),
+        ],
+        child: MaterialApp(
+          home: FullTranscriptReaderScreen(
+            snapshot: const TranscriptReaderSnapshot(
+              courseTitle: '测试课程',
+              episodeTitle: '第 01 集',
+              lines: lines,
+              meanings: <String, String>{},
+              progress: TranscriptReaderProgress(lineIndex: 0, wordIndex: 0),
+            ),
+            progressListenable: progress,
+            onClose: () => closed = true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final Finder listenButton = find.byKey(
+      const ValueKey<String>('reader-play-full-transcript'),
+    );
+    await tester.tap(listenButton);
+    await tester.pump();
+    expect(spokenLines, <String>['Guess what I bought?']);
+    expect(find.text('暂停'), findsOneWidget);
+
+    await tester.tap(listenButton);
+    await tester.pumpAndSettle();
+    expect(stopCount, 1);
+    expect(find.text('继续'), findsOneWidget);
+
+    await tester.tap(listenButton);
+    await tester.pump();
+    expect(spokenLines, <String>[
+      'Guess what I bought?',
+      'Guess what I bought?',
+    ]);
+    expect(find.text('暂停'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('关闭逐词全文'));
+    await tester.pumpAndSettle();
+    expect(stopCount, 2);
+    expect(closed, isTrue);
   });
 
   testWidgets('tapping a reader word opens the anchored lookup popup', (
@@ -342,6 +562,10 @@ void main() {
     expect(popupRect.top, greaterThanOrEqualTo(0));
     expect(popupRect.right, lessThanOrEqualTo(900));
     expect(popupRect.bottom, lessThanOrEqualTo(700));
+
+    progress.value = const TranscriptReaderProgress(lineIndex: 0, wordIndex: 3);
+    await tester.pumpAndSettle();
+    expect(popup, findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.close_rounded).last);
     await tester.pumpAndSettle();

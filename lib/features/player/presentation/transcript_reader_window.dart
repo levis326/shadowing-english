@@ -74,7 +74,32 @@ class _TranscriptReaderProxyWordLookupService extends WordLookupService {
       parentWindowId: parentWindowId,
       rawWord: rawWord,
       contextSentence: contextSentence ?? '',
+    ).catchError(
+      (_) => WordLookupEntry(
+        word: rawWord,
+        phonetic: '',
+        type: '英文单词',
+        definitionEn: 'The player is closed. Showing the saved meaning.',
+        usageEn: '',
+        exampleSentenceEn: '',
+        definitionCn: '播放器已关闭，显示字幕内置词义。',
+        sourceLabel: '未配置',
+      ),
     );
+  }
+
+  @override
+  Future<String?> translateSentence({
+    required String sentence,
+    required LearningSettingsState settings,
+  }) async {
+    try {
+      return await WindowController.fromWindowId(
+        parentWindowId,
+      ).invokeMethod<String>('translateSentence', sentence);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
@@ -176,12 +201,21 @@ class _TranscriptReaderWindowAppState
       home: FullTranscriptReaderScreen(
         snapshot: _snapshot,
         progressListenable: _progress,
+        onPlayFullTranscript: widget.parentWindowId.isEmpty
+            ? null
+            : _playFullTranscript,
         onToggleLineLoop: widget.parentWindowId.isEmpty
             ? null
             : _toggleLineLoop,
         onClose: windowManager.close,
       ),
     );
+  }
+
+  Future<void> _playFullTranscript() async {
+    await WindowController.fromWindowId(
+      widget.parentWindowId,
+    ).invokeMethod<void>('playFullTranscript');
   }
 
   Future<void> _toggleLineLoop(int lineIndex) async {

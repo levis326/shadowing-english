@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/services.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
@@ -364,9 +365,16 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
 
     final int itemCount = _showCurrentOnly ? 1 : totalLineCount;
 
-    final Widget list = NotificationListener<ScrollNotification>(
-      onNotification: _handleScrollNotification,
-      child: ListView.separated(
+    final Widget list = SelectionArea(
+      key: const ValueKey<String>('subtitle-list-selection-area'),
+      onSelectionChanged: (SelectedContent? selection) {
+        if (selection?.plainText.trim().isNotEmpty ?? false) {
+          _autoFollowCurrentLine = false;
+        }
+      },
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: ListView.separated(
         controller: _scrollController,
         padding: const EdgeInsets.all(2),
         itemCount: itemCount,
@@ -556,6 +564,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                           active,
                         ),
                       if (widget.subtitleMode != '单英') ...<Widget>[
+                        const _SelectableLineBreak(),
                         const SizedBox(height: 4),
                         Text(
                           line.chinese,
@@ -570,6 +579,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                           ),
                         ),
                       ],
+                      const _SelectableLineBreak(),
                     ],
                   ),
                 ],
@@ -577,19 +587,20 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
             ),
           );
         },
-        separatorBuilder: (_, __) => const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14),
-          child: Column(
-            children: <Widget>[
-              SizedBox(height: 4),
-              Divider(
-                key: ValueKey<String>('subtitle-list-divider'),
-                height: 1,
-                thickness: 1,
-                color: Color(0xFFE6EBE7),
-              ),
-              SizedBox(height: 4),
-            ],
+          separatorBuilder: (_, __) => const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 14),
+            child: Column(
+              children: <Widget>[
+                SizedBox(height: 4),
+                Divider(
+                  key: ValueKey<String>('subtitle-list-divider'),
+                  height: 1,
+                  thickness: 1,
+                  color: Color(0xFFE6EBE7),
+                ),
+                SizedBox(height: 4),
+              ],
+            ),
           ),
         ),
       ),
@@ -769,9 +780,12 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                         ),
                       ),
                     ),
-                    child: Text(
-                      token.value,
-                      style: TextStyle(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: <Widget>[
+                        Text(
+                          token.value,
+                          style: TextStyle(
                         fontSize: active
                             ? _activeFontSize * widget.fontScale
                             : (_activeFontSize * widget.fontScale) - 2,
@@ -793,8 +807,16 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                                 widget.subtitleWordHighlightStyle == '下划线'
                             ? 2
                             : null,
-                        height: 1.35,
-                      ),
+                            height: 1.35,
+                          ),
+                        ),
+                        if (index != tokens.length - 1)
+                          const Positioned(
+                            right: -1,
+                            bottom: 0,
+                            child: IgnorePointer(child: Text(' ')),
+                          ),
+                      ],
                     ),
                   ),
                 );
@@ -816,6 +838,27 @@ class _WordToken {
   const _WordToken({required this.value});
 
   final String value;
+}
+
+class _SelectableLineBreak extends StatelessWidget {
+  const _SelectableLineBreak();
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: SizedBox(
+        height: 0.01,
+        child: Text(
+          '\n',
+          style: TextStyle(
+            fontSize: 1,
+            height: 0.01,
+            color: Colors.transparent,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _SubtitlePlaceholder extends StatelessWidget {

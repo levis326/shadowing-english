@@ -1,6 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/word_lookup_service.dart';
+import '../../shared/data/word_pronunciation_service.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
 import '../../shared/presentation/word_lookup_popup.dart';
 import '../../words/data/offline_word_dictionary.dart';
@@ -137,11 +144,33 @@ String normalizeTranscriptReaderWord(String value) {
   return (match?.group(0) ?? '').toLowerCase().replaceAll('’', "'");
 }
 
-class FullTranscriptReaderScreen extends StatefulWidget {
+Duration transcriptReaderWordHighlightInterval(
+  PlayerSubtitleLine line, {
+  required double speechRate,
+}) {
+  final int wordCount = transcriptReaderTokens(line).length;
+  if (wordCount == 0) return Duration.zero;
+  final int lineDurationMs = line.endMs - line.startMs;
+  final int sourceIntervalMs = lineDurationMs > 0
+      ? (lineDurationMs / wordCount).round()
+      : 420;
+  final double normalizedRate = speechRate.clamp(0.5, 1.25);
+  final int intervalMs = (sourceIntervalMs / normalizedRate).round();
+  return Duration(milliseconds: intervalMs.clamp(280, 900));
+}
+
+Duration transcriptReaderFollowAlongPause(PlayerSubtitleLine line) {
+  final int lineDurationMs = line.endMs - line.startMs;
+  final int pauseMs = lineDurationMs > 0 ? (lineDurationMs * 0.2).round() : 500;
+  return Duration(milliseconds: pauseMs.clamp(350, 900));
+}
+
+class FullTranscriptReaderScreen extends ConsumerStatefulWidget {
   const FullTranscriptReaderScreen({
     required this.snapshot,
     required this.progressListenable,
     required this.onClose,
+    this.onPlayFullTranscript,
     this.onToggleLineLoop,
     super.key,
   });
@@ -149,19 +178,27 @@ class FullTranscriptReaderScreen extends StatefulWidget {
   final TranscriptReaderSnapshot snapshot;
   final ValueListenable<TranscriptReaderProgress> progressListenable;
   final VoidCallback onClose;
-  final ValueChanged<int>? onToggleLineLoop;
+  final FutureOr<void> Function()? onPlayFullTranscript;
+  final FutureOr<void> Function(int lineIndex)? onToggleLineLoop;
 
   @override
-  State<FullTranscriptReaderScreen> createState() =>
+  ConsumerState<FullTranscriptReaderScreen> createState() =>
       _FullTranscriptReaderScreenState();
 }
 
 class _FullTranscriptReaderScreenState
-    extends State<FullTranscriptReaderScreen> {
+    extends ConsumerState<FullTranscriptReaderScreen> {
   final ScrollController _scrollController = ScrollController();
   final GlobalKey _activeWordKey = GlobalKey();
   late TranscriptReaderProgress _progress;
   bool _showTranslations = true;
+  bool _hasTextSelection = false;
+  bool _isListeningFullTranscript = false;
+  bool _isFullTranscriptPaused = false;
+  int _narrationRun = 0;
+  WordPronunciationService? _activePronunciationService;
+  Timer? _narrationTimer;
+  Completer<void>? _narrationDelayCompleter;
   String? _activeLookupTokenId;
   OverlayEntry? _lookupOverlayEntry;
 
@@ -170,7 +207,6 @@ class _FullTranscriptReaderScreenState
     super.initState();
     _progress = widget.progressListenable.value;
     widget.progressListenable.addListener(_handleProgressChanged);
-    _scrollController.addListener(_dismissWordLookup);
     WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveWord());
   }
 
@@ -186,11 +222,15 @@ class _FullTranscriptReaderScreenState
 
   @override
   void dispose() {
+    _narrationRun += 1;
+    _cancelNarrationDelay();
+    final WordPronunciationService? pronunciation = _activePronunciationService;
+    if (pronunciation != null) {
+      unawaited(pronunciation.stop().catchError((Object _) {}));
+    }
     _removeWordLookupOverlay();
     widget.progressListenable.removeListener(_handleProgressChanged);
-    _scrollController
-      ..removeListener(_dismissWordLookup)
-      ..dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -202,7 +242,9 @@ class _FullTranscriptReaderScreenState
       return;
     }
     setState(() => _progress = next);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveWord());
+    if (!_hasTextSelection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _revealActiveWord());
+    }
   }
 
   Future<void> _revealActiveWord() async {
@@ -249,6 +291,168 @@ class _FullTranscriptReaderScreenState
     _lookupOverlayEntry?.remove();
     _lookupOverlayEntry = null;
     _activeLookupTokenId = null;
+  }
+
+  Future<void> _listenFullTranscript() async {
+    if (_isListeningFullTranscript) return;
+    if (widget.snapshot.lines.isEmpty) return;
+    final int narrationRun = ++_narrationRun;
+    final int startLineIndex = _isFullTranscriptPaused
+        ? _progress.lineIndex.clamp(0, widget.snapshot.lines.length - 1)
+        : 0;
+    setState(() {
+      _isListeningFullTranscript = true;
+      _isFullTranscriptPaused = false;
+    });
+    try {
+      final FutureOr<void> Function()? playOriginal =
+          widget.onPlayFullTranscript;
+      if (playOriginal != null) {
+        try {
+          await playOriginal();
+          return;
+        } catch (_) {
+          // The player may have closed while the transcript window stays open.
+        }
+      }
+      final WordPronunciationService pronunciation = ref.read(
+        wordPronunciationServiceProvider,
+      );
+      final double speechRate = ref.read(learningSettingsProvider).ttsRate;
+      _activePronunciationService = pronunciation;
+      final List<PlayerSubtitleLine> lines = widget.snapshot.lines;
+      for (
+        int lineIndex = startLineIndex;
+        lineIndex < lines.length;
+        lineIndex++
+      ) {
+        if (!_isNarrationActive(narrationRun)) return;
+        final PlayerSubtitleLine line = lines[lineIndex];
+        final String text = line.english.trim();
+        final List<String> tokens = transcriptReaderTokens(line);
+        if (text.isEmpty || tokens.isEmpty) continue;
+
+        await Future.wait<void>(<Future<void>>[
+          pronunciation.speak(text),
+          _trackNarratedWords(
+            narrationRun: narrationRun,
+            line: line,
+            lineIndex: lineIndex,
+            wordCount: tokens.length,
+            speechRate: speechRate,
+          ),
+        ]);
+        if (!_isNarrationActive(narrationRun) ||
+            lineIndex == lines.length - 1) {
+          continue;
+        }
+        await _waitForNarrationDelay(transcriptReaderFollowAlongPause(line));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('朗读失败，请检查设备 TTS。')));
+    } finally {
+      if (mounted && narrationRun == _narrationRun) {
+        _activePronunciationService = null;
+        setState(() {
+          _isListeningFullTranscript = false;
+          _isFullTranscriptPaused = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _toggleFullTranscriptNarration() async {
+    if (_isListeningFullTranscript) {
+      await _stopFullTranscriptNarration(rememberPosition: true);
+      return;
+    }
+    await _listenFullTranscript();
+  }
+
+  Future<void> _stopFullTranscriptNarration({
+    required bool rememberPosition,
+  }) async {
+    _narrationRun += 1;
+    _cancelNarrationDelay();
+    final WordPronunciationService? pronunciation = _activePronunciationService;
+    _activePronunciationService = null;
+    if (mounted) {
+      setState(() {
+        _isListeningFullTranscript = false;
+        _isFullTranscriptPaused = rememberPosition;
+      });
+    }
+    if (pronunciation != null) {
+      try {
+        await pronunciation.stop();
+      } catch (_) {
+        // Closing or pausing should still finish even if the TTS engine exited.
+      }
+    }
+  }
+
+  Future<void> _closeReader() async {
+    await _stopFullTranscriptNarration(rememberPosition: false);
+    widget.onClose();
+  }
+
+  bool _isNarrationActive(int narrationRun) {
+    return mounted && narrationRun == _narrationRun;
+  }
+
+  Future<void> _waitForNarrationDelay(Duration duration) {
+    final Completer<void> completer = Completer<void>();
+    _narrationDelayCompleter = completer;
+    _narrationTimer = Timer(duration, () {
+      if (identical(_narrationDelayCompleter, completer)) {
+        _narrationDelayCompleter = null;
+        _narrationTimer = null;
+      }
+      completer.complete();
+    });
+    return completer.future;
+  }
+
+  void _cancelNarrationDelay() {
+    _narrationTimer?.cancel();
+    _narrationTimer = null;
+    final Completer<void>? completer = _narrationDelayCompleter;
+    _narrationDelayCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
+  }
+
+  Future<void> _trackNarratedWords({
+    required int narrationRun,
+    required PlayerSubtitleLine line,
+    required int lineIndex,
+    required int wordCount,
+    required double speechRate,
+  }) async {
+    final Duration interval = transcriptReaderWordHighlightInterval(
+      line,
+      speechRate: speechRate,
+    );
+    for (int wordIndex = 0; wordIndex < wordCount; wordIndex++) {
+      if (!_isNarrationActive(narrationRun)) return;
+      setState(
+        () => _progress = TranscriptReaderProgress(
+          lineIndex: lineIndex,
+          wordIndex: wordIndex,
+          loopingLineIndex: _progress.loopingLineIndex,
+        ),
+      );
+      if (!_hasTextSelection) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _revealActiveWord(),
+        );
+      }
+      await _waitForNarrationDelay(interval);
+    }
   }
 
   void _toggleWordLookup({
@@ -376,53 +580,71 @@ class _FullTranscriptReaderScreenState
               onTranslationChanged: (bool value) {
                 setState(() => _showTranslations = value);
               },
+              isListeningFullTranscript: _isListeningFullTranscript,
+              isFullTranscriptPaused: _isFullTranscriptPaused,
+              onListenFullTranscript: _toggleFullTranscriptNarration,
               onLocateCurrentWord: _revealActiveWord,
-              onClose: widget.onClose,
+              onClose: _closeReader,
             ),
             Expanded(
-              child: Scrollbar(
-                controller: _scrollController,
-                thumbVisibility: true,
-                child: ListView.builder(
+              child: SelectionArea(
+                key: const ValueKey<String>('full-transcript-selection-area'),
+                onSelectionChanged: (SelectedContent? selection) {
+                  _hasTextSelection =
+                      selection?.plainText.trim().isNotEmpty ?? false;
+                },
+                child: Scrollbar(
                   controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(32, 28, 32, 80),
-                  itemCount: widget.snapshot.lines.length,
-                  itemBuilder: (BuildContext context, int lineIndex) => Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1180),
-                      child: _ReaderLine(
-                        line: widget.snapshot.lines[lineIndex],
-                        meanings: widget.snapshot.meanings,
-                        lineIndex: lineIndex,
-                        activeLineIndex: _progress.lineIndex,
-                        activeWordIndex: _progress.wordIndex,
-                        activeWordKey: _activeWordKey,
-                        showTranslations: _showTranslations,
-                        isLooping: _progress.loopingLineIndex == lineIndex,
-                        onToggleLoop: widget.onToggleLineLoop == null
-                            ? null
-                            : () => widget.onToggleLineLoop!(lineIndex),
-                        onWordTap:
-                            (
-                              BuildContext anchorContext,
-                              String token,
-                              int wordIndex,
-                            ) {
-                              _toggleWordLookup(
-                                anchorContext: anchorContext,
-                                rawWord: token,
-                                contextSentence:
-                                    widget.snapshot.lines[lineIndex].english,
-                                tokenId: '$lineIndex-$wordIndex',
-                                fallbackDefinitionCn:
-                                    widget
-                                        .snapshot
-                                        .meanings[normalizeTranscriptReaderWord(
-                                      token,
-                                    )] ??
-                                    '',
-                              );
-                            },
+                  thumbVisibility: true,
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.fromLTRB(32, 28, 32, 80),
+                    itemCount: widget.snapshot.lines.length,
+                    itemBuilder: (BuildContext context, int lineIndex) => Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1180),
+                        child: Column(
+                          children: <Widget>[
+                            _ReaderLine(
+                              line: widget.snapshot.lines[lineIndex],
+                              meanings: widget.snapshot.meanings,
+                              lineIndex: lineIndex,
+                              activeLineIndex: _progress.lineIndex,
+                              activeWordIndex: _progress.wordIndex,
+                              activeWordKey: _activeWordKey,
+                              showTranslations: _showTranslations,
+                              isLooping:
+                                  _progress.loopingLineIndex == lineIndex,
+                              onToggleLoop: widget.onToggleLineLoop == null
+                                  ? null
+                                  : () => widget.onToggleLineLoop!(lineIndex),
+                              onWordTap:
+                                  (
+                                    BuildContext anchorContext,
+                                    String token,
+                                    int wordIndex,
+                                  ) {
+                                    _toggleWordLookup(
+                                      anchorContext: anchorContext,
+                                      rawWord: token,
+                                      contextSentence: widget
+                                          .snapshot
+                                          .lines[lineIndex]
+                                          .english,
+                                      tokenId: '$lineIndex-$wordIndex',
+                                      fallbackDefinitionCn:
+                                          widget
+                                              .snapshot
+                                              .meanings[normalizeTranscriptReaderWord(
+                                            token,
+                                          )] ??
+                                          '',
+                                    );
+                                  },
+                            ),
+                            const _SelectableLineBreak(),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -442,6 +664,9 @@ class _ReaderHeader extends StatelessWidget {
     required this.episodeTitle,
     required this.showTranslations,
     required this.onTranslationChanged,
+    required this.isListeningFullTranscript,
+    required this.isFullTranscriptPaused,
+    required this.onListenFullTranscript,
     required this.onLocateCurrentWord,
     required this.onClose,
   });
@@ -450,6 +675,9 @@ class _ReaderHeader extends StatelessWidget {
   final String episodeTitle;
   final bool showTranslations;
   final ValueChanged<bool> onTranslationChanged;
+  final bool isListeningFullTranscript;
+  final bool isFullTranscriptPaused;
+  final VoidCallback onListenFullTranscript;
   final VoidCallback onLocateCurrentWord;
   final VoidCallback onClose;
 
@@ -522,6 +750,23 @@ class _ReaderHeader extends StatelessWidget {
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
             ],
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            key: const ValueKey<String>('reader-play-full-transcript'),
+            onPressed: onListenFullTranscript,
+            icon: Icon(
+              isListeningFullTranscript
+                  ? Icons.pause_rounded
+                  : Icons.play_arrow_rounded,
+            ),
+            label: Text(
+              isListeningFullTranscript
+                  ? '暂停'
+                  : isFullTranscriptPaused
+                  ? '继续'
+                  : '听全文',
+            ),
           ),
           const SizedBox(width: 8),
           IconButton.outlined(
@@ -649,7 +894,92 @@ class _ReaderLine extends StatelessWidget {
                 ),
             ],
           ),
+          if (showTranslations) ...<Widget>[
+            const _SelectableLineBreak(),
+            const SizedBox(height: 14),
+            _SentenceTranslationText(
+              english: line.english,
+              initialTranslation: line.chinese,
+            ),
+          ],
         ],
+      ),
+    );
+  }
+}
+
+class _SentenceTranslationText extends ConsumerStatefulWidget {
+  const _SentenceTranslationText({
+    required this.english,
+    required this.initialTranslation,
+  });
+
+  final String english;
+  final String initialTranslation;
+
+  @override
+  ConsumerState<_SentenceTranslationText> createState() =>
+      _SentenceTranslationTextState();
+}
+
+class _SentenceTranslationTextState
+    extends ConsumerState<_SentenceTranslationText> {
+  late String _translation;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _translation = widget.initialTranslation.trim();
+    if (_translation.isEmpty) {
+      _loadTranslation();
+    }
+  }
+
+  Future<void> _loadTranslation() async {
+    setState(() => _loading = true);
+    String? translation;
+    try {
+      translation = await ref
+          .read(wordLookupServiceProvider)
+          .translateSentence(
+            sentence: widget.english,
+            settings: ref.read(learningSettingsProvider),
+          );
+    } catch (_) {
+      translation = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _translation = translation?.trim() ?? '';
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String text = _translation.isNotEmpty
+        ? _translation
+        : _loading
+        ? '整句翻译中…'
+        : '暂无整句翻译';
+    return Container(
+      key: const ValueKey<String>('reader-sentence-translation'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7E8),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: _translation.isNotEmpty
+              ? const Color(0xFF704B12)
+              : AppDesignTokens.textSecondary,
+          fontSize: 14,
+          height: 1.4,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -703,34 +1033,69 @@ class _WordMeaningTile extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Text(
-                token,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: active
-                      ? AppDesignTokens.brandGreenDark
-                      : AppDesignTokens.textPrimary,
-                  fontSize: 25,
-                  height: 1.08,
-                  fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                ),
+              Wrap(
+                alignment: WrapAlignment.center,
+                children: <Widget>[
+                  Text(
+                    token,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: active
+                          ? AppDesignTokens.brandGreenDark
+                          : AppDesignTokens.textPrimary,
+                      fontSize: 25,
+                      height: 1.08,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                    ),
+                  ),
+                  const IgnorePointer(
+                    child: Text(' ', style: TextStyle(fontSize: 1)),
+                  ),
+                ],
               ),
               if (showMeaning) ...<Widget>[
                 const SizedBox(height: 5),
-                Text(
-                  meaning,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Color(0xFF8A5A12),
-                    fontSize: 11,
-                    height: 1.15,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  children: <Widget>[
+                    Text(
+                      meaning,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Color(0xFF8A5A12),
+                        fontSize: 11,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const IgnorePointer(child: Text(' ')),
+                  ],
                 ),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectableLineBreak extends StatelessWidget {
+  const _SelectableLineBreak();
+
+  @override
+  Widget build(BuildContext context) {
+    return const IgnorePointer(
+      child: SizedBox(
+        height: 0.01,
+        child: Text(
+          '\n',
+          style: TextStyle(
+            fontSize: 1,
+            height: 0.01,
+            color: Colors.transparent,
           ),
         ),
       ),

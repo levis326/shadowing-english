@@ -7,10 +7,19 @@ import '../../../router/app_router.dart';
 import '../../import_course/presentation/import_course_screen.dart';
 import '../../import_course/presentation/widgets/import_course_flow.dart';
 import '../../navigation/presentation/navigation_destination.dart';
+import '../../player/presentation/asr_subtitle_cache.dart';
+import '../../player/presentation/full_transcript_reader.dart';
+import '../../player/presentation/player_course_lookup.dart';
+import '../../player/presentation/player_mock_state.dart';
+import '../../player/presentation/player_subtitle_loader.dart';
+import '../../player/presentation/transcript_reader_session.dart';
+import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/word_lookup_service.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
 import '../../shared/presentation/pad/pad_compact.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
+import '../../words/data/offline_word_dictionary.dart';
 import 'library_catalog_provider.dart';
 import 'library_mock_data.dart';
 import 'widgets/course_overview_card.dart';
@@ -25,22 +34,28 @@ class LibraryScreen extends ConsumerStatefulWidget {
     this.initialCourseId,
     this.initialEpisodeId,
     this.pickCoverImage,
+    this.openTranscriptReader,
   });
 
   final LibraryScreenView initialView;
   final String? initialCourseId;
   final String? initialEpisodeId;
   final Future<String?> Function()? pickCoverImage;
+  final Future<void> Function(
+    LibraryCourseData course,
+    LibraryEpisodeItem episode,
+  )? openTranscriptReader;
 
   @override
   ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
 }
-
 enum LibraryScreenView { list, detail, import }
 
 enum LibraryCourseViewMode { grid, list }
 
 class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  final TranscriptReaderSession transcriptReaderSession =
+      TranscriptReaderSession();
   late bool showDetail;
   late bool showImport;
   final ImportCourseFlowController importFlowController =
@@ -81,10 +96,101 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
 
   @override
   void dispose() {
+    transcriptReaderSession.dispose();
     importFlowController.dispose();
     queryController.dispose();
     listScrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openTranscriptReader(
+    LibraryCourseData course,
+    LibraryEpisodeItem episode,
+  ) async {
+    final Future<void> Function(LibraryCourseData, LibraryEpisodeItem)?
+    override = widget.openTranscriptReader;
+    if (override != null) {
+      await override(course, episode);
+      return;
+    }
+
+    final LearningSettingsState settings = ref.read(learningSettingsProvider);
+    final PlayerCourseLookupResult resource = resolvePlayerCourseForEpisode(
+      courses: <LibraryCourseData>[course],
+      episodeId: episode.id,
+    );
+    List<PlayerSubtitleLine> lines = const <PlayerSubtitleLine>[];
+    Map<String, String> generatedMeanings = const <String, String>{};
+    try {
+      if ((resource.englishSubtitleAsset ?? '').isNotEmpty) {
+        final List<PlayerSubtitleLine> englishLines = await loadSubtitleLines(
+          resource.englishSubtitleAsset!,
+        );
+        final List<PlayerSubtitleLine> chineseLines =
+            (resource.chineseSubtitleAsset ?? '').isEmpty
+            ? const <PlayerSubtitleLine>[]
+            : await loadSubtitleLines(resource.chineseSubtitleAsset!);
+        lines = mergeSubtitleLines(
+          englishLines: englishLines,
+          chineseLines: chineseLines,
+        );
+      }
+      if (lines.isEmpty && (resource.videoAsset ?? '').isNotEmpty) {
+        final String? cached = await const AsrSubtitleCache().read(
+          episodeId: episode.id,
+          videoPath: resource.videoAsset!,
+          settings: settings,
+        );
+        if (cached != null) {
+          lines = parseSubtitleLines(cached);
+          generatedMeanings = parseSubtitleGlossary(cached);
+        }
+      }
+    } catch (_) {
+      lines = const <PlayerSubtitleLine>[];
+    }
+    if (!mounted) return;
+    if (lines.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前剧集没有可查看的全文字幕')));
+      return;
+    }
+
+    final TranscriptReaderSnapshot snapshot =
+        await buildTranscriptReaderSnapshot(
+          courseTitle: course.title,
+          episodeTitle: episode.title,
+          lines: lines,
+          activeLineIndex: 0,
+          currentWordIndex: 0,
+          generatedMeanings: generatedMeanings,
+          dictionary: ref.read(offlineWordDictionaryProvider),
+        );
+    if (!mounted) return;
+    final WordLookupService lookupService = ref.read(wordLookupServiceProvider);
+    try {
+      await transcriptReaderSession.open(
+        context: context,
+        snapshot: snapshot,
+        lookupWord:
+            ({required String rawWord, required String contextSentence}) =>
+                lookupService.lookupWord(
+                  rawWord: rawWord,
+                  contextSentence: contextSentence,
+                  settings: settings,
+                ),
+        translateSentence: (String sentence) => lookupService.translateSentence(
+          sentence: sentence,
+          settings: settings,
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开全文，请稍后重试')));
+    }
   }
 
   @override
@@ -423,6 +529,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                         },
                                       );
                                     },
+                                    onViewTranscript: () =>
+                                        _openTranscriptReader(
+                                          selectedCourse,
+                                          item,
+                                        ),
                                     trailing: ReorderableDragStartListener(
                                       index: index,
                                       child: const Icon(
@@ -458,6 +569,10 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                                       },
                                     );
                                   },
+                                  onViewTranscript: () => _openTranscriptReader(
+                                    selectedCourse,
+                                    item,
+                                  ),
                                 ),
                               );
                             }),

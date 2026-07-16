@@ -15,7 +15,6 @@ class _TestLibraryCatalogNotifier extends LibraryCatalogNotifier {
   @override
   List<LibraryCourseData> build() => const <LibraryCourseData>[_testCourse];
 }
-
 const LibraryCourseData _testCourse = LibraryCourseData(
   id: 'custom-course',
   title: '我的课程',
@@ -120,6 +119,42 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('player:custom-course-ep01'), findsOneWidget);
+  });
+
+  testWidgets('episode list can open the independent full transcript', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    String? openedEpisodeId;
+    final GoRouter router = buildRouterWithScreen(
+      LibraryScreen(
+        initialView: LibraryScreenView.detail,
+        initialCourseId: _testCourse.id,
+        openTranscriptReader:
+            (LibraryCourseData course, LibraryEpisodeItem episode) async {
+              openedEpisodeId = episode.id;
+            },
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        // ignore: always_specify_types
+        overrides: [
+          libraryCatalogProvider.overrideWith(_TestLibraryCatalogNotifier.new),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('查看全文'));
+    await tester.pumpAndSettle();
+
+    expect(openedEpisodeId, 'custom-course-ep01');
+    expect(find.text('player:custom-course-ep01'), findsNothing);
   });
 
   testWidgets('library list shows source label for imported course', (

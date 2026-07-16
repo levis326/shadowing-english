@@ -8,6 +8,7 @@ class EpisodeListItem extends StatelessWidget {
     required this.item,
     required this.selected,
     required this.onTap,
+    this.onViewTranscript,
     this.trailing,
     super.key,
   });
@@ -15,6 +16,7 @@ class EpisodeListItem extends StatelessWidget {
   final LibraryEpisodeItem item;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onViewTranscript;
   final Widget? trailing;
 
   @override
@@ -154,6 +156,15 @@ class EpisodeListItem extends StatelessWidget {
                 ],
               ),
             ),
+            if (onViewTranscript != null) ...<Widget>[
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                key: ValueKey<String>('episode-view-transcript-${item.id}'),
+                onPressed: onViewTranscript,
+                icon: const Icon(Icons.menu_book_rounded, size: 18),
+                label: const Text('查看全文'),
+              ),
+            ],
             if (trailing != null) ...<Widget>[
               const SizedBox(width: 12),
               trailing!,
@@ -196,7 +207,6 @@ class EpisodeListItem extends StatelessWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
-
 class _InfoChip extends StatelessWidget {
   const _InfoChip({
     required this.icon,
