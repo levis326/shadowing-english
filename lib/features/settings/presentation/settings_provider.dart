@@ -114,6 +114,7 @@ class LearningSettingsState {
     required this.dictionarySource,
     required this.highlightWords,
     required this.subtitleWordHighlightStyle,
+    required this.subtitleWordHighlightBorderWidth,
     required this.reminder,
     required this.translationProvider,
     required this.translationApiKey,
@@ -149,6 +150,7 @@ class LearningSettingsState {
       dictionarySource: '牛津学习者',
       highlightWords: true,
       subtitleWordHighlightStyle: '绿色填充',
+      subtitleWordHighlightBorderWidth: 2.5,
       reminder: false,
       translationProvider: defaultPreset.name,
       translationApiKey: '',
@@ -179,6 +181,7 @@ class LearningSettingsState {
   final String dictionarySource;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final bool reminder;
   final String translationProvider;
   final String translationApiKey;
@@ -208,6 +211,7 @@ class LearningSettingsState {
     String? dictionarySource,
     bool? highlightWords,
     String? subtitleWordHighlightStyle,
+    double? subtitleWordHighlightBorderWidth,
     bool? reminder,
     String? translationProvider,
     String? translationApiKey,
@@ -238,6 +242,9 @@ class LearningSettingsState {
       highlightWords: highlightWords ?? this.highlightWords,
       subtitleWordHighlightStyle:
           subtitleWordHighlightStyle ?? this.subtitleWordHighlightStyle,
+      subtitleWordHighlightBorderWidth:
+          subtitleWordHighlightBorderWidth ??
+          this.subtitleWordHighlightBorderWidth,
       reminder: reminder ?? this.reminder,
       translationProvider: translationProvider ?? this.translationProvider,
       translationApiKey: translationApiKey ?? this.translationApiKey,
@@ -369,6 +376,10 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
         subtitleWordHighlightStyle: _subtitleWordHighlightStyleOrNull(
           json['subtitleWordHighlightStyle'],
         ),
+        subtitleWordHighlightBorderWidth:
+            _subtitleWordHighlightBorderWidthOrNull(
+              json['subtitleWordHighlightBorderWidth'],
+            ),
         reminder: _boolOrNull(json['reminder']),
         translationProvider: _translationProviderOrNull(
           json['translationProvider'],
@@ -612,6 +623,13 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
     _persist();
   }
 
+  void setSubtitleWordHighlightBorderWidth(double value) {
+    state = state.copyWith(
+      subtitleWordHighlightBorderWidth: value.clamp(1.5, 3.5),
+    );
+    _persist();
+  }
+
   void setReminder({required bool value}) {
     state = state.copyWith(reminder: value);
     _persist();
@@ -652,6 +670,8 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
           'dictionarySource': state.dictionarySource,
           'highlightWords': state.highlightWords,
           'subtitleWordHighlightStyle': state.subtitleWordHighlightStyle,
+          'subtitleWordHighlightBorderWidth':
+              state.subtitleWordHighlightBorderWidth,
           'reminder': state.reminder,
           'translationProvider': state.translationProvider,
           'translationApiKey': state.translationApiKey,
@@ -689,6 +709,11 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
   String? _subtitleWordHighlightStyleOrNull(Object? value) {
     final String? style = _stringOrNull(value);
     return subtitleWordHighlightStyleOptions.contains(style) ? style : null;
+  }
+
+  double? _subtitleWordHighlightBorderWidthOrNull(Object? value) {
+    final double? width = _doubleOrNull(value);
+    return width != null && width >= 1.5 && width <= 3.5 ? width : null;
   }
 
   int? _intOrNull(Object? value) {

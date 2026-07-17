@@ -11,6 +11,7 @@ class PlayerTopBar extends StatelessWidget {
     this.streakText = '0 Day Streak',
     required this.onBack,
     this.onTranscriptPressed,
+    this.onLearningGuidePressed,
     this.onStatsPressed,
     super.key,
   });
@@ -21,6 +22,7 @@ class PlayerTopBar extends StatelessWidget {
   final String streakText;
   final VoidCallback onBack;
   final VoidCallback? onTranscriptPressed;
+  final VoidCallback? onLearningGuidePressed;
   final VoidCallback? onStatsPressed;
 
   @override
@@ -124,6 +126,7 @@ class PlayerTopBar extends StatelessWidget {
             episodeName: episodeName,
             streakText: streakText,
             onTranscriptPressed: onTranscriptPressed,
+            onLearningGuidePressed: onLearningGuidePressed,
             onStatsPressed: onStatsPressed,
           ),
         ],
@@ -137,12 +140,14 @@ class _PlayerTopStatus extends StatelessWidget {
     required this.streakText,
     this.episodeName,
     this.onTranscriptPressed,
+    this.onLearningGuidePressed,
     this.onStatsPressed,
   });
 
   final String? episodeName;
   final String streakText;
   final VoidCallback? onTranscriptPressed;
+  final VoidCallback? onLearningGuidePressed;
   final VoidCallback? onStatsPressed;
 
   @override
@@ -150,7 +155,7 @@ class _PlayerTopStatus extends StatelessWidget {
     final bool compact = MediaQuery.sizeOf(context).width < 1180;
 
     return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: compact ? 220 : 280),
+      constraints: BoxConstraints(maxWidth: compact ? 320 : 400),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -180,13 +185,27 @@ class _PlayerTopStatus extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           if (onTranscriptPressed != null)
-            IconButton(
+            TextButton.icon(
               onPressed: onTranscriptPressed,
-              tooltip: '打开逐词全文',
               icon: const Icon(
                 Icons.menu_book_outlined,
-                size: 22,
+                size: 18,
                 color: AppDesignTokens.brandGreenDark,
+              ),
+              label: const Text('全文阅读'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppDesignTokens.brandGreenDark,
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          if (onLearningGuidePressed != null)
+            TextButton.icon(
+              onPressed: onLearningGuidePressed,
+              icon: const Icon(Icons.school_outlined, size: 18),
+              label: const Text('怎么学'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppDesignTokens.brandGreenDark,
+                visualDensity: VisualDensity.compact,
               ),
             ),
           IconButton(

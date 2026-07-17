@@ -41,8 +41,12 @@ class SubtitleWordHighlightStyle {
     }
   }
 
-  static double borderWidth(String style, {required bool highlighted}) {
-    return highlighted && style != '下划线' ? 1.5 : 0;
+  static double borderWidth(
+    String style, {
+    required bool highlighted,
+    required double width,
+  }) {
+    return highlighted && style != '下划线' ? width : 0;
   }
 
   static TextDecoration? textDecoration(

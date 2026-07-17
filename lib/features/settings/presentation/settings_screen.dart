@@ -164,6 +164,12 @@ class SettingsScreen extends ConsumerWidget {
                       .setSubtitleWordHighlightStyle(value);
                 },
               ),
+              _SubtitleWordHighlightBorderWidthRow(
+                value: settings.subtitleWordHighlightBorderWidth,
+                onChanged: (double value) => ref
+                    .read(learningSettingsProvider.notifier)
+                    .setSubtitleWordHighlightBorderWidth(value),
+              ),
               _SwitchRow(
                 title: '每日打卡提醒',
                 description: '接收温和的提示以保持您的学习连续记录。',
@@ -958,6 +964,71 @@ class _TtsVoiceRow extends StatelessWidget {
                       ),
                   ],
                   onChanged: isLoading ? null : onChanged,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SubtitleWordHighlightBorderWidthRow extends StatelessWidget {
+  const _SubtitleWordHighlightBorderWidthRow({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  static final Map<double, String> _options = <double, String>{
+    1.5: '细',
+    2.5: '标准',
+    3.5: '粗',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return _SettingsRowFrame(
+      child: Row(
+        children: <Widget>[
+          const Expanded(
+            child: _TitleBlock(
+              title: '单词高亮边框粗细',
+              description: '调整播放中当前朗读单词的边框粗细。',
+            ),
+          ),
+          const SizedBox(width: 16),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFB9CDBE)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<double>(
+                  value: value,
+                  borderRadius: BorderRadius.circular(16),
+                  icon: const Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: Color(0xFF53625A),
+                  ),
+                  items: _options.entries
+                      .map(
+                        (MapEntry<double, String> entry) =>
+                            DropdownMenuItem<double>(
+                              value: entry.key,
+                              child: Text(entry.value),
+                            ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (double? nextValue) {
+                    if (nextValue != null) onChanged(nextValue);
+                  },
                 ),
               ),
             ),

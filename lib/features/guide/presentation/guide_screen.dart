@@ -15,6 +15,59 @@ class GuideScreen extends StatelessWidget {
     'https://www.douyin.com/video/7660464132604776038',
   );
 
+  static Future<void> showLearningGuideDialog(BuildContext context) =>
+      showDialog<void>(
+        context: context,
+        builder: (BuildContext dialogContext) => Dialog(
+          clipBehavior: Clip.antiAlias,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1080, maxHeight: 760),
+            child: Column(
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 12, 8),
+                  child: Row(
+                    children: <Widget>[
+                      const Expanded(
+                        child: Text(
+                          '怎么学',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        tooltip: '关闭',
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+                    children: <Widget>[
+                      HowToLearnContent(
+                        onStart: () {
+                          Navigator.of(dialogContext).pop();
+                          context.go(AppNavDestination.library.route);
+                        },
+                        onPlayMethod: () => _openUrl(context, _methodVideo),
+                        onOpenResource: (GuideLearningResource resource) =>
+                            _showResourceSheet(context, resource),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) => PadScaffold(
     currentDestination: AppNavDestination.guide,
@@ -46,7 +99,7 @@ class GuideScreen extends StatelessWidget {
     ),
   );
 
-  Future<void> _showResourceSheet(
+  static Future<void> _showResourceSheet(
     BuildContext context,
     GuideLearningResource resource,
   ) async {
@@ -82,7 +135,7 @@ class GuideScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _openUrl(BuildContext context, Uri url) async {
+  static Future<void> _openUrl(BuildContext context, Uri url) async {
     try {
       await openUrl(url);
     } catch (_) {

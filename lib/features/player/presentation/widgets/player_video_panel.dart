@@ -22,6 +22,7 @@ class PlayerVideoPanel extends StatefulWidget {
     this.currentWordIndex = 0,
     this.highlightWords = false,
     this.subtitleWordHighlightStyle = '绿色填充',
+    this.subtitleWordHighlightBorderWidth = 2.5,
     required this.speed,
     required this.isShadowing,
     required this.isLooping,
@@ -79,6 +80,7 @@ class PlayerVideoPanel extends StatefulWidget {
   final int currentWordIndex;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final String speed;
   final bool isShadowing;
   final bool isLooping;
@@ -1197,6 +1199,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                         width: SubtitleWordHighlightStyle.borderWidth(
                           widget.subtitleWordHighlightStyle,
                           highlighted: highlighted,
+                          width: widget.subtitleWordHighlightBorderWidth,
                         ),
                       ),
                     ),

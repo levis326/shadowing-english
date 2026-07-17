@@ -161,7 +161,8 @@ void main() {
       ..setTranslationApiKey('demo-key')
       ..setTranslationApiSecret('demo-secret')
       ..setHighlightWords(value: false)
-      ..setSubtitleWordHighlightStyle('蓝色填充');
+      ..setSubtitleWordHighlightStyle('蓝色填充')
+      ..setSubtitleWordHighlightBorderWidth(3.5);
 
     await Future<void>.delayed(Duration.zero);
 
@@ -174,6 +175,7 @@ void main() {
     expect(state.translationApiSecret, 'demo-secret');
     expect(state.highlightWords, isFalse);
     expect(state.subtitleWordHighlightStyle, '蓝色填充');
+    expect(state.subtitleWordHighlightBorderWidth, 3.5);
   });
 
   test('TTS voice settings persist across provider rebuilds', () async {

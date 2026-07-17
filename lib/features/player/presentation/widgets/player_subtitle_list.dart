@@ -19,6 +19,7 @@ class PlayerSubtitleList extends StatefulWidget {
     required this.fontScale,
     required this.highlightWords,
     this.subtitleWordHighlightStyle = '绿色填充',
+    this.subtitleWordHighlightBorderWidth = 2.5,
     required this.onTapLine,
     required this.onCollectWord,
     this.onFavoriteWord,
@@ -50,6 +51,7 @@ class PlayerSubtitleList extends StatefulWidget {
   final double fontScale;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final ValueChanged<int> onTapLine;
   final ValueChanged<String> onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
@@ -375,218 +377,218 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
       child: NotificationListener<ScrollNotification>(
         onNotification: _handleScrollNotification,
         child: ListView.separated(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(2),
-        itemCount: itemCount,
-        itemBuilder: (BuildContext context, int itemIndex) {
-          final int originalIndex = _showCurrentOnly
-              ? widget.activeIndex
-              : itemIndex;
-          if (originalIndex < 0 || originalIndex >= totalLineCount) {
-            return const SizedBox.shrink();
-          }
+          controller: _scrollController,
+          padding: const EdgeInsets.all(2),
+          itemCount: itemCount,
+          itemBuilder: (BuildContext context, int itemIndex) {
+            final int originalIndex = _showCurrentOnly
+                ? widget.activeIndex
+                : itemIndex;
+            if (originalIndex < 0 || originalIndex >= totalLineCount) {
+              return const SizedBox.shrink();
+            }
 
-          final PlayerSubtitleLine line = widget.lines[originalIndex];
-          final bool active = originalIndex == widget.activeIndex;
-          final bool isLooping = originalIndex == widget.loopingLineIndex;
-          final bool isPast = originalIndex < widget.activeIndex;
-          final double textOpacity = active ? 1 : (isPast ? 0.84 : 0.60);
-          final double chineseFontSize =
-              (active ? 19.0 : 17.0) * widget.fontScale;
-          final double subtitleFontSize = 15 * widget.fontScale;
-          const Color inactiveStartTimeColor = Color(0xFFADB7B0);
-          const Color inactiveZhTextColor = Color(0xFFB7C2BA);
+            final PlayerSubtitleLine line = widget.lines[originalIndex];
+            final bool active = originalIndex == widget.activeIndex;
+            final bool isLooping = originalIndex == widget.loopingLineIndex;
+            final bool isPast = originalIndex < widget.activeIndex;
+            final double textOpacity = active ? 1 : (isPast ? 0.84 : 0.60);
+            final double chineseFontSize =
+                (active ? 19.0 : 17.0) * widget.fontScale;
+            final double subtitleFontSize = 15 * widget.fontScale;
+            const Color inactiveStartTimeColor = Color(0xFFADB7B0);
+            const Color inactiveZhTextColor = Color(0xFFB7C2BA);
 
-          return InkWell(
-            key: _rowKeyFor(originalIndex),
-            onTap: () => widget.onTapLine(originalIndex),
-            onLongPress: () => _openActions(context, line, originalIndex),
-            borderRadius: BorderRadius.circular(20),
-            child: Ink(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: active ? const Color(0xFFEFFFF5) : Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: active
-                      ? AppDesignTokens.brandGreen
-                      : const Color(0xFFE1E7E1),
-                  width: active ? 2.5 : 1.5,
-                ),
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(
-                    color: Color(0x0F000000),
-                    blurRadius: 10,
-                    offset: Offset(0, 5),
+            return InkWell(
+              key: _rowKeyFor(originalIndex),
+              onTap: () => widget.onTapLine(originalIndex),
+              onLongPress: () => _openActions(context, line, originalIndex),
+              borderRadius: BorderRadius.circular(20),
+              child: Ink(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: active ? const Color(0xFFEFFFF5) : Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: active
+                        ? AppDesignTokens.brandGreen
+                        : const Color(0xFFE1E7E1),
+                    width: active ? 2.5 : 1.5,
                   ),
-                ],
-              ),
-              child: Stack(
-                children: <Widget>[
-                  if (active)
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7D6),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Text(
-                          '正在学习',
-                          style: TextStyle(
-                            color: AppDesignTokens.textPrimary,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                  boxShadow: const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x0F000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 5),
+                    ),
+                  ],
+                ),
+                child: Stack(
+                  children: <Widget>[
+                    if (active)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF7D6),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: const Text(
+                            '正在学习',
+                            style: TextStyle(
+                              color: AppDesignTokens.textPrimary,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          FilledButton.tonal(
-                            onPressed: active
-                                ? widget.onTogglePlaying
-                                : () => widget.onTapLine(originalIndex),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: active
-                                  ? const Color(0xFFDFF8C8)
-                                  : AppDesignTokens.softWhite,
-                              foregroundColor: active
-                                  ? AppDesignTokens.brandGreenDark
-                                  : AppDesignTokens.primaryBlueDark,
-                              minimumSize: const Size(44, 44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Row(
+                          children: <Widget>[
+                            FilledButton.tonal(
+                              onPressed: active
+                                  ? widget.onTogglePlaying
+                                  : () => widget.onTapLine(originalIndex),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: active
+                                    ? const Color(0xFFDFF8C8)
+                                    : AppDesignTokens.softWhite,
+                                foregroundColor: active
+                                    ? AppDesignTokens.brandGreenDark
+                                    : AppDesignTokens.primaryBlueDark,
+                                minimumSize: const Size(44, 44),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: Icon(
+                                active && widget.isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
                               ),
                             ),
-                            child: Icon(
-                              active && widget.isPlaying
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                line.startTime,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: active
+                                      ? const Color(0xFF7E8A82)
+                                      : inactiveStartTimeColor.withValues(
+                                          alpha: textOpacity,
+                                        ),
+                                ),
+                              ),
                             ),
+                            FilledButton.tonal(
+                              key: ValueKey<String>(
+                                'subtitle-line-loop-$originalIndex',
+                              ),
+                              onPressed: () =>
+                                  widget.onLoopFromLine(originalIndex),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: isLooping
+                                    ? const Color(0xFFDFF8C8)
+                                    : AppDesignTokens.softWhite,
+                                foregroundColor: isLooping
+                                    ? AppDesignTokens.brandGreenDark
+                                    : AppDesignTokens.textSecondary,
+                                minimumSize: const Size(44, 44),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Icon(Icons.repeat_one_rounded),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.tonal(
+                              onPressed: () =>
+                                  widget.onBookmarkLine(originalIndex),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFFFF7D6),
+                                foregroundColor: const Color(0xFFB58600),
+                                minimumSize: const Size(44, 44),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Icon(Icons.star_rounded),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.tonal(
+                              onPressed: () =>
+                                  _openActions(context, line, originalIndex),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: AppDesignTokens.softWhite,
+                                foregroundColor: AppDesignTokens.textSecondary,
+                                minimumSize: const Size(44, 44),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              child: const Icon(Icons.more_horiz_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        if (widget.subtitleMode == '单中')
+                          Text(
+                            line.chinese,
+                            style: TextStyle(
+                              fontSize: chineseFontSize,
+                              fontWeight: active
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
+                              color: active
+                                  ? const Color(0xFF191C1E)
+                                  : inactiveZhTextColor.withValues(
+                                      alpha: textOpacity,
+                                    ),
+                              height: 1.35,
+                            ),
+                          )
+                        else
+                          _buildWordLine(
+                            line.english,
+                            active && line.words.isNotEmpty
+                                ? widget.currentWordIndex
+                                : null,
+                            active,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              line.startTime,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: active
-                                    ? const Color(0xFF7E8A82)
-                                    : inactiveStartTimeColor.withValues(
-                                        alpha: textOpacity,
-                                      ),
-                              ),
+                        if (widget.subtitleMode != '单英') ...<Widget>[
+                          const _SelectableLineBreak(),
+                          const SizedBox(height: 4),
+                          Text(
+                            line.chinese,
+                            style: TextStyle(
+                              fontSize: subtitleFontSize,
+                              color: active
+                                  ? const Color(0xFF708077)
+                                  : inactiveZhTextColor.withValues(
+                                      alpha: textOpacity,
+                                    ),
+                              height: 1.45,
                             ),
-                          ),
-                          FilledButton.tonal(
-                            key: ValueKey<String>(
-                              'subtitle-line-loop-$originalIndex',
-                            ),
-                            onPressed: () =>
-                                widget.onLoopFromLine(originalIndex),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: isLooping
-                                  ? const Color(0xFFDFF8C8)
-                                  : AppDesignTokens.softWhite,
-                              foregroundColor: isLooping
-                                  ? AppDesignTokens.brandGreenDark
-                                  : AppDesignTokens.textSecondary,
-                              minimumSize: const Size(44, 44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: const Icon(Icons.repeat_one_rounded),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton.tonal(
-                            onPressed: () =>
-                                widget.onBookmarkLine(originalIndex),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFFFF7D6),
-                              foregroundColor: const Color(0xFFB58600),
-                              minimumSize: const Size(44, 44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: const Icon(Icons.star_rounded),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton.tonal(
-                            onPressed: () =>
-                                _openActions(context, line, originalIndex),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppDesignTokens.softWhite,
-                              foregroundColor: AppDesignTokens.textSecondary,
-                              minimumSize: const Size(44, 44),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
-                            child: const Icon(Icons.more_horiz_rounded),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (widget.subtitleMode == '单中')
-                        Text(
-                          line.chinese,
-                          style: TextStyle(
-                            fontSize: chineseFontSize,
-                            fontWeight: active
-                                ? FontWeight.w800
-                                : FontWeight.w600,
-                            color: active
-                                ? const Color(0xFF191C1E)
-                                : inactiveZhTextColor.withValues(
-                                    alpha: textOpacity,
-                                  ),
-                            height: 1.35,
-                          ),
-                        )
-                      else
-                        _buildWordLine(
-                          line.english,
-                          active && line.words.isNotEmpty
-                              ? widget.currentWordIndex
-                              : null,
-                          active,
-                        ),
-                      if (widget.subtitleMode != '单英') ...<Widget>[
                         const _SelectableLineBreak(),
-                        const SizedBox(height: 4),
-                        Text(
-                          line.chinese,
-                          style: TextStyle(
-                            fontSize: subtitleFontSize,
-                            color: active
-                                ? const Color(0xFF708077)
-                                : inactiveZhTextColor.withValues(
-                                    alpha: textOpacity,
-                                  ),
-                            height: 1.45,
-                          ),
-                        ),
                       ],
-                      const _SelectableLineBreak(),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
           separatorBuilder: (_, __) => const Padding(
             padding: EdgeInsets.symmetric(horizontal: 14),
             child: Column(
@@ -777,6 +779,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                         width: SubtitleWordHighlightStyle.borderWidth(
                           widget.subtitleWordHighlightStyle,
                           highlighted: highlighted,
+                          width: widget.subtitleWordHighlightBorderWidth,
                         ),
                       ),
                     ),
@@ -786,27 +789,28 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                         Text(
                           token.value,
                           style: TextStyle(
-                        fontSize: active
-                            ? _activeFontSize * widget.fontScale
-                            : (_activeFontSize * widget.fontScale) - 2,
-                        fontWeight: highlighted
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: AppDesignTokens.textPrimary,
-                        decoration: SubtitleWordHighlightStyle.textDecoration(
-                          widget.subtitleWordHighlightStyle,
-                          highlighted: highlighted,
-                        ),
-                        decorationColor:
-                            SubtitleWordHighlightStyle.textDecorationColor(
-                              widget.subtitleWordHighlightStyle,
-                              highlighted: highlighted,
-                            ),
-                        decorationThickness:
-                            highlighted &&
-                                widget.subtitleWordHighlightStyle == '下划线'
-                            ? 2
-                            : null,
+                            fontSize: active
+                                ? _activeFontSize * widget.fontScale
+                                : (_activeFontSize * widget.fontScale) - 2,
+                            fontWeight: highlighted
+                                ? FontWeight.w800
+                                : FontWeight.w600,
+                            color: AppDesignTokens.textPrimary,
+                            decoration:
+                                SubtitleWordHighlightStyle.textDecoration(
+                                  widget.subtitleWordHighlightStyle,
+                                  highlighted: highlighted,
+                                ),
+                            decorationColor:
+                                SubtitleWordHighlightStyle.textDecorationColor(
+                                  widget.subtitleWordHighlightStyle,
+                                  highlighted: highlighted,
+                                ),
+                            decorationThickness:
+                                highlighted &&
+                                    widget.subtitleWordHighlightStyle == '下划线'
+                                ? 2
+                                : null,
                             height: 1.35,
                           ),
                         ),

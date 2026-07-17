@@ -24,6 +24,7 @@ void main() {
     expect(find.text('学习').last, findsOneWidget);
     expect(find.text('默认字幕模式'), findsOneWidget);
     expect(find.text('单词高亮样式'), findsOneWidget);
+    expect(find.text('单词高亮边框粗细'), findsOneWidget);
     expect(find.text('每日打卡提醒'), findsOneWidget);
     expect(find.text('词典来源'), findsNothing);
 

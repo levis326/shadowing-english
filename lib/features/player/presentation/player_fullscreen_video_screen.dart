@@ -15,6 +15,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
     required this.playerState,
     required this.highlightWords,
     this.subtitleWordHighlightStyle = '绿色填充',
+    this.subtitleWordHighlightBorderWidth = 2.5,
     required this.isMuted,
     required this.volumeLevel,
     required this.onTogglePlaying,
@@ -57,6 +58,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
   final PlayerMockState playerState;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final bool isMuted;
   final double volumeLevel;
   final VoidCallback onTogglePlaying;
@@ -176,6 +178,8 @@ class _PlayerFullscreenVideoScreenState
               currentWordIndex: player.currentWordIndex,
               highlightWords: widget.highlightWords,
               subtitleWordHighlightStyle: widget.subtitleWordHighlightStyle,
+              subtitleWordHighlightBorderWidth:
+                  widget.subtitleWordHighlightBorderWidth,
               isShadowing: player.isShadowing,
               isLooping: player.isLooping,
               isMuted: _isMuted,
@@ -307,6 +311,8 @@ class _PlayerFullscreenVideoScreenState
                 fontScale: widget.fontScale,
                 highlightWords: widget.highlightWords,
                 subtitleWordHighlightStyle: widget.subtitleWordHighlightStyle,
+                subtitleWordHighlightBorderWidth:
+                    widget.subtitleWordHighlightBorderWidth,
                 onTapLine: (int index) =>
                     _refresh(() => widget.onSelectLine(index)),
                 onCollectWord: widget.onCollectWord,
@@ -334,6 +340,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
     required this.fontScale,
     required this.highlightWords,
     required this.subtitleWordHighlightStyle,
+    required this.subtitleWordHighlightBorderWidth,
     required this.onTapLine,
     required this.onCollectWord,
     this.onFavoriteWord,
@@ -349,6 +356,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
   final double fontScale;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final ValueChanged<int> onTapLine;
   final ValueChanged<String> onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
@@ -378,6 +386,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
           fontScale: fontScale,
           highlightWords: highlightWords,
           subtitleWordHighlightStyle: subtitleWordHighlightStyle,
+          subtitleWordHighlightBorderWidth: subtitleWordHighlightBorderWidth,
           onTapLine: onTapLine,
           onCollectWord: onCollectWord,
           onFavoriteWord: onFavoriteWord,

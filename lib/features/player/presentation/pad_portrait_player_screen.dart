@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../router/app_router.dart';
+import '../../guide/presentation/guide_screen.dart';
 import '../../home/presentation/learning_dashboard_provider.dart';
 import '../../library/presentation/library_catalog_provider.dart';
 import '../../library/presentation/library_mock_data.dart';
@@ -661,6 +662,8 @@ class _PadPortraitPlayerScreenState
                 ),
               )
             : null,
+        onLearningGuidePressed: () =>
+            unawaited(GuideScreen.showLearningGuideDialog(context)),
         onStatsPressed: () {
           final String progressMessage = dashboard.checkedIn
               ? '今日打卡已完成'
@@ -704,6 +707,8 @@ class _PadPortraitPlayerScreenState
                         highlightWords: settings.highlightWords,
                         subtitleWordHighlightStyle:
                             settings.subtitleWordHighlightStyle,
+                        subtitleWordHighlightBorderWidth:
+                            settings.subtitleWordHighlightBorderWidth,
                         isShadowing: state.isShadowing,
                         isLooping: state.isLooping,
                         isMuted: _isMuted,
@@ -767,6 +772,8 @@ class _PadPortraitPlayerScreenState
                                   highlightWords: settings.highlightWords,
                                   subtitleWordHighlightStyle:
                                       settings.subtitleWordHighlightStyle,
+                                  subtitleWordHighlightBorderWidth:
+                                      settings.subtitleWordHighlightBorderWidth,
                                   onTapLine: _goToLine,
                                   onCollectWord: (String word) =>
                                       _handleCollectWord(word, courseContext),
@@ -1298,6 +1305,9 @@ class _PadPortraitPlayerScreenState
     final String subtitleWordHighlightStyle = ref
         .read(learningSettingsProvider)
         .subtitleWordHighlightStyle;
+    final double subtitleWordHighlightBorderWidth = ref
+        .read(learningSettingsProvider)
+        .subtitleWordHighlightBorderWidth;
     final PlayerCourseLookupResult courseContext =
         resolvePlayerCourseForEpisode(
           courses: ref.read(libraryCatalogProvider),
@@ -1314,6 +1324,7 @@ class _PadPortraitPlayerScreenState
             playerState: state,
             highlightWords: highlightWords,
             subtitleWordHighlightStyle: subtitleWordHighlightStyle,
+            subtitleWordHighlightBorderWidth: subtitleWordHighlightBorderWidth,
             isMuted: _isMuted,
             volumeLevel: _volumeLevel,
             onTogglePlaying: _handleTogglePlaying,

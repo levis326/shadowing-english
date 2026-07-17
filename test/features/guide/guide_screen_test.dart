@@ -54,4 +54,30 @@ void main() {
     expect(find.text('第 2 遍：听清表达'), findsOneWidget);
     expect(find.text('第 3 遍：开口模仿'), findsOneWidget);
   });
+
+  testWidgets('learning guide dialog embeds the guide content', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext context) => Scaffold(
+            body: Center(
+              child: FilledButton(
+                onPressed: () => GuideScreen.showLearningGuideDialog(context),
+                child: const Text('打开怎么学'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('打开怎么学'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('怎么学'), findsOneWidget);
+    expect(find.text('每天 20 分钟，用一部剧练会真实英语'), findsOneWidget);
+    expect(find.byKey(const Key('guide-start-learning')), findsOneWidget);
+  });
 }

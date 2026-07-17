@@ -13,6 +13,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
     required this.fontScale,
     required this.highlightWords,
     required this.subtitleWordHighlightStyle,
+    this.subtitleWordHighlightBorderWidth = 2.5,
     required this.onTapLine,
     required this.onCollectWord,
     this.onFavoriteWord,
@@ -36,6 +37,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
   final double fontScale;
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
+  final double subtitleWordHighlightBorderWidth;
   final ValueChanged<int> onTapLine;
   final ValueChanged<String> onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
@@ -81,6 +83,8 @@ class _PlayerTranscriptPanelState extends State<PlayerTranscriptPanel> {
             fontScale: widget.fontScale,
             highlightWords: widget.highlightWords,
             subtitleWordHighlightStyle: widget.subtitleWordHighlightStyle,
+            subtitleWordHighlightBorderWidth:
+                widget.subtitleWordHighlightBorderWidth,
             onCollectWord: widget.onCollectWord,
             onFavoriteWord: widget.onFavoriteWord,
             onTapLine: widget.onTapLine,
