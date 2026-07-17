@@ -11,6 +11,7 @@ import 'asr_subtitle_cache.dart';
 import 'asr_subtitle_service.dart';
 import 'player_mock_state.dart';
 import 'player_subtitle_loader.dart';
+import 'subtitle_word_alignment.dart';
 
 typedef AsrChunkTranscriber =
     Future<Map<String, Object?>> Function({
@@ -55,6 +56,40 @@ class AsrSubtitleRepairSummary {
       itemCount > 0 ? '$message，已自动修复 $itemCount 项时间轴数据' : message;
 }
 
+class AsrRegeneratedLineResult {
+  const AsrRegeneratedLineResult({required this.line, required this.raw});
+
+  final PlayerSubtitleLine line;
+  final String raw;
+}
+
+String subtitleReferenceSignature(List<PlayerSubtitleLine> lines) {
+  final List<PlayerSubtitleLine> usableLines = usableReferenceSubtitles(lines);
+  if (usableLines.isEmpty) return '';
+  final String value = usableLines
+      .map(
+        (PlayerSubtitleLine line) =>
+            '${line.startMs}|${line.endMs}|${line.english}|${line.chinese}',
+      )
+      .join('\n');
+  return sha1.convert(utf8.encode(value)).toString();
+}
+
+String? subtitleGenerationWarning(String raw) {
+  try {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) return null;
+    final List<String> warnings = <String>[
+      for (final String key in <String>['timingWarning', 'translationWarning'])
+        if ((decoded[key] as String? ?? '').trim().isNotEmpty)
+          (decoded[key] as String).trim(),
+    ];
+    return warnings.isEmpty ? null : warnings.join('；');
+  } catch (_) {
+    return null;
+  }
+}
+
 class _SubtitleQualityReport {
   _SubtitleQualityReport(this.provider);
 
@@ -68,6 +103,7 @@ class _SubtitleQualityReport {
   int wordDeleted = 0;
   int chunkBoundaryFix = 0;
   int repairCount = 0;
+  bool usedReferenceFallback = false;
 
   void addOverlap({
     required String kind,
@@ -144,6 +180,7 @@ class _SubtitleQualityReport {
         'wordDeleted': wordDeleted,
         'chunkBoundaryFix': chunkBoundaryFix,
         'repairCount': repairCount,
+        'usedReferenceFallback': usedReferenceFallback,
         'chunks': chunks,
         'anomalies': anomalies,
         'finalStatus': finalStatus,
@@ -170,10 +207,158 @@ class AsrSubtitleJobRunner {
   static const int _repairableOverlapMs = 500;
   static final Set<String> _activeJobs = <String>{};
 
+  Future<AsrRegeneratedLineResult> regenerateLine({
+    required String episodeId,
+    required String videoPath,
+    required LearningSettingsState settings,
+    required List<PlayerSubtitleLine> currentLines,
+    required int lineIndex,
+    String? referenceSignature,
+  }) async {
+    if (lineIndex < 0 || lineIndex >= currentLines.length) {
+      throw const AsrSubtitleGenerationException('当前句不存在，无法重新生成。');
+    }
+    final File video = File(videoPath);
+    if (!video.existsSync()) {
+      throw const AsrSubtitleGenerationException('当前视频不可用，无法重新生成这句话。');
+    }
+    final String jobKey = _jobKey(
+      episodeId: episodeId,
+      videoPath: videoPath,
+      settings: settings,
+    );
+    if (!_activeJobs.add(jobKey)) {
+      throw const AsrSubtitleGenerationException('这个视频的 AI 字幕正在生成，请等待当前任务完成。');
+    }
+
+    List<AsrAudioChunk> chunks = const <AsrAudioChunk>[];
+    try {
+      chunks = await service.prepareAudioChunks(video);
+      if (chunks.isEmpty) {
+        throw const AsrSubtitleGenerationException('没有提取到可识别的音频，原句已保留。');
+      }
+      final PlayerSubtitleLine currentLine = currentLines[lineIndex];
+      final List<Map<String, Object?>> recognizedLines =
+          <Map<String, Object?>>[];
+      final _SubtitleQualityReport report = _SubtitleQualityReport(
+        settings.asrProvider,
+      );
+
+      for (int index = 0; index < chunks.length; index += 1) {
+        final int chunkEndMs = index + 1 < chunks.length
+            ? chunks[index + 1].offsetMs
+            : chunks[index].offsetMs + 58000;
+        if (chunks[index].offsetMs >= currentLine.endMs ||
+            chunkEndMs <= currentLine.startMs) {
+          continue;
+        }
+        Map<String, Object?>? normalized;
+        Object? lastError;
+        for (int attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            final Map<String, Object?> response =
+                await _transcribe(
+                  chunk: chunks[index],
+                  settings: settings,
+                ).timeout(
+                  const Duration(minutes: 20),
+                  onTimeout: () =>
+                      throw TimeoutException('AI 重新识别当前句超时，请稍后重试。'),
+                );
+            normalized = _normalizeChunkTimeline(
+              response,
+              chunkStartMs: chunks[index].offsetMs,
+              chunkEndMs: chunkEndMs,
+              sourceChunk: index,
+              report: report,
+            );
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (normalized == null) {
+          throw AsrSubtitleGenerationException(
+            '当前句重新识别失败，原句已保留：${_errorMessage(lastError ?? 'unknown-error')}',
+          );
+        }
+        recognizedLines.addAll(
+          (normalized['lines'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(Map<String, Object?>.from),
+        );
+      }
+
+      final List<PlayerSubtitleWord> words = _wordsForCurrentLine(
+        recognizedLines,
+        currentLine,
+      );
+      if (words.isEmpty) {
+        throw const AsrSubtitleGenerationException(
+          'AI 没有在当前句时间范围内识别到有效英文，原句已保留。',
+        );
+      }
+      final String english = words
+          .map((PlayerSubtitleWord word) => word.text)
+          .join(' ')
+          .trim();
+      if (english.isEmpty) {
+        throw const AsrSubtitleGenerationException('AI 返回了空字幕，原句已保留。');
+      }
+      final String chinese = await _translateRegeneratedLine(
+        english: english,
+        settings: settings,
+      );
+      final PlayerSubtitleLine regenerated = PlayerSubtitleLine(
+        startTime: currentLine.startTime,
+        english: english,
+        chinese: chinese,
+        startMs: currentLine.startMs,
+        endMs: currentLine.endMs,
+        words: words,
+      );
+      _validateFinalResult(
+        jsonEncode(<String, Object?>{
+          'version': 1,
+          'lines': <Object?>[_lineToJson(regenerated)],
+        }),
+      );
+
+      final String? cached = await cache.read(
+        episodeId: episodeId,
+        videoPath: videoPath,
+      );
+      final Map<String, dynamic> decoded = cached == null
+          ? <String, dynamic>{'version': 1, 'language': 'en'}
+          : Map<String, dynamic>.from(
+              jsonDecode(cached) as Map<String, dynamic>,
+            );
+      final List<PlayerSubtitleLine> updatedLines = List<PlayerSubtitleLine>.of(
+        currentLines,
+      )..[lineIndex] = regenerated;
+      decoded['lines'] = updatedLines.map(_lineToJson).toList(growable: false);
+      final String raw = const JsonEncoder.withIndent('  ').convert(decoded);
+      await cache.write(
+        episodeId: episodeId,
+        videoPath: videoPath,
+        content: raw,
+        settings: settings,
+        referenceSignature: referenceSignature,
+      );
+      return AsrRegeneratedLineResult(line: regenerated, raw: raw);
+    } finally {
+      service.deleteTemporaryAudioChunks(chunks);
+      _activeJobs.remove(jobKey);
+    }
+  }
+
   Future<String> run({
     required String episodeId,
     required String videoPath,
     required LearningSettingsState settings,
+    List<PlayerSubtitleLine> referenceSubtitleLines =
+        const <PlayerSubtitleLine>[],
+    String? referenceSignatureOverride,
     bool forceRegenerate = false,
     AsrProgressCallback? onProgress,
     AsrSubtitleCancellationToken? cancellationToken,
@@ -182,12 +367,8 @@ class AsrSubtitleJobRunner {
     if (!video.existsSync()) {
       throw StateError('missing-video-file');
     }
-    final String? bilingualConfigurationError = _bilingualConfigurationError(
-      settings,
-    );
-    if (bilingualConfigurationError != null) {
-      throw AsrSubtitleGenerationException(bilingualConfigurationError);
-    }
+    final List<PlayerSubtitleLine> usableReferenceLines =
+        usableReferenceSubtitles(referenceSubtitleLines);
 
     final String jobKey = _jobKey(
       episodeId: episodeId,
@@ -210,13 +391,22 @@ class AsrSubtitleJobRunner {
           await previousJob.delete(recursive: true);
         }
       }
-      chunks = await service.prepareAudioChunks(video);
+      try {
+        chunks = await service.prepareAudioChunks(video);
+      } catch (_) {
+        cancellationToken?.throwIfCancelled();
+        if (usableReferenceLines.isEmpty) rethrow;
+      }
       cancellationToken?.throwIfCancelled();
       return await _runPrepared(
         episodeId: episodeId,
         videoPath: videoPath,
         settings: settings,
         chunks: chunks,
+        referenceSubtitleLines: usableReferenceLines,
+        referenceSignature: referenceSignatureOverride?.isNotEmpty ?? false
+            ? referenceSignatureOverride!
+            : subtitleReferenceSignature(usableReferenceLines),
         onProgress: onProgress,
         cancellationToken: cancellationToken,
       );
@@ -231,6 +421,8 @@ class AsrSubtitleJobRunner {
     required String videoPath,
     required LearningSettingsState settings,
     required List<AsrAudioChunk> chunks,
+    required List<PlayerSubtitleLine> referenceSubtitleLines,
+    required String referenceSignature,
     AsrProgressCallback? onProgress,
     AsrSubtitleCancellationToken? cancellationToken,
   }) async {
@@ -282,6 +474,7 @@ class AsrSubtitleJobRunner {
           settings: settings,
           sourceChunk: index,
           report: report,
+          allowReferenceFallback: referenceSubtitleLines.isNotEmpty,
           cancellationToken: cancellationToken,
         );
         final Object? decoded = jsonDecode(await chunkFile.readAsString());
@@ -325,19 +518,25 @@ class AsrSubtitleJobRunner {
       rethrow;
     }
 
-    final String raw = await _mergeChunks(
-      chunksDir,
-      chunks.length,
-      report: report,
-    );
+    String raw = await _mergeChunks(chunksDir, chunks.length, report: report);
+    if (referenceSubtitleLines.isNotEmpty) {
+      final bool hasRecognizedWords = parseSubtitleLines(
+        raw,
+      ).any((PlayerSubtitleLine line) => line.words.isNotEmpty);
+      raw = _calibrateWithReference(raw, referenceSubtitleLines);
+      if (report.usedReferenceFallback || !hasRecognizedWords) {
+        raw = _addTimingWarning(raw);
+      }
+    }
     late final String completedRaw;
     try {
-      completedRaw = await _addChineseTranslations(
+      final String translatedRaw = await _addChineseTranslations(
         raw: raw,
         settings: settings,
         jobDir: jobDir,
         cancellationToken: cancellationToken,
       );
+      completedRaw = _repairFinalWordTimelines(translatedRaw, report: report);
     } catch (error) {
       await report.write(jobDir, 'FAILED');
       await _writeJob(
@@ -356,7 +555,10 @@ class AsrSubtitleJobRunner {
     );
     await part.writeAsString(completedRaw);
     try {
-      _validateFinalResult(completedRaw);
+      _validateFinalResult(
+        completedRaw,
+        allowLineOverlap: referenceSubtitleLines.isNotEmpty,
+      );
     } catch (error) {
       await report.write(jobDir, 'FAILED');
       await chunksDir.delete(recursive: true);
@@ -376,6 +578,9 @@ class AsrSubtitleJobRunner {
       videoPath: videoPath,
       content: completedRaw,
       settings: settings,
+      referenceSignature: referenceSignature.isEmpty
+          ? null
+          : referenceSignature,
     );
     await _writeJob(
       jobDir: jobDir,
@@ -388,6 +593,49 @@ class AsrSubtitleJobRunner {
     );
     await report.write(jobDir, 'PASS');
     return completedRaw;
+  }
+
+  String _calibrateWithReference(
+    String raw,
+    List<PlayerSubtitleLine> referenceSubtitleLines,
+  ) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    final SubtitleWordAlignmentResult aligned = alignReferenceSubtitles(
+      reference: referenceSubtitleLines,
+      recognition: parseSubtitleLines(raw),
+    );
+    decoded['referenceLines'] = usableReferenceSubtitles(
+      referenceSubtitleLines,
+    ).map(_lineToJson).toList(growable: false);
+    decoded['lines'] = aligned.lines
+        .map(
+          (PlayerSubtitleLine line) => <String, Object?>{
+            'startMs': line.startMs,
+            'endMs': line.endMs,
+            'english': line.english,
+            'chinese': line.chinese,
+            'words': line.words
+                .map(
+                  (PlayerSubtitleWord word) => <String, Object?>{
+                    'text': word.text,
+                    'startMs': word.startMs,
+                    'endMs': word.endMs,
+                    if (word.confidence != null) 'confidence': word.confidence,
+                  },
+                )
+                .toList(growable: false),
+          },
+        )
+        .toList(growable: false);
+    return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  String _addTimingWarning(String raw) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    decoded['timingWarning'] = '已使用原字幕保证正文完整；部分单词时间为本地估算，联网后重新生成可提高逐词同步精度。';
+    return const JsonEncoder.withIndent('  ').convert(decoded);
   }
 
   Future<String> _addChineseTranslations({
@@ -404,6 +652,17 @@ class AsrSubtitleJobRunner {
         jsonDecode(raw) as Map<String, dynamic>;
     final List<dynamic> lines =
         decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
+    final bool needsTranslation = lines.whereType<Map<String, dynamic>>().any(
+      (Map<String, dynamic> line) =>
+          (line['chinese'] as String? ?? '').trim().isEmpty &&
+          (line['english'] as String? ?? '').trim().isNotEmpty,
+    );
+    if (!needsTranslation) return raw;
+    final String? configurationError = _bilingualConfigurationError(settings);
+    if (configurationError != null) {
+      decoded['translationWarning'] = configurationError;
+      return const JsonEncoder.withIndent('  ').convert(decoded);
+    }
     final File checkpoint = File(
       '${jobDir.path}${Platform.pathSeparator}translations.json',
     );
@@ -426,22 +685,30 @@ class AsrSubtitleJobRunner {
       cancellationToken?.throwIfCancelled();
       final String key = _translationLineKey(line, english);
       final String? cached = translations[key];
-      final String? chinese =
-          cached ??
-          await (translateSentence ??
-                  const WordLookupService().translateSentence)(
-                sentence: english,
-                settings: settings,
-              )
-              .timeout(
-                const Duration(seconds: 45),
-                onTimeout: () =>
-                    throw TimeoutException('双语字幕翻译超时，请检查网络后重试；已完成的翻译会保留。'),
-              );
+      String? chinese = cached;
+      if (chinese == null) {
+        try {
+          chinese =
+              await (translateSentence ??
+                      const WordLookupService().translateSentence)(
+                    sentence: english,
+                    settings: settings,
+                  )
+                  .timeout(
+                    const Duration(seconds: 45),
+                    onTimeout: () =>
+                        throw TimeoutException('双语字幕翻译超时，请检查网络后重试；已完成的翻译会保留。'),
+                  );
+        } catch (_) {
+          cancellationToken?.throwIfCancelled();
+          decoded['translationWarning'] =
+              '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置或网络后重新生成。';
+          break;
+        }
+      }
       if (chinese == null || chinese.trim().isEmpty) {
-        throw const AsrSubtitleGenerationException(
-          '双语字幕生成失败：翻译请求未返回结果。请检查“翻译”中的 API Key、服务地址和模型配置。',
-        );
+        decoded['translationWarning'] = '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置或网络后重新生成。';
+        break;
       }
       line['chinese'] = chinese.trim();
       if (cached == null) {
@@ -549,6 +816,107 @@ class AsrSubtitleJobRunner {
     return service.generateCloudChunk(chunk: chunk, settings: settings);
   }
 
+  List<PlayerSubtitleWord> _wordsForCurrentLine(
+    List<Map<String, Object?>> recognizedLines,
+    PlayerSubtitleLine currentLine,
+  ) {
+    final String raw = jsonEncode(<String, Object?>{
+      'version': 1,
+      'lines': recognizedLines,
+    });
+    final List<PlayerSubtitleWord> candidates =
+        parseSubtitleLines(raw)
+            .expand((PlayerSubtitleLine line) => line.words)
+            .where((PlayerSubtitleWord word) {
+              final int midpoint =
+                  word.startMs + ((word.endMs - word.startMs) ~/ 2);
+              return midpoint >= currentLine.startMs &&
+                  midpoint <= currentLine.endMs;
+            })
+            .toList(growable: false)
+          ..sort(
+            (PlayerSubtitleWord a, PlayerSubtitleWord b) =>
+                a.startMs.compareTo(b.startMs),
+          );
+    final List<PlayerSubtitleWord> result = <PlayerSubtitleWord>[];
+    for (final PlayerSubtitleWord word in candidates) {
+      final int startMs = word.startMs.clamp(
+        currentLine.startMs,
+        currentLine.endMs,
+      );
+      final int endMs = word.endMs.clamp(
+        currentLine.startMs,
+        currentLine.endMs,
+      );
+      final int safeStartMs = result.isEmpty
+          ? startMs
+          : startMs < result.last.endMs
+          ? result.last.endMs
+          : startMs;
+      if (endMs <= safeStartMs) continue;
+      result.add(
+        PlayerSubtitleWord(
+          text: word.text,
+          startMs: safeStartMs,
+          endMs: endMs,
+          confidence: word.confidence,
+        ),
+      );
+    }
+    return result;
+  }
+
+  Future<String> _translateRegeneratedLine({
+    required String english,
+    required LearningSettingsState settings,
+  }) async {
+    if (!settings.generateBilingualAsrSubtitles) return '';
+    final String? configurationError = _bilingualConfigurationError(settings);
+    if (configurationError != null) {
+      throw AsrSubtitleGenerationException('$configurationError 原句已保留。');
+    }
+    Object? lastError;
+    for (int attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        final String? translated =
+            await (translateSentence ??
+                    const WordLookupService().translateSentence)(
+                  sentence: english,
+                  settings: settings,
+                )
+                .timeout(const Duration(seconds: 45));
+        if (translated != null && translated.trim().isNotEmpty) {
+          return translated.trim();
+        }
+        lastError = StateError('empty-translation');
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw AsrSubtitleGenerationException(
+      '当前句英文已识别，但中文翻译失败，原句已保留：${_errorMessage(lastError ?? 'unknown-error')}',
+    );
+  }
+
+  Map<String, Object?> _lineToJson(PlayerSubtitleLine line) {
+    return <String, Object?>{
+      'startMs': line.startMs,
+      'endMs': line.endMs,
+      'english': line.english,
+      'chinese': line.chinese,
+      'words': line.words
+          .map(
+            (PlayerSubtitleWord word) => <String, Object?>{
+              'text': word.text,
+              'startMs': word.startMs,
+              'endMs': word.endMs,
+              if (word.confidence != null) 'confidence': word.confidence,
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
   Future<void> _loadOrTranscribeValidChunk({
     required File chunkFile,
     required AsrAudioChunk chunk,
@@ -556,29 +924,26 @@ class AsrSubtitleJobRunner {
     required LearningSettingsState settings,
     required int sourceChunk,
     required _SubtitleQualityReport report,
+    required bool allowReferenceFallback,
     AsrSubtitleCancellationToken? cancellationToken,
   }) async {
     for (int attempt = 0; attempt < 2; attempt += 1) {
-      cancellationToken?.throwIfCancelled();
-      late final Map<String, Object?> chunkJson;
-      if (attempt == 0 && chunkFile.existsSync()) {
-        try {
+      try {
+        cancellationToken?.throwIfCancelled();
+        late final Map<String, Object?> chunkJson;
+        if (attempt == 0 && chunkFile.existsSync()) {
           final Object? decoded = jsonDecode(await chunkFile.readAsString());
           if (decoded is! Map<String, dynamic>) {
             throw StateError('invalid-asr-chunk');
           }
           chunkJson = Map<String, Object?>.from(decoded);
-        } catch (_) {
-          await chunkFile.delete();
-          continue;
+        } else {
+          chunkJson = await _transcribe(chunk: chunk, settings: settings)
+              .timeout(
+                const Duration(minutes: 20),
+                onTimeout: () => throw TimeoutException('AI 字幕生成超时，请重试或换更小模型。'),
+              );
         }
-      } else {
-        chunkJson = await _transcribe(chunk: chunk, settings: settings).timeout(
-          const Duration(minutes: 20),
-          onTimeout: () => throw TimeoutException('AI 字幕生成超时，请重试或换更小模型。'),
-        );
-      }
-      try {
         final Map<String, Object?> normalized = _normalizeChunkTimeline(
           chunkJson,
           chunkStartMs: chunk.offsetMs,
@@ -595,10 +960,29 @@ class AsrSubtitleJobRunner {
         );
         return;
       } catch (error) {
+        cancellationToken?.throwIfCancelled();
         if (chunkFile.existsSync()) {
           await chunkFile.delete();
         }
         if (attempt == 1) {
+          if (allowReferenceFallback) {
+            report
+              ..repairCount += 1
+              ..usedReferenceFallback = true
+              ..anomalies.add(<String, Object?>{
+                'kind': 'referenceFallback',
+                'sourceChunk': sourceChunk,
+                'errorType': error.runtimeType.toString(),
+              });
+            await chunkFile.writeAsString(
+              const JsonEncoder.withIndent(' ').convert(<String, Object?>{
+                'version': 1,
+                'language': 'en',
+                'lines': const <Object?>[],
+              }),
+            );
+            return;
+          }
           throw StateError(
             '第 ${sourceChunk + 1} 段处理失败：${_errorMessage(error)}',
           );
@@ -607,7 +991,7 @@ class AsrSubtitleJobRunner {
     }
   }
 
-  void _validateFinalResult(String raw) {
+  void _validateFinalResult(String raw, {bool allowLineOverlap = false}) {
     final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
     if (lines.isEmpty) {
       throw StateError('字幕检查失败：没有识别到有效字幕。');
@@ -647,11 +1031,68 @@ class AsrSubtitleJobRunner {
         }
         previousWordEndMs = word.endMs;
       }
-      if (previousEndMs >= 0 && line.startMs < previousEndMs - 250) {
+      if (!allowLineOverlap &&
+          previousEndMs >= 0 &&
+          line.startMs < previousEndMs - 250) {
         throw StateError('字幕检查失败：$location 时间轴乱序或重叠过多。');
       }
       previousEndMs = line.endMs;
     }
+  }
+
+  String _repairFinalWordTimelines(
+    String raw, {
+    required _SubtitleQualityReport report,
+  }) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    final List<dynamic> lines =
+        decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
+    for (final Object? item in lines) {
+      if (item is! Map<String, dynamic>) continue;
+      final String english = (item['english'] as String? ?? '').trim();
+      final int startMs = _timelineMs(item['startMs']);
+      final int endMs = _timelineMs(item['endMs']);
+      if (english.isEmpty || endMs <= startMs) continue;
+      final List<Map<String, Object?>> words =
+          (item['words'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map<String, dynamic>>()
+              .map(Map<String, Object?>.from)
+              .toList(growable: false);
+      final int expectedWordCount = _wordCount(english);
+      final int timedWordCount = words.fold<int>(
+        0,
+        (int count, Map<String, Object?> word) =>
+            count + _wordCount(word['text'] as String? ?? ''),
+      );
+      final bool hasValidCoverage =
+          words.isNotEmpty &&
+          timedWordCount >= expectedWordCount &&
+          _comparableText(english) ==
+              _comparableText(
+                words
+                    .map((Map<String, Object?> word) => word['text'] ?? '')
+                    .join(' '),
+              ) &&
+          _hasValidWordTimeline(words) &&
+          words.every(
+            (Map<String, Object?> word) =>
+                _timelineMs(word['startMs']) >= startMs &&
+                _timelineMs(word['endMs']) <= endMs,
+          );
+      if (hasValidCoverage) continue;
+      final List<Map<String, Object?>> repaired = _synthesizeWords(
+        english,
+        startMs,
+        endMs,
+      );
+      if (repaired.isEmpty) continue;
+      item['words'] = repaired;
+      report
+        ..wordFix += repaired.length
+        ..repairCount += 1;
+    }
+    return const JsonEncoder.withIndent('  ').convert(decoded);
   }
 
   int _wordCount(String text) {

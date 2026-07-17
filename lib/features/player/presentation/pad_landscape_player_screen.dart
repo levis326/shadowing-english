@@ -35,6 +35,7 @@ import 'player_system_media_controls.dart';
 import 'player_video_init.dart';
 import 'subtitle_reference_review.dart';
 import 'transcript_reader_session.dart';
+import 'widgets/ai_subtitle_generation_progress_dialog.dart';
 import 'widgets/player_episode_strip.dart';
 import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
@@ -133,7 +134,6 @@ class PadLandscapePlayerScreenState
 
   Future<void> _loadEpisodeResources() async {
     final List<LibraryCourseData> courses = ref.read(libraryCatalogProvider);
-    final LearningSettingsState settings = ref.read(learningSettingsProvider);
     final PlayerCourseLookupResult resource = resolvePlayerCourseForEpisode(
       courses: courses,
       episodeId: widget.episodeId,
@@ -146,7 +146,6 @@ class PadLandscapePlayerScreenState
     _videoAsset = resource.videoAsset;
 
     List<PlayerSubtitleLine> resolvedLines = const <PlayerSubtitleLine>[];
-    bool usingAiSubtitles = false;
     if ((resource.englishSubtitleAsset ?? '').isNotEmpty) {
       try {
         final List<PlayerSubtitleLine> englishLines = await loadSubtitleLines(
@@ -166,18 +165,6 @@ class PadLandscapePlayerScreenState
         resolvedLines = const <PlayerSubtitleLine>[];
       }
     }
-    if (resolvedLines.isEmpty && (_videoAsset ?? '').isNotEmpty) {
-      final String? cached = await const AsrSubtitleCache().read(
-        episodeId: widget.episodeId,
-        videoPath: _videoAsset!,
-        settings: settings,
-      );
-      if (cached != null) {
-        resolvedLines = parseSubtitleLines(cached);
-        usingAiSubtitles = resolvedLines.isNotEmpty;
-      }
-    }
-
     if (!mounted) {
       return;
     }
@@ -186,11 +173,8 @@ class PadLandscapePlayerScreenState
       state
         ..loadLines(resolvedLines, initialStartTime: initialStartTime)
         ..isPlaying = widget.autoPlay && (_videoAsset?.isNotEmpty ?? false);
-      _usingAiSubtitles = usingAiSubtitles;
-      _referenceSubtitleLines = usingAiSubtitles
-          ? const <PlayerSubtitleLine>[]
-          : resolvedLines;
-      _usingAiSubtitles = usingAiSubtitles;
+      _usingAiSubtitles = false;
+      _referenceSubtitleLines = resolvedLines;
     });
     await _initVideo();
     if (!mounted) {
@@ -267,9 +251,16 @@ class PadLandscapePlayerScreenState
         _videoLoading = false;
         _videoErrorText = null;
       });
-      if (_referenceSubtitleLines.isEmpty && embeddedTracks.isNotEmpty) {
-        unawaited(_loadEmbeddedSubtitleReference(embeddedTracks));
+      final bool hasEmbeddedEnglish = embeddedTracks.any(
+        (SubtitleTrack track) =>
+            track.language == 'eng' || track.language == 'en',
+      );
+      if (_referenceSubtitleLines.isEmpty && hasEmbeddedEnglish) {
+        unawaited(_loadEmbeddedReferenceAndCachedAiSubtitles(embeddedTracks));
+      } else if (!state.hasLines) {
+        await _loadCachedAiSubtitles();
       }
+      if (!mounted) return;
       _applyPlaybackMode();
     } catch (_) {
       _cancelVideoSubscriptions();
@@ -300,6 +291,48 @@ class PadLandscapePlayerScreenState
         );
     if (!mounted || lines.isEmpty || _referenceSubtitleLines.isNotEmpty) return;
     setState(() => _referenceSubtitleLines = lines);
+  }
+
+  Future<void> _loadEmbeddedReferenceAndCachedAiSubtitles(
+    List<SubtitleTrack> tracks,
+  ) async {
+    try {
+      await _loadEmbeddedSubtitleReference(tracks);
+      if (!mounted || state.hasLines || _generatingAiSubtitles) return;
+      await _loadCachedAiSubtitles(
+        validateReferenceSignature: _referenceSubtitleLines.isNotEmpty,
+      );
+    } catch (_) {
+      // Reference subtitles are optional and must not block video playback.
+    }
+  }
+
+  Future<void> _loadCachedAiSubtitles({
+    bool validateReferenceSignature = true,
+  }) async {
+    final String? videoPath = _videoAsset;
+    if (videoPath == null || !mounted) return;
+    final LearningSettingsState settings = ref.read(learningSettingsProvider);
+    final String? cached = await const AsrSubtitleCache().read(
+      episodeId: widget.episodeId,
+      videoPath: videoPath,
+      settings: settings,
+      referenceSignature: _referenceSubtitleLines.isEmpty
+          ? null
+          : subtitleReferenceSignature(_referenceSubtitleLines),
+      validateReferenceSignature: validateReferenceSignature,
+    );
+    if (cached == null || !mounted) return;
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(cached);
+    if (lines.isEmpty) return;
+    final int positionMs = state.positionMs;
+    setState(() {
+      state
+        ..loadLines(lines, wordDefinitions: parseSubtitleGlossary(cached))
+        ..seekToMilliseconds(positionMs)
+        ..setSubtitleMode(settings.subtitleMode);
+      _usingAiSubtitles = true;
+    });
   }
 
   Future<void> _disposeVideo() async {
@@ -759,7 +792,9 @@ class PadLandscapePlayerScreenState
                               videoPosition: _videoPosition,
                               videoErrorText: _videoErrorText,
                               showAiGenerateSubtitles: canGenerateAiSubtitles,
-                              onGenerateAiSubtitles: _handleGenerateAiSubtitles,
+                              onGenerateAiSubtitles: _generatingAiSubtitles
+                                  ? null
+                                  : _handleGenerateAiSubtitles,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -832,6 +867,9 @@ class PadLandscapePlayerScreenState
                                           : null,
                                       onDeleteAiSubtitles: _usingAiSubtitles
                                           ? _handleDeleteAiSubtitles
+                                          : null,
+                                      onRegenerateAiLine: _usingAiSubtitles
+                                          ? _handleRegenerateAiLine
                                           : null,
                                     )
                                   : canGenerateAiSubtitles
@@ -1013,27 +1051,7 @@ class PadLandscapePlayerScreenState
       return;
     }
     final LearningSettingsState settings = ref.read(learningSettingsProvider);
-    if (!forceRegenerate && !_usingAiSubtitles) {
-      final String? cached = await const AsrSubtitleCache().read(
-        episodeId: widget.episodeId,
-        videoPath: videoPath,
-        settings: settings,
-      );
-      if (cached != null) {
-        final List<PlayerSubtitleLine> lines = parseSubtitleLines(cached);
-        if (lines.isNotEmpty && mounted) {
-          setState(() {
-            state.loadLines(
-              lines,
-              wordDefinitions: parseSubtitleGlossary(cached),
-            );
-            _usingAiSubtitles = true;
-          });
-          _showMessage('已切换到 AI 字幕');
-          return;
-        }
-      }
-    }
+    final bool showProgressDialog = state.hasLines;
     setState(() {
       _generatingAiSubtitles = true;
       _aiSubtitleProgressValue = null;
@@ -1041,18 +1059,54 @@ class PadLandscapePlayerScreenState
       _aiSubtitlePreviewText = null;
       _aiSubtitleErrorText = null;
     });
+    final ValueNotifier<AsrSubtitleProgress> dialogProgress =
+        ValueNotifier<AsrSubtitleProgress>(
+          const AsrSubtitleProgress(completedChunks: 0, totalChunks: 0),
+        );
+    final Future<void>? progressDialogFuture = showProgressDialog
+        ? showAiSubtitleGenerationProgressDialog(
+            context: context,
+            progress: dialogProgress,
+          )
+        : null;
     final AsrSubtitleCancellationToken cancellationToken =
         AsrSubtitleCancellationToken();
     _aiSubtitleCancellationToken = cancellationToken;
     try {
+      if (!forceRegenerate && !_usingAiSubtitles) {
+        final String? cached = await const AsrSubtitleCache().read(
+          episodeId: widget.episodeId,
+          videoPath: videoPath,
+          settings: settings,
+          referenceSignature: _referenceSubtitleLines.isEmpty
+              ? null
+              : subtitleReferenceSignature(_referenceSubtitleLines),
+        );
+        if (cached != null) {
+          final List<PlayerSubtitleLine> lines = parseSubtitleLines(cached);
+          if (lines.isNotEmpty && mounted) {
+            setState(() {
+              state.loadLines(
+                lines,
+                wordDefinitions: parseSubtitleGlossary(cached),
+              );
+              _usingAiSubtitles = true;
+            });
+            _showMessage('已切换到 AI 字幕');
+            return;
+          }
+        }
+      }
       const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
       final String raw = await runner.run(
         episodeId: widget.episodeId,
         videoPath: videoPath,
         settings: settings,
+        referenceSubtitleLines: _referenceSubtitleLines,
         forceRegenerate: forceRegenerate,
         cancellationToken: cancellationToken,
         onProgress: (AsrSubtitleProgress progress) {
+          dialogProgress.value = progress;
           if (!mounted) {
             return;
           }
@@ -1081,7 +1135,14 @@ class PadLandscapePlayerScreenState
             videoPath: videoPath,
             settings: settings,
           );
-      if (review.comparedLines == 0) {
+      final String? warning = subtitleGenerationWarning(raw);
+      if (warning != null) {
+        _showMessage(repairSummary.appendTo('AI 字幕已生成；$warning'));
+      } else if (subtitleReferenceSignature(
+        _referenceSubtitleLines,
+      ).isNotEmpty) {
+        _showMessage(repairSummary.appendTo('AI 字幕已生成，已按原字幕校准'));
+      } else if (review.comparedLines == 0) {
         _showMessage(repairSummary.appendTo('AI 字幕已生成'));
       } else if (review.differentLines == 0) {
         _showMessage(repairSummary.appendTo('AI 字幕已生成，已通过参考字幕校对'));
@@ -1091,15 +1152,24 @@ class PadLandscapePlayerScreenState
     } catch (error) {
       if (cancellationToken.isCancelled) return;
       if (mounted) {
+        final String message = error.toString().replaceFirst(
+          RegExp(r'^Bad state:\s*'),
+          '',
+        );
         setState(() {
-          _aiSubtitleErrorText = error.toString();
+          _aiSubtitleErrorText = message;
         });
-        _showMessage('AI 字幕生成失败：$error');
+        _showMessage('AI 字幕生成失败：$message');
       }
     } finally {
       if (identical(_aiSubtitleCancellationToken, cancellationToken)) {
         _aiSubtitleCancellationToken = null;
       }
+      if (progressDialogFuture != null && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        await progressDialogFuture;
+      }
+      dialogProgress.dispose();
       if (mounted) {
         setState(() {
           _generatingAiSubtitles = false;
@@ -1134,6 +1204,45 @@ class PadLandscapePlayerScreenState
     if (!confirmed || !mounted) return;
     _showMessage('正在重新生成 AI 字幕，当前字幕会保留到生成成功。');
     await _handleGenerateAiSubtitles(forceRegenerate: true);
+  }
+
+  Future<void> _handleRegenerateAiLine(int index) async {
+    if (_generatingAiSubtitles || index < 0 || index >= state.lines.length) {
+      _showMessage('AI 字幕正在处理中，请稍后再试');
+      return;
+    }
+    final String? videoPath = _videoAsset;
+    if (videoPath == null || videoPath.isEmpty) {
+      _showMessage('当前视频不可用');
+      return;
+    }
+    _showMessage('正在重新生成当前句，失败时会保留原句。');
+    try {
+      const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
+      final LearningSettingsState settings = ref.read(learningSettingsProvider);
+      final String referenceSignature = subtitleReferenceSignature(
+        _referenceSubtitleLines,
+      );
+      final AsrRegeneratedLineResult result = await runner.regenerateLine(
+        episodeId: widget.episodeId,
+        videoPath: videoPath,
+        settings: settings,
+        currentLines: List<PlayerSubtitleLine>.of(state.lines),
+        lineIndex: index,
+        referenceSignature: referenceSignature.isEmpty
+            ? null
+            : referenceSignature,
+      );
+      if (!mounted || index >= state.lines.length) return;
+      setState(() {
+        state.lines[index] = result.line;
+        state.generatedWordDefinitions = parseSubtitleGlossary(result.raw);
+      });
+      _syncTranscriptReader();
+      _showMessage('当前句已重新生成并保存');
+    } catch (error) {
+      if (mounted) _showMessage(error.toString());
+    }
   }
 
   Future<void> _handleDeleteAiSubtitles() async {
@@ -1403,6 +1512,9 @@ class PadLandscapePlayerScreenState
             onLoopFromLine: _handleLoopFromLine,
             onDictationLine: _handleDictationLine,
             onAiExplain: _handleAiExplain,
+            onRegenerateAiLine: _usingAiSubtitles
+                ? _handleRegenerateAiLine
+                : null,
             fontScale: ref.read(learningSettingsProvider).fontScale,
             episodes: episodes,
             activeEpisodeId: widget.episodeId,

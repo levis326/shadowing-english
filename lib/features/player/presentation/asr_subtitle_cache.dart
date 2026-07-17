@@ -15,6 +15,7 @@ class AiSubtitleCacheEntry {
     required this.model,
     required this.generatedAt,
     required this.sizeBytes,
+    this.referenceSignature,
   });
 
   final String episodeId;
@@ -25,6 +26,7 @@ class AiSubtitleCacheEntry {
   final String model;
   final DateTime generatedAt;
   final int sizeBytes;
+  final String? referenceSignature;
 }
 
 class AsrSubtitleCache {
@@ -57,6 +59,8 @@ class AsrSubtitleCache {
     required String episodeId,
     required String videoPath,
     LearningSettingsState? settings,
+    String? referenceSignature,
+    bool validateReferenceSignature = true,
   }) async {
     final File file = await cacheFileFor(
       episodeId: episodeId,
@@ -79,6 +83,8 @@ class AsrSubtitleCache {
             file: file,
             videoPath: videoPath,
             settings: settings,
+            referenceSignature: referenceSignature,
+            validateReferenceSignature: validateReferenceSignature,
           )) {
         _deleteFiles(file);
         return null;
@@ -95,6 +101,7 @@ class AsrSubtitleCache {
     required String videoPath,
     required String content,
     LearningSettingsState? settings,
+    String? referenceSignature,
   }) async {
     final File file = await cacheFileFor(
       episodeId: episodeId,
@@ -110,7 +117,11 @@ class AsrSubtitleCache {
       _writeAtomically(
         _metadataFile(file),
         jsonEncode(<String, Object?>{
-          ..._metadata(videoPath: videoPath, settings: settings),
+          ..._metadata(
+            videoPath: videoPath,
+            settings: settings,
+            referenceSignature: referenceSignature,
+          ),
           'episodeId': episodeId,
           'generatedAtMs': DateTime.now().millisecondsSinceEpoch,
         }),
@@ -161,6 +172,7 @@ class AsrSubtitleCache {
                 ? stat.modified
                 : DateTime.fromMillisecondsSinceEpoch(generatedAtMs),
             sizeBytes: stat.size,
+            referenceSignature: metadata['referenceSignature'] as String?,
           ),
         );
       } catch (_) {
@@ -267,6 +279,8 @@ class AsrSubtitleCache {
     required File file,
     required String videoPath,
     required LearningSettingsState settings,
+    String? referenceSignature,
+    bool validateReferenceSignature = true,
   }) async {
     final File metadataFile = _metadataFile(file);
     if (!metadataFile.existsSync()) return false;
@@ -275,7 +289,13 @@ class AsrSubtitleCache {
     final Map<String, Object?> expected = _metadata(
       videoPath: videoPath,
       settings: settings,
+      referenceSignature: referenceSignature,
     );
+    if (validateReferenceSignature &&
+        (decoded['referenceSignature'] as String? ?? '') !=
+            (referenceSignature ?? '')) {
+      return false;
+    }
     return expected.entries.every(
       (MapEntry<String, Object?> entry) => decoded[entry.key] == entry.value,
     );
@@ -289,6 +309,7 @@ class AsrSubtitleCache {
   Map<String, Object?> _metadata({
     required String videoPath,
     required LearningSettingsState settings,
+    String? referenceSignature,
   }) {
     final File video = File(videoPath);
     final FileStat stat = video.statSync();
@@ -301,6 +322,8 @@ class AsrSubtitleCache {
       'asrBaseUrl': settings.asrBaseUrl,
       'asrModel': settings.asrModel,
       'bilingual': settings.generateBilingualAsrSubtitles,
+      if (referenceSignature?.isNotEmpty ?? false)
+        'referenceSignature': referenceSignature,
       if (settings.generateBilingualAsrSubtitles) ...<String, Object?>{
         'translationProvider': settings.translationProvider,
         'translationBaseUrl': settings.translationBaseUrl,

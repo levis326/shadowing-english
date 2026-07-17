@@ -18,7 +18,7 @@ English · [中文](README.md)
 [![GitHub stars](https://img.shields.io/github/stars/MarkYuanGo/shadowing-english?style=flat)](https://github.com/MarkYuanGo/shadowing-english/stargazers)
 [![GitHub issues](https://img.shields.io/github/issues/MarkYuanGo/shadowing-english)](https://github.com/MarkYuanGo/shadowing-english/issues)
 
-[Download the latest release](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [Run from source](#run-from-source) · [Import learning materials](#import-learning-materials)
+[Download the latest release](https://github.com/MarkYuanGo/shadowing-english/releases/latest) · [Subtitle guide](#subtitles-from-import-to-word-level-shadowing) · [Run from source](#run-from-source) · [Import learning materials](#import-learning-materials)
 
 ## Screenshots
 
@@ -73,6 +73,46 @@ Short loops keep auditory recognition and spoken output together. A few lines at
 - **Learning progress**: Track study time, sentences, phrases, course progress, levels, and achievements.
 - **Optional AI subtitles**: Generate or switch subtitles for videos without them using your own provider configuration.
 - **Local first**: Your videos, subtitles, and learning records remain centered on your device.
+
+## Subtitles: from import to word-level shadowing
+
+Shadowing English does more than display one subtitle line over a video. It turns subtitles into a learning timeline you can navigate, loop, search, and shadow. Choose the workflow that fits your material:
+
+- **Import external subtitles**: `.srt` and `.vtt` files are supported. This is the most direct option when you already have good subtitles; English and Chinese tracks can be matched automatically by filename.
+- **Switch embedded subtitle tracks**: If a video contains selectable subtitle tracks, choose one from the player's subtitle menu without extracting it first.
+- **Generate word-level synced subtitles with AI**: When no subtitle is available, or an existing subtitle only has sentence-level timing, AI can analyze the audio and create start and end times for each English word.
+
+### How to use AI subtitles
+
+1. Open Settings and find “AI生成可跟读的词级同步字幕” (AI-generated word-level synced subtitles). Select an ASR provider and enter your own API key. Alibaba Cloud Model Studio is the default, and the other providers listed in Settings are also supported.
+2. Keep “生成双语字幕” (Generate bilingual subtitles) enabled and configure a translation service if you want English and Chinese. Turn it off if you only need English.
+3. Import and play a video, then select “AI生成可跟读的词级同步字幕” in the player. The app shows recognition progress while it works.
+4. Once complete, the subtitle is stored locally and loaded for playback. Open Settings → “管理 AI 字幕” (Manage AI subtitles) to review it, edit individual words, export it, regenerate it, or delete it.
+
+Generation calls the third-party services you select and may incur a small charge. Enter API keys only in the app's settings; never commit them to the repository or expose them in screenshots or public logs.
+
+### How it works
+
+```text
+Local video
+  → extract and split audio on the device
+  → recognize English and word timestamps through an ASR service
+  → merge, validate, and repair the timeline locally
+  → optionally generate Chinese translations
+  → save locally and highlight each word during playback
+```
+
+When usable English external or embedded subtitles are available, the app can use them as a reference: the more complete source text is preserved while speech recognition supplies or calibrates word timing. Reference subtitles are not silently overwritten, and the app reports when recognition results or timestamps require repair. Without a reference, the English text and timeline are generated directly from the video's audio.
+
+### Why it is better than ordinary subtitles
+
+- **Word-level sync, not only sentence-level sync**: The active word follows playback, making connected speech, reductions, and stress easier to notice.
+- **Subtitles become learning controls**: Tap a sentence to seek, loop a difficult line, look up a word, or follow the current position in the full transcript reader.
+- **Existing subtitles remain valuable**: A reliable source subtitle can provide the text while AI focuses on word timing, reducing omissions and transcription mistakes.
+- **Generated results stay manageable**: Subtitles are stored locally and can be edited, exported, regenerated, or deleted without calling the service every time you play the video.
+- **Usable results are preserved where possible**: Common timestamp overlaps and missing word timings are repaired locally. If Chinese translation is incomplete, the generated English subtitle is kept whenever possible.
+
+AI recognition can still be affected by background music, overlapping speakers, accents, and recording quality. For important material, use an existing subtitle as a reference and review the result in Manage AI Subtitles before relying on it long-term.
 
 ## Why use Shadowing English
 

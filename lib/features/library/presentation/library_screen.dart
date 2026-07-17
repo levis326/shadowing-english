@@ -140,6 +140,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           episodeId: episode.id,
           videoPath: resource.videoAsset!,
           settings: settings,
+          validateReferenceSignature: false,
         );
         if (cached != null) {
           lines = parseSubtitleLines(cached);

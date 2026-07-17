@@ -159,6 +159,82 @@ void main() {
     );
   });
 
+  test('cache and management entry preserve reference identity', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-reference-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults();
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"version":1,"lines":[]}',
+      settings: settings,
+      referenceSignature: 'reference-v1',
+    );
+
+    expect(
+      await cache.read(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        settings: settings,
+        referenceSignature: 'reference-v1',
+      ),
+      isNotNull,
+    );
+    expect(
+      (await cache.listEntries()).single.referenceSignature,
+      'reference-v1',
+    );
+  });
+
+  test(
+    'cache can validate settings when reference identity is unavailable',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-cache-unknown-reference-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('video');
+      final AsrSubtitleCache cache = AsrSubtitleCache(
+        appSupportDirectory: () async => root,
+      );
+      final LearningSettingsState settings = LearningSettingsState.defaults();
+      await cache.write(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        content: '{"version":1,"lines":[]}',
+        settings: settings,
+        referenceSignature: 'embedded-reference',
+      );
+
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings,
+          validateReferenceSignature: false,
+        ),
+        isNotNull,
+      );
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings.copyWith(asrModel: 'changed-model'),
+          validateReferenceSignature: false,
+        ),
+        isNull,
+      );
+    },
+  );
+
   test('cache removes old adopted reference subtitles', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-cache-adopted-reference-',

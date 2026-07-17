@@ -42,6 +42,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
     this.onLoopFromLine = _ignoreLine,
     this.onDictationLine = _ignoreLine,
     this.onAiExplain = _ignoreLine,
+    this.onRegenerateAiLine,
     this.fontScale = 1,
     required this.episodes,
     required this.activeEpisodeId,
@@ -85,6 +86,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
   final ValueChanged<int> onLoopFromLine;
   final ValueChanged<int> onDictationLine;
   final ValueChanged<int> onAiExplain;
+  final Future<void> Function(int index)? onRegenerateAiLine;
   final double fontScale;
   final List<LibraryEpisodeItem> episodes;
   final String activeEpisodeId;
@@ -322,6 +324,7 @@ class _PlayerFullscreenVideoScreenState
                     _refresh(() => widget.onLoopFromLine(index)),
                 onDictationLine: widget.onDictationLine,
                 onAiExplain: widget.onAiExplain,
+                onRegenerateAiLine: widget.onRegenerateAiLine,
                 onTogglePlaying: () => _refresh(widget.onTogglePlaying),
                 onPronounce: () => _refresh(widget.onSubtitleLookupOpen),
               ),
@@ -348,6 +351,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
     required this.onLoopFromLine,
     required this.onDictationLine,
     required this.onAiExplain,
+    this.onRegenerateAiLine,
     required this.onTogglePlaying,
     required this.onPronounce,
   });
@@ -364,6 +368,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
   final ValueChanged<int> onLoopFromLine;
   final ValueChanged<int> onDictationLine;
   final ValueChanged<int> onAiExplain;
+  final Future<void> Function(int index)? onRegenerateAiLine;
   final VoidCallback onTogglePlaying;
   final VoidCallback onPronounce;
 
@@ -394,6 +399,7 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
           onLoopFromLine: onLoopFromLine,
           onDictationLine: onDictationLine,
           onAiExplain: onAiExplain,
+          onRegenerateAiLine: onRegenerateAiLine,
           loopingLineIndex: player.isLooping ? player.activeLineIndex : null,
           isPlaying: player.isPlaying,
           onTogglePlaying: onTogglePlaying,

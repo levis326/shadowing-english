@@ -3,9 +3,11 @@ import 'dart:ui';
 
 import 'package:common_learn_english/features/library/presentation/library_catalog_provider.dart';
 import 'package:common_learn_english/features/library/presentation/library_mock_data.dart';
+import 'package:common_learn_english/features/player/presentation/asr_subtitle_service.dart';
 import 'package:common_learn_english/features/player/presentation/pad_landscape_player_screen.dart';
 import 'package:common_learn_english/features/player/presentation/player_fullscreen_video_screen.dart';
 import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
+import 'package:common_learn_english/features/player/presentation/widgets/ai_subtitle_generation_progress_dialog.dart';
 import 'package:common_learn_english/features/player/presentation/widgets/player_current_line_card.dart';
 import 'package:common_learn_english/features/player/presentation/widgets/player_episode_strip.dart';
 import 'package:common_learn_english/features/player/presentation/widgets/player_subtitle_list.dart';
@@ -261,6 +263,54 @@ void main() {
     );
   });
 
+  testWidgets('subtitle actions can regenerate only the selected AI line', (
+    WidgetTester tester,
+  ) async {
+    int? regeneratedIndex;
+    const PlayerSubtitleLine line = PlayerSubtitleLine(
+      startTime: '00:01',
+      english: 'Wrong sentence.',
+      chinese: '错误的句子。',
+      startMs: 1000,
+      endMs: 2500,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 600,
+            child: PlayerSubtitleList(
+              lines: const <PlayerSubtitleLine>[line],
+              activeIndex: 0,
+              subtitleMode: '双语',
+              currentWordIndex: 0,
+              fontScale: 1,
+              highlightWords: false,
+              onTapLine: (_) {},
+              onCollectWord: (_) {},
+              onBookmarkLine: (_) {},
+              onLoopFromLine: (_) {},
+              onDictationLine: (_) {},
+              onAiExplain: (_) {},
+              onRegenerateAiLine: (int index) async {
+                regeneratedIndex = index;
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.more_horiz_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('AI 重新生成当前句'), findsOneWidget);
+    expect(find.text('只替换这一句，失败时保留原句'), findsOneWidget);
+    await tester.ensureVisible(find.text('AI 重新生成当前句'));
+    await tester.tap(find.text('AI 重新生成当前句'));
+    await tester.pumpAndSettle();
+    expect(regeneratedIndex, 0);
+  });
+
   testWidgets('episode strip opens picker and returns selected episode', (
     WidgetTester tester,
   ) async {
@@ -513,9 +563,10 @@ void main() {
   testWidgets('video-only controls show AI subtitle generation action', (
     WidgetTester tester,
   ) async {
-    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.physicalSize = const Size(800, 700);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    bool generated = false;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -557,7 +608,9 @@ void main() {
                   onVolumeChanged: (_) {},
                   onToggleFullscreen: () {},
                   showAiGenerateSubtitles: true,
-                  onGenerateAiSubtitles: () {},
+                  onGenerateAiSubtitles: () {
+                    generated = true;
+                  },
                 ),
               ),
               SizedBox(
@@ -588,6 +641,61 @@ void main() {
 
     expect(find.text('1.25'), findsOneWidget);
     expect(find.text('AI生成可跟读的词级同步字幕'), findsOneWidget);
+    expect(find.byTooltip('更多控制'), findsNothing);
+    expect(find.byTooltip('AI生成可跟读的词级同步字幕'), findsOneWidget);
+
+    await tester.tap(
+      find.descendant(
+        of: find.byTooltip('AI生成可跟读的词级同步字幕'),
+        matching: find.byType(FilledButton),
+      ),
+    );
+    await tester.pump();
+
+    expect(generated, isTrue);
+  });
+
+  testWidgets('local subtitles keep AI generation progress in a modal', (
+    WidgetTester tester,
+  ) async {
+    final ValueNotifier<AsrSubtitleProgress> progress =
+        ValueNotifier<AsrSubtitleProgress>(
+          const AsrSubtitleProgress(completedChunks: 0, totalChunks: 0),
+        );
+    addTearDown(progress.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (BuildContext context) => FilledButton(
+            onPressed: () => showAiSubtitleGenerationProgressDialog(
+              context: context,
+              progress: progress,
+            ),
+            child: const Text('生成'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('生成'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('正在生成 AI 词级字幕'), findsOneWidget);
+    expect(find.text('正在准备音频...'), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+
+    progress.value = const AsrSubtitleProgress(
+      completedChunks: 1,
+      totalChunks: 2,
+      previewText: 'Recognized preview.',
+    );
+    await tester.pump();
+    expect(find.text('正在生成词级同步字幕 1/2'), findsOneWidget);
+    expect(find.text('Recognized preview.'), findsOneWidget);
+
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pump();
+    expect(find.text('正在生成 AI 词级字幕'), findsOneWidget);
   });
 
   testWidgets('video subtitle word is boxed when highlighting is enabled', (

@@ -27,6 +27,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
     this.onPronounce,
     this.onRegenerateAiSubtitles,
     this.onDeleteAiSubtitles,
+    this.onRegenerateAiLine,
     super.key,
   });
 
@@ -51,6 +52,7 @@ class PlayerTranscriptPanel extends StatefulWidget {
   final VoidCallback? onPronounce;
   final VoidCallback? onRegenerateAiSubtitles;
   final VoidCallback? onDeleteAiSubtitles;
+  final Future<void> Function(int index)? onRegenerateAiLine;
 
   @override
   State<PlayerTranscriptPanel> createState() => _PlayerTranscriptPanelState();
@@ -98,6 +100,7 @@ class _PlayerTranscriptPanelState extends State<PlayerTranscriptPanel> {
             onPronounce: widget.onPronounce,
             onRegenerateAiSubtitles: widget.onRegenerateAiSubtitles,
             onDeleteAiSubtitles: widget.onDeleteAiSubtitles,
+            onRegenerateAiLine: widget.onRegenerateAiLine,
           ),
         ),
       ],

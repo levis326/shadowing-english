@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -5,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../player/presentation/asr_subtitle_job.dart';
+import '../../player/presentation/player_mock_state.dart';
+import '../../player/presentation/player_subtitle_loader.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
 import 'settings_provider.dart';
@@ -262,10 +265,30 @@ class _AiSubtitleManagementScreenState
     try {
       const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
       final LearningSettingsState settings = ref.read(learningSettingsProvider);
-      await runner.run(
+      List<PlayerSubtitleLine> referenceSubtitleLines =
+          const <PlayerSubtitleLine>[];
+      if (entry.referenceSignature != null) {
+        final Map<String, dynamic> cached = await _cache.readEntry(entry);
+        final Object? storedReferenceLines = cached['referenceLines'];
+        if (storedReferenceLines is! List) {
+          throw const FormatException('缺少原字幕快照，请先在播放器中重新生成一次。');
+        }
+        referenceSubtitleLines = parseSubtitleLines(
+          jsonEncode(<String, Object?>{
+            'version': 1,
+            'lines': storedReferenceLines,
+          }),
+        );
+        if (referenceSubtitleLines.isEmpty) {
+          throw const FormatException('原字幕快照无效，请先在播放器中重新生成一次。');
+        }
+      }
+      final String raw = await runner.run(
         episodeId: entry.episodeId,
         videoPath: entry.videoPath,
         settings: settings,
+        referenceSubtitleLines: referenceSubtitleLines,
+        referenceSignatureOverride: entry.referenceSignature,
         forceRegenerate: true,
       );
       final AsrSubtitleRepairSummary repairSummary = await runner
@@ -274,7 +297,12 @@ class _AiSubtitleManagementScreenState
             videoPath: entry.videoPath,
             settings: settings,
           );
-      _message(repairSummary.appendTo('AI 字幕已重新生成'));
+      final String? warning = subtitleGenerationWarning(raw);
+      _message(
+        repairSummary.appendTo(
+          warning == null ? 'AI 字幕已重新生成' : 'AI 字幕已重新生成；$warning',
+        ),
+      );
       _reload();
     } catch (error) {
       _message('重新生成失败：$error');

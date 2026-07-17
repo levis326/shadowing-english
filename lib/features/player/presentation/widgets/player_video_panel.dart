@@ -788,8 +788,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                   ),
                                 ],
                                 trailingButtons: <Widget>[
-                                  if (widget.showAiGenerateSubtitles &&
-                                      !compactControls)
+                                  if (widget.showAiGenerateSubtitles)
                                     _RoundActionButton(
                                       icon: Icons.auto_awesome_rounded,
                                       tooltip: 'AI生成可跟读的词级同步字幕',
@@ -989,36 +988,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                     onPressed: () =>
                                         _handleControlTap(widget.onToggleLoop),
                                   ),
-                                  if (compactControls &&
-                                      widget.showAiGenerateSubtitles)
-                                    PopupMenuButton<String>(
-                                      tooltip: '更多控制',
-                                      onSelected: (String value) {
-                                        switch (value) {
-                                          case 'ai':
-                                            final VoidCallback? action =
-                                                widget.onGenerateAiSubtitles;
-                                            if (action != null) {
-                                              _handleControlTap(action);
-                                            }
-                                        }
-                                        _scheduleAutoHide();
-                                      },
-                                      itemBuilder: (BuildContext context) =>
-                                          const <PopupMenuEntry<String>>[
-                                            PopupMenuItem<String>(
-                                              value: 'ai',
-                                              child: Text('AI生成可跟读的词级同步字幕'),
-                                            ),
-                                          ],
-                                      child: _MiniPillAction(
-                                        icon: Icons.more_horiz_rounded,
-                                        label: null,
-                                        compact: compactControls,
-                                        tiny: tinyControls,
-                                        fullscreen: widget.isFullscreen,
-                                      ),
-                                    ),
                                   if (widget.isFullscreen && !tinyControls)
                                     _RoundActionButton(
                                       icon: widget.isSubtitlePanelOpen

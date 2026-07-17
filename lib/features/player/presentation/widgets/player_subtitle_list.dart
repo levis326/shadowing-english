@@ -40,6 +40,7 @@ class PlayerSubtitleList extends StatefulWidget {
     this.onGenerateAiSubtitles,
     this.onRegenerateAiSubtitles,
     this.onDeleteAiSubtitles,
+    this.onRegenerateAiLine,
     super.key,
   });
 
@@ -72,6 +73,7 @@ class PlayerSubtitleList extends StatefulWidget {
   final VoidCallback? onGenerateAiSubtitles;
   final VoidCallback? onRegenerateAiSubtitles;
   final VoidCallback? onDeleteAiSubtitles;
+  final Future<void> Function(int index)? onRegenerateAiLine;
 
   @override
   State<PlayerSubtitleList> createState() => _PlayerSubtitleListState();
@@ -83,6 +85,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
   String? _activeDictionaryTokenId;
   OverlayEntry? _dictionaryOverlayEntry;
   bool _autoFollowCurrentLine = true;
+  int? _regeneratingAiLineIndex;
 
   bool get _showCurrentOnly => widget.showCurrentOnly;
 
@@ -652,40 +655,58 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
       showDragHandle: true,
       builder: (BuildContext context) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              ListTile(
-                leading: const Icon(Icons.bookmark_add_outlined),
-                title: const Text('收藏到短语库'),
-                onTap: () => Navigator.of(context).pop('bookmark'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.copy_all_rounded),
-                title: const Text('复制英文'),
-                onTap: () => Navigator.of(context).pop('copy-en'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.translate_rounded),
-                title: const Text('复制中英双语'),
-                onTap: () => Navigator.of(context).pop('copy-bi'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.auto_awesome_outlined),
-                title: const Text('AI 解释这句话'),
-                onTap: () => Navigator.of(context).pop('ai-explain'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.repeat_one_rounded),
-                title: const Text('从这里开始循环'),
-                onTap: () => Navigator.of(context).pop('loop'),
-              ),
-              ListTile(
-                leading: const Icon(Icons.edit_note_rounded),
-                title: const Text('加入听写练习'),
-                onTap: () => Navigator.of(context).pop('dictation'),
-              ),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                ListTile(
+                  leading: const Icon(Icons.bookmark_add_outlined),
+                  title: const Text('收藏到短语库'),
+                  onTap: () => Navigator.of(context).pop('bookmark'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.copy_all_rounded),
+                  title: const Text('复制英文'),
+                  onTap: () => Navigator.of(context).pop('copy-en'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.translate_rounded),
+                  title: const Text('复制中英双语'),
+                  onTap: () => Navigator.of(context).pop('copy-bi'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.auto_awesome_outlined),
+                  title: const Text('AI 解释这句话'),
+                  onTap: () => Navigator.of(context).pop('ai-explain'),
+                ),
+                if (widget.onRegenerateAiLine != null)
+                  ListTile(
+                    leading: const Icon(Icons.refresh_rounded),
+                    title: const Text('AI 重新生成当前句'),
+                    subtitle: const Text('只替换这一句，失败时保留原句'),
+                    trailing: _regeneratingAiLineIndex == index
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : null,
+                    enabled: _regeneratingAiLineIndex == null,
+                    onTap: _regeneratingAiLineIndex == null
+                        ? () => Navigator.of(context).pop('regenerate-ai-line')
+                        : null,
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.repeat_one_rounded),
+                  title: const Text('从这里开始循环'),
+                  onTap: () => Navigator.of(context).pop('loop'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.edit_note_rounded),
+                  title: const Text('加入听写练习'),
+                  onTap: () => Navigator.of(context).pop('dictation'),
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -723,6 +744,23 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
         return;
       case 'ai-explain':
         widget.onAiExplain(index);
+        return;
+      case 'regenerate-ai-line':
+        final Future<void> Function(int index)? regenerate =
+            widget.onRegenerateAiLine;
+        if (regenerate == null || _regeneratingAiLineIndex != null) return;
+        setState(() {
+          _regeneratingAiLineIndex = index;
+        });
+        try {
+          await regenerate(index);
+        } finally {
+          if (mounted) {
+            setState(() {
+              _regeneratingAiLineIndex = null;
+            });
+          }
+        }
         return;
     }
   }
