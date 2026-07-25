@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://markyuango.github.io/shadowing-english/sitemap.xml
+Sitemap: https://tidesparrow.github.io/shadowing-english/sitemap.xml
