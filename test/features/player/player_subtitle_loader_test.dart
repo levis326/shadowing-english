@@ -36,6 +36,41 @@ How are you?
     expect(linesVtt[0].chinese, '');
   });
 
+  test('exports generated lines to srt with en filename convention', () {
+    final List<PlayerSubtitleLine> lines = <PlayerSubtitleLine>[
+      const PlayerSubtitleLine(
+        startTime: '00:01',
+        english: 'Hello there',
+        chinese: '你好',
+        startMs: 1000,
+        endMs: 3000,
+      ),
+      const PlayerSubtitleLine(
+        startTime: '00:03',
+        english: 'Welcome',
+        chinese: '',
+        startMs: 3500,
+        endMs: 6000,
+      ),
+    ];
+
+    final String srt = subtitleLinesToSrt(lines);
+    expect(srt, contains('00:00:01,000 --> 00:00:03,000'));
+    expect(srt, contains('Hello there'));
+    expect(srt, contains('00:00:03,500 --> 00:00:06,000'));
+    expect(srt, contains('Welcome'));
+    expect(srt, isNot(contains('你好')));
+
+    expect(
+      generatedSubtitleSrtFileName(r'C:\videos\Friends-S01E01.mp4'),
+      'Friends-S01E01.en.srt',
+    );
+    expect(
+      generatedSubtitleSrtFileName('/videos/Friends-S01E01.mp4'),
+      'Friends-S01E01.en.srt',
+    );
+  });
+
   test('merges english and chinese subtitle lines by index', () {
     const String english = '''
 1

@@ -131,6 +131,53 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     }
   }
 
+  /// Attaches a generated `.srt` subtitle to an episode so it is recognized as
+  /// the episode's English subtitle on subsequent loads.
+  Future<void> attachSubtitleToEpisode({
+    required String episodeId,
+    required String enSubtitlePath,
+  }) async {
+    bool changed = false;
+    state = state
+        .map((LibraryCourseData course) {
+          final LibraryEpisodeItem? current = course.episodes
+              .where((LibraryEpisodeItem item) => item.id == episodeId)
+              .firstOrNull;
+          if (current == null) {
+            return course;
+          }
+          changed = true;
+          final List<LibrarySubtitleTrackItem> tracks =
+              <LibrarySubtitleTrackItem>[
+                LibrarySubtitleTrackItem(
+                  languageCode: 'en',
+                  languageLabel: '英文字幕',
+                  path: enSubtitlePath,
+                ),
+                ...current.subtitleTracks.where(
+                  (LibrarySubtitleTrackItem track) =>
+                      !track.languageCode.toLowerCase().startsWith('en'),
+                ),
+              ];
+          final List<LibraryEpisodeItem> episodes = course.episodes
+              .map(
+                (LibraryEpisodeItem item) => item.id == episodeId
+                    ? item.copyWith(
+                        hasEnglishSubtitles: true,
+                        enSubtitleAsset: enSubtitlePath,
+                        subtitleTracks: tracks,
+                      )
+                    : item,
+              )
+              .toList(growable: false);
+          return course.copyWith(episodes: episodes);
+        })
+        .toList(growable: false);
+    if (changed) {
+      await _persistImportedCourses();
+    }
+  }
+
   String _formatDuration(Duration duration) {
     final int totalSeconds = duration.inSeconds;
     final int minutes = totalSeconds ~/ 60;

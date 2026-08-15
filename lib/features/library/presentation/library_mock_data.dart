@@ -53,14 +53,19 @@ class LibraryEpisodeItem {
     String? lastWatchedStr,
     String? progressTimeStr,
     String? totalTimeStr,
+    bool? hasChineseSubtitles,
+    bool? hasEnglishSubtitles,
+    String? enSubtitleAsset,
+    String? cnSubtitleAsset,
+    List<LibrarySubtitleTrackItem>? subtitleTracks,
   }) {
     return LibraryEpisodeItem(
       id: id,
       numberStr: numberStr,
       title: title,
       durationMinutes: durationMinutes,
-      hasChineseSubtitles: hasChineseSubtitles,
-      hasEnglishSubtitles: hasEnglishSubtitles,
+      hasChineseSubtitles: hasChineseSubtitles ?? this.hasChineseSubtitles,
+      hasEnglishSubtitles: hasEnglishSubtitles ?? this.hasEnglishSubtitles,
       completed: completed ?? this.completed,
       progressPercent: progressPercent ?? this.progressPercent,
       coverImage: coverImage,
@@ -68,9 +73,9 @@ class LibraryEpisodeItem {
       progressTimeStr: progressTimeStr ?? this.progressTimeStr,
       totalTimeStr: totalTimeStr ?? this.totalTimeStr,
       videoAsset: videoAsset,
-      enSubtitleAsset: enSubtitleAsset,
-      cnSubtitleAsset: cnSubtitleAsset,
-      subtitleTracks: subtitleTracks,
+      enSubtitleAsset: enSubtitleAsset ?? this.enSubtitleAsset,
+      cnSubtitleAsset: cnSubtitleAsset ?? this.cnSubtitleAsset,
+      subtitleTracks: subtitleTracks ?? this.subtitleTracks,
     );
   }
 }

@@ -1076,6 +1076,27 @@ class _PadPortraitPlayerScreenState
         state.loadLines(lines, wordDefinitions: parseSubtitleGlossary(raw));
         _usingAiSubtitles = true;
       });
+      String? savedSrtFileName;
+      try {
+        final String srtPath = await saveGeneratedSubtitleSrt(
+          videoPath: videoPath,
+          lines: lines,
+        );
+        await ref
+            .read(libraryCatalogProvider.notifier)
+            .attachSubtitleToEpisode(
+              episodeId: widget.episodeId,
+              enSubtitlePath: srtPath,
+            );
+        savedSrtFileName = generatedSubtitleSrtFileName(videoPath);
+        if (mounted) {
+          setState(() {
+            _referenceSubtitleLines = lines;
+          });
+        }
+      } catch (_) {
+        // Saving the SRT is best-effort; generation already succeeded.
+      }
       final SubtitleReferenceReview review = reviewGeneratedSubtitles(
         generated: lines,
         reference: _referenceSubtitleLines,
@@ -1086,19 +1107,26 @@ class _PadPortraitPlayerScreenState
             videoPath: videoPath,
             settings: settings,
           );
+      final String savedSuffix = savedSrtFileName == null
+          ? ''
+          : '，已保存为 $savedSrtFileName';
       final String? warning = subtitleGenerationWarning(raw);
       if (warning != null) {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成；$warning'));
+        _showMessage(repairSummary.appendTo('AI 字幕已生成；$warning$savedSuffix'));
       } else if (subtitleReferenceSignature(
         _referenceSubtitleLines,
       ).isNotEmpty) {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成，已按原字幕校准'));
+        _showMessage(
+          repairSummary.appendTo('AI 字幕已生成，已按原字幕校准$savedSuffix'),
+        );
       } else if (review.comparedLines == 0) {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成'));
+        _showMessage(repairSummary.appendTo('AI 字幕已生成$savedSuffix'));
       } else if (review.differentLines == 0) {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成，已通过参考字幕校对'));
+        _showMessage(
+          repairSummary.appendTo('AI 字幕已生成，已通过参考字幕校对$savedSuffix'),
+        );
       } else {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成'));
+        _showMessage(repairSummary.appendTo('AI 字幕已生成$savedSuffix'));
       }
     } catch (error) {
       if (cancellationToken.isCancelled) return;

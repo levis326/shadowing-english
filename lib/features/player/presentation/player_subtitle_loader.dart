@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 
@@ -240,6 +241,66 @@ String _formatTimestamp(int milliseconds) {
   final int totalMinutes = totalSeconds ~/ 60;
   final int seconds = totalSeconds % 60;
   return '${totalMinutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+}
+
+/// Converts word-level subtitle lines into a standard `.srt` document.
+String subtitleLinesToSrt(List<PlayerSubtitleLine> lines) {
+  final StringBuffer buffer = StringBuffer();
+  int cueIndex = 0;
+  for (final PlayerSubtitleLine line in lines) {
+    final String english = line.english.trim();
+    if (english.isEmpty || line.endMs <= line.startMs) {
+      continue;
+    }
+    cueIndex += 1;
+    buffer
+      ..writeln(cueIndex)
+      ..writeln(
+        '${_srtTimestamp(line.startMs)} --> ${_srtTimestamp(line.endMs)}',
+      )
+      ..writeln(english)
+      ..writeln();
+  }
+  return buffer.toString();
+}
+
+String _srtTimestamp(int milliseconds) {
+  final int hours = milliseconds ~/ 3600000;
+  final int minutes = (milliseconds % 3600000) ~/ 60000;
+  final int seconds = (milliseconds % 60000) ~/ 1000;
+  final int millis = milliseconds % 1000;
+  return '${hours.toString().padLeft(2, '0')}:'
+      '${minutes.toString().padLeft(2, '0')}:'
+      '${seconds.toString().padLeft(2, '0')},'
+      '${millis.toString().padLeft(3, '0')}';
+}
+
+/// Returns the `.en.srt` filename derived from the video filename, e.g.
+/// `Friends-S01E01.mp4` -> `Friends-S01E01.en.srt`.
+String generatedSubtitleSrtFileName(String videoPath) {
+  final String fileName = _fileNameOf(videoPath);
+  final int dotIndex = fileName.lastIndexOf('.');
+  final String stem = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
+  return '$stem.en.srt';
+}
+
+/// Saves the generated subtitle next to the video as `<basename>.en.srt` and
+/// returns the written file path.
+Future<String> saveGeneratedSubtitleSrt({
+  required String videoPath,
+  required List<PlayerSubtitleLine> lines,
+}) async {
+  final String srtPath = '${File(videoPath).parent.path}'
+      '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath)}';
+  await File(srtPath).writeAsString(subtitleLinesToSrt(lines), flush: true);
+  return srtPath;
+}
+
+String _fileNameOf(String path) {
+  final int slash = path.lastIndexOf('/') + 1;
+  final int backslash = path.lastIndexOf(String.fromCharCode(92)) + 1;
+  final int index = slash > backslash ? slash : backslash;
+  return index <= 0 ? path : path.substring(index);
 }
 
 _DualLanguageLinePair _splitDualLanguageLine(List<String> lines) {
