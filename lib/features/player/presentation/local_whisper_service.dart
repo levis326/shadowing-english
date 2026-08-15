@@ -20,14 +20,12 @@ class LocalWhisperService {
     this.serverPathResolver,
     this.modelPathResolver,
     this.port = 8071,
-    this.wordThreshold = 0.01,
     this.inferenceOverride,
   });
 
   final Future<String?> Function()? serverPathResolver;
   final Future<String?> Function()? modelPathResolver;
   final int port;
-  final double wordThreshold;
 
   /// Test seam: replace the HTTP POST to `/inference`.
   final LocalWhisperInferenceOverride? inferenceOverride;
@@ -70,8 +68,6 @@ class LocalWhisperService {
       '127.0.0.1',
       '--port',
       '$port',
-      '--word-thold',
-      '$wordThreshold',
     ]);
     _serverProcess = process;
     unawaited(process.stdout.drain<void>());
@@ -151,6 +147,10 @@ class LocalWhisperService {
       'file': await MultipartFile.fromFile(file.path),
       'language': language,
       'response_format': 'verbose_json',
+      // Disable whisper.cpp's per-token timestamp estimation: it is extremely
+      // slow (and can hang) on silence/long segments. The app synthesizes
+      // word timings locally instead.
+      'token_timestamps': 'false',
     });
     final Dio dio = Dio(
       BaseOptions(
