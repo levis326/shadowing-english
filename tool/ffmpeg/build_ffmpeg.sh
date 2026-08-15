@@ -60,7 +60,11 @@ build_one() {
       extra_flags+=(--target-os=linux --arch=x86_64 --extra-ldflags=-static)
       ;;
     windows-x64)
-      extra_flags+=(--target-os=mingw32 --arch=x86_64)
+      # Link statically so ffmpeg.exe has no MinGW runtime DLL dependencies
+      # (libwinpthread-1.dll, libgcc_s_seh-1.dll, ...). Those DLLs are not
+      # bundled into the Windows release, which made the shipped app report
+      # "应用内置音频组件缺失或无法运行" on clean machines.
+      extra_flags+=(--target-os=mingw32 --arch=x86_64 --extra-ldflags=-static)
       ;;
     macos-arm64)
       extra_flags+=(

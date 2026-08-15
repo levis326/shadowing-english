@@ -171,6 +171,10 @@ jobs:
       - name: Smoke test subtitle FFmpeg
         shell: pwsh
         run: |
+          # Use a minimal PATH so a non-self-contained ffmpeg.exe (e.g. one that
+          # still links against MinGW runtime DLLs) fails here instead of only
+          # breaking on end-user machines that lack those DLLs.
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
           $ffmpeg = "build/ffmpeg-bundle/windows-x64/ffmpeg.exe"
           $smoke = "build/ffmpeg-smoke"
           New-Item -ItemType Directory -Force $smoke | Out-Null
