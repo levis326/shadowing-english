@@ -971,15 +971,20 @@ class AsrSubtitleJobRunner {
           await chunkFile.delete();
         }
         if (attempt == 1) {
-          if (allowReferenceFallback) {
+          final bool skipChunk =
+              allowReferenceFallback ||
+              settings.asrProvider == localWhisperProviderName;
+          if (skipChunk) {
             report
               ..repairCount += 1
-              ..usedReferenceFallback = true
               ..anomalies.add(<String, Object?>{
-                'kind': 'referenceFallback',
+                'kind': allowReferenceFallback ? 'referenceFallback' : 'localSkip',
                 'sourceChunk': sourceChunk,
                 'errorType': error.runtimeType.toString(),
               });
+            if (allowReferenceFallback) {
+              report.usedReferenceFallback = true;
+            }
             await chunkFile.writeAsString(
               const JsonEncoder.withIndent(' ').convert(<String, Object?>{
                 'version': 1,

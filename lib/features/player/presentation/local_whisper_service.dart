@@ -156,7 +156,7 @@ class LocalWhisperService {
       BaseOptions(
         baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(minutes: 3),
+        receiveTimeout: const Duration(seconds: 120),
       ),
     );
     final Response<dynamic> response = await dio.post<dynamic>(
