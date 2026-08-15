@@ -1,5 +1,7 @@
 // ignore_for_file: always_put_control_body_on_new_line
 
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'constants/strings.dart';
 import 'features/import_course/domain/video_cover_extractor.dart';
+import 'features/player/presentation/local_whisper_service.dart';
 import 'features/player/presentation/player_backend.dart';
 import 'features/player/presentation/transcript_reader_window.dart';
 import 'flavors/app_flavor.dart';
@@ -24,9 +27,20 @@ Future<void> main(List<String> args) async {
   await bootstrap(args: args);
 }
 
+AppLifecycleListener? _appLifecycleListener;
+
+/// Kills the long-lived local whisper-server process when the app exits, so
+/// the bundled whisper directory is not left locked by an orphaned process.
+void _registerLifecycleCleanup() {
+  _appLifecycleListener ??= AppLifecycleListener(
+    onDetach: () => unawaited(localWhisperService.shutdown()),
+  );
+}
+
 Future<void> bootstrap({List<String> args = const <String>[]}) async {
   /// Initialize packages
   WidgetsFlutterBinding.ensureInitialized();
+  _registerLifecycleCleanup();
   if (await maybeRunTranscriptReaderWindow()) {
     return;
   }
