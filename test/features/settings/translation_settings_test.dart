@@ -25,16 +25,17 @@ void main() {
     hiveDir.deleteSync(recursive: true);
   });
 
-  test('defaults to OpenAI translation source', () {
+  test('defaults to no translation source', () {
     final ProviderContainer container = ProviderContainer();
     addTearDown(container.dispose);
 
     final LearningSettingsState state = container.read(
       learningSettingsProvider,
     );
-    expect(state.translationProvider, 'OpenAI');
+    expect(state.translationProvider, '不使用翻译');
     expect(state.translationApiKey, isEmpty);
-    expect(state.translationBaseUrl, 'https://api.openai.com/v1');
+    expect(state.translationBaseUrl, isEmpty);
+    expect(state.translationModel, isEmpty);
   });
 
   test('translation provider presets fill default base url and model', () {

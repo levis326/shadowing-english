@@ -32,9 +32,9 @@ void main() {
 
     expect(find.text('翻译'), findsOneWidget);
     expect(find.text('翻译来源'), findsOneWidget);
-    expect(find.text('API Key'), findsOneWidget);
-    expect(find.text('获取模型'), findsWidgets);
-    expect(find.text('Model'), findsOneWidget);
+    expect(find.text('API Key'), findsNothing);
+    expect(find.text('获取模型'), findsNothing);
+    expect(find.text('Model'), findsNothing);
     expect(find.text('API Secret'), findsNothing);
     expect(find.text('App ID'), findsNothing);
     expect(find.text('AccessKey ID'), findsNothing);

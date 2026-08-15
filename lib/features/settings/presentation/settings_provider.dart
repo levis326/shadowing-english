@@ -22,7 +22,9 @@ const List<String> playbackSpeedOptions = <String>[
   '1.25×',
   '1.5×',
 ];
+const String noTranslationProviderName = '不使用翻译';
 const List<String> translationProviderOptions = <String>[
+  noTranslationProviderName,
   'OpenAI',
   'OpenRouter',
   'SiliconFlow',
@@ -55,6 +57,11 @@ class TranslationProviderPreset {
 
 const Map<String, TranslationProviderPreset> translationProviderPresets =
     <String, TranslationProviderPreset>{
+      noTranslationProviderName: TranslationProviderPreset(
+        name: noTranslationProviderName,
+        baseUrl: '',
+        model: '',
+      ),
       'OpenAI': TranslationProviderPreset(
         name: 'OpenAI',
         baseUrl: 'https://api.openai.com/v1',
@@ -150,7 +157,7 @@ class LearningSettingsState {
 
   factory LearningSettingsState.defaults() {
     final TranslationProviderPreset defaultPreset =
-        translationProviderPresets['OpenAI']!;
+        translationProviderPresets[noTranslationProviderName]!;
     final TranslationProviderPreset defaultAsrPreset =
         asrProviderPresets['阿里云百炼']!;
     return LearningSettingsState(
