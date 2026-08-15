@@ -847,6 +847,16 @@ class AsrSubtitleService {
     return value.trim().replaceAll(RegExp(r'^[^\w]+|[^\w]+$'), '');
   }
 
+  /// Removes whisper.cpp audio-tag tokens such as `[BLANK_AUDIO]`, `[MUSIC]`,
+  /// `[NO SPEECH]` or `[SILENCE]`, which whisper.cpp emits for silent/non-speech
+  /// segments. They are treated as silence so the chunk is skipped gracefully.
+  String _stripWhisperSpecialTokens(String value) {
+    return value
+        .replaceAll(RegExp(r'\[[A-Z][A-Z_ ]*\]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
   int? _intMs(Object? value) {
     if (value is num) {
       return value.round();
@@ -904,7 +914,9 @@ class AsrSubtitleService {
   Map<String, Object?>? _segmentToLine(Map<String, dynamic> segment) {
     final int? startMs = _secondsToMs(segment['start']);
     final int? endMs = _secondsToMs(segment['end']);
-    final String english = (segment['text'] as String? ?? '').trim();
+    final String english = _stripWhisperSpecialTokens(
+      (segment['text'] as String? ?? '').trim(),
+    );
     if (startMs == null ||
         endMs == null ||
         endMs <= startMs ||
@@ -921,9 +933,9 @@ class AsrSubtitleService {
           .map((Map<String, dynamic> word) {
             final int? wordStartMs = _secondsToMs(word['start']);
             final int? wordEndMs = _secondsToMs(word['end']);
-            final String text =
-                (word['word'] as String? ?? word['text'] as String? ?? '')
-                    .trim();
+            final String text = _stripWhisperSpecialTokens(
+              (word['word'] as String? ?? word['text'] as String? ?? '').trim(),
+            );
             if (text.isEmpty ||
                 wordStartMs == null ||
                 wordEndMs == null ||

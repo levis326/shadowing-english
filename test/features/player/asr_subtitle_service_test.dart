@@ -683,4 +683,46 @@ void main() {
     expect(lines, hasLength(1));
     expect((lines.single as Map<String, dynamic>)['english'], 'hello world');
   });
+
+  test('whisper audio-tag tokens such as [BLANK_AUDIO] are treated as silence', () async {
+    final File video = File(
+      '${Directory.systemTemp.createTempSync('asr-blank-audio-test-').path}/lesson.mp4',
+    )..writeAsStringSync('demo');
+    addTearDown(() => video.parent.deleteSync(recursive: true));
+
+    final AsrSubtitleService service = AsrSubtitleService(
+      prepareAudioChunksOverride: (File file) async => <AsrAudioChunk>[
+        AsrAudioChunk(file: file, offsetMs: 0),
+      ],
+      postTranscriptionOverride:
+          ({required BaseOptions options, required FormData data}) async {
+            return Response<dynamic>(
+              requestOptions: RequestOptions(path: '/audio/transcriptions'),
+              data: <String, dynamic>{
+                'language': 'en',
+                'segments': <Map<String, dynamic>>[
+                  <String, dynamic>{
+                    'start': 0.0,
+                    'end': 58.0,
+                    'text': '[BLANK_AUDIO]',
+                    'words': <Map<String, dynamic>>[],
+                  },
+                ],
+              },
+            );
+          },
+    );
+
+    final String raw = await service.generateWordsJson(
+      videoPath: video.path,
+      settings: LearningSettingsState.defaults().copyWith(
+        asrApiKey: 'demo-key',
+        asrProvider: 'OpenAI',
+        asrBaseUrl: 'https://api.example.com/v1',
+        asrModel: 'asr-demo',
+      ),
+    );
+
+    expect(parseSubtitleLines(raw), isEmpty);
+  });
 }

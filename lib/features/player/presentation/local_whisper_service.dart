@@ -109,6 +109,21 @@ class LocalWhisperService {
     required String language,
   }) async {
     await ensureStarted();
+    try {
+      return await _transcribeOnce(file: file, language: language);
+    } on DioException {
+      // The local server may have hung on the previous request. Restart it
+      // once so a transient stall does not block the whole generation.
+      await shutdown();
+      await ensureStarted();
+      return _transcribeOnce(file: file, language: language);
+    }
+  }
+
+  Future<Map<String, Object?>> _transcribeOnce({
+    required File file,
+    required String language,
+  }) async {
     final String baseUrl = 'http://127.0.0.1:$port';
     final Object? data = inferenceOverride != null
         ? await inferenceOverride!(
@@ -141,7 +156,7 @@ class LocalWhisperService {
       BaseOptions(
         baseUrl: baseUrl,
         connectTimeout: const Duration(seconds: 5),
-        receiveTimeout: const Duration(minutes: 10),
+        receiveTimeout: const Duration(minutes: 3),
       ),
     );
     final Response<dynamic> response = await dio.post<dynamic>(
