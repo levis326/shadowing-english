@@ -1,11 +1,26 @@
 import 'dart:io';
 
 import 'package:common_learn_english/features/import_course/domain/android_import_picker.dart';
+import 'package:common_learn_english/features/import_course/domain/import_match.dart';
 import 'package:common_learn_english/features/import_course/presentation/widgets/import_course_flow.dart';
 import 'package:common_learn_english/features/library/presentation/library_catalog_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+Future<List<ImportMatchRow>> _syncParse({
+  required String videoFolder,
+  required String? subtitleFolder,
+  List<String>? videoFiles,
+  List<String>? subtitleFiles,
+}) async {
+  return ImportMatcher.parse(
+    videoFolder: videoFolder,
+    subtitleFolder: subtitleFolder,
+    videoFiles: videoFiles,
+    subtitleFiles: subtitleFiles,
+  );
+}
 
 void main() {
   testWidgets('import screen follows the redesigned three-step import flow', (
@@ -34,6 +49,7 @@ void main() {
             body: ImportCourseFlow(
               onCancel: () {},
               onImportCompleted: () {},
+              parseMatches: _syncParse,
               pickVideoFolder: () => Future<String?>.value(videoFolder.path),
               pickSubtitleFolder: () => Future<String?>.value(subtitleFolder.path),
             ),
@@ -96,6 +112,7 @@ void main() {
             body: ImportCourseFlow(
               onCancel: () {},
               onImportCompleted: () {},
+              parseMatches: _syncParse,
               pickVideoFolder: () => Future<String?>.value(videoFolder.path),
               pickSubtitleFolder: () => Future<String?>.value(subtitleFolder.path),
             ),
@@ -143,6 +160,7 @@ void main() {
             body: ImportCourseFlow(
               onCancel: () {},
               onImportCompleted: () {},
+              parseMatches: _syncParse,
               pickAndroidVideoDirectory: () async => AndroidImportDirectorySelection(
                 folderName: 'Friends',
                 label: 'Friends（1 个文件）',

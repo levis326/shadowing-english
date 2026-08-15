@@ -13,6 +13,44 @@ import '../../domain/online_video_import.dart';
 import 'import_match_table.dart';
 import 'import_step_header.dart';
 
+typedef ImportMatchParser =
+    Future<List<ImportMatchRow>> Function({
+      required String videoFolder,
+      required String? subtitleFolder,
+      List<String>? videoFiles,
+      List<String>? subtitleFiles,
+    });
+
+/// Runs the blocking directory scan + subtitle matching on a background
+/// isolate, so importing a large folder does not freeze the UI.
+Future<List<ImportMatchRow>> _parseMatchesAsync({
+  required String videoFolder,
+  required String? subtitleFolder,
+  List<String>? videoFiles,
+  List<String>? subtitleFiles,
+}) {
+  return compute(
+    _parseMatchesInBackground,
+    <String, Object?>{
+      'videoFolder': videoFolder,
+      'subtitleFolder': subtitleFolder,
+      'videoFiles': videoFiles,
+      'subtitleFiles': subtitleFiles,
+    },
+  );
+}
+
+Future<List<ImportMatchRow>> _parseMatchesInBackground(
+  Map<String, Object?> request,
+) async {
+  return ImportMatcher.parse(
+    videoFolder: request['videoFolder']! as String,
+    subtitleFolder: request['subtitleFolder'] as String?,
+    videoFiles: (request['videoFiles'] as List<Object?>?)?.cast<String>(),
+    subtitleFiles: (request['subtitleFiles'] as List<Object?>?)?.cast<String>(),
+  );
+}
+
 enum ImportSourceMode { local, direct }
 
 class ImportCourseFlow extends ConsumerStatefulWidget {
@@ -25,6 +63,7 @@ class ImportCourseFlow extends ConsumerStatefulWidget {
     this.pickSubtitleFolder,
     this.pickAndroidVideoDirectory,
     this.pickAndroidSubtitleDirectory,
+    this.parseMatches,
     super.key,
   });
 
@@ -38,6 +77,7 @@ class ImportCourseFlow extends ConsumerStatefulWidget {
   pickAndroidVideoDirectory;
   final Future<AndroidImportDirectorySelection?> Function()?
   pickAndroidSubtitleDirectory;
+  final ImportMatchParser? parseMatches;
 
   @override
   ConsumerState<ImportCourseFlow> createState() => _ImportCourseFlowState();
@@ -499,7 +539,8 @@ class _ImportCourseFlowState extends ConsumerState<ImportCourseFlow> {
       parsing = true;
     });
     await Future<void>.delayed(const Duration(milliseconds: 200));
-    final List<ImportMatchRow> rows = ImportMatcher.parse(
+    final ImportMatchParser parser = widget.parseMatches ?? _parseMatchesAsync;
+    final List<ImportMatchRow> rows = await parser(
       videoFolder: selectedVideoPath,
       subtitleFolder: selectedSubtitlePath,
       videoFiles: selectedVideoFiles.isEmpty ? null : selectedVideoFiles,

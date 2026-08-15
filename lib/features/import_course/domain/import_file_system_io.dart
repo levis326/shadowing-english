@@ -7,7 +7,7 @@ List<String> listFilesSync(String folderPath, Set<String> allowedExtensions) {
   }
 
   return directory
-      .listSync(recursive: true)
+      .listSync(recursive: true, followLinks: false)
       .whereType<File>()
       .map((File file) => file.path)
       .where((String path) {
