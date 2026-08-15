@@ -1154,13 +1154,19 @@ class AsrSubtitleJobRunner {
     }
     final List<Map<String, Object?>> boundaryNormalized =
         _normalizeChunkBoundaries(lines, report: report);
+    final List<Map<String, Object?>> timelineNormalized = _normalizeTimeline(
+      boundaryNormalized,
+      report: report,
+    );
+    final List<Map<String, Object?>> sentenceLines = _mergeIntoEnglishSentences(
+      timelineNormalized,
+    );
     return const JsonEncoder.withIndent('  ').convert(<String, Object?>{
       'version': 1,
       'language': '',
-      'lines': _normalizeTimeline(
-        boundaryNormalized,
-        report: report,
-      ).map(_withoutSourceChunk).toList(growable: false),
+      'lines': sentenceLines
+          .map(_withoutSourceChunk)
+          .toList(growable: false),
       'glossary': glossary.entries
           .map(
             (MapEntry<String, String> entry) => <String, String>{
@@ -1170,6 +1176,74 @@ class AsrSubtitleJobRunner {
           )
           .toList(growable: false),
     });
+  }
+
+  /// Merges adjacent whisper fragments into whole English sentences, so each
+  /// subtitle cue corresponds to one sentence. Fragments that do not end with
+  /// sentence punctuation (`.!?`) are joined with the following fragment.
+  List<Map<String, Object?>> _mergeIntoEnglishSentences(
+    List<Map<String, Object?>> lines,
+  ) {
+    final List<Map<String, Object?>> result = <Map<String, Object?>>[];
+    final List<Map<String, Object?>> buffer = <Map<String, Object?>>[];
+    for (final Map<String, Object?> line in lines) {
+      buffer.add(line);
+      if (_endsSentence((line['english'] as String? ?? '').trim())) {
+        result.add(_mergeLineBuffer(buffer));
+        buffer.clear();
+      }
+    }
+    if (buffer.isNotEmpty) {
+      result.add(_mergeLineBuffer(buffer));
+    }
+    return result;
+  }
+
+  bool _endsSentence(String english) {
+    if (english.isEmpty) {
+      return false;
+    }
+    final String last = english.substring(english.length - 1);
+    return last == '.' ||
+        last == '!' ||
+        last == '?' ||
+        last == '。' ||
+        last == '！' ||
+        last == '？';
+  }
+
+  Map<String, Object?> _mergeLineBuffer(List<Map<String, Object?>> buffer) {
+    if (buffer.length == 1) {
+      return buffer.first;
+    }
+    final Map<String, Object?> first = buffer.first;
+    final Map<String, Object?> last = buffer.last;
+    final List<Map<String, Object?>> words = <Map<String, Object?>>[];
+    final List<String> englishParts = <String>[];
+    final List<String> chineseParts = <String>[];
+    for (final Map<String, Object?> line in buffer) {
+      words.addAll(
+        (line['words'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .map(Map<String, Object?>.from),
+      );
+      final String english = (line['english'] as String? ?? '').trim();
+      if (english.isNotEmpty) {
+        englishParts.add(english);
+      }
+      final String chinese = (line['chinese'] as String? ?? '').trim();
+      if (chinese.isNotEmpty) {
+        chineseParts.add(chinese);
+      }
+    }
+    return <String, Object?>{
+      ...last,
+      'startMs': first['startMs'],
+      'endMs': last['endMs'],
+      'english': englishParts.join(' '),
+      'chinese': chineseParts.join(' '),
+      'words': words,
+    };
   }
 
   List<Map<String, Object?>> _normalizeTimeline(

@@ -368,7 +368,7 @@ void main() {
             required LearningSettingsState settings,
           }) async {
             calls.update(sentence, (int count) => count + 1, ifAbsent: () => 1);
-            if (sentence == 'second line' && calls[sentence] == 1) return null;
+            if (sentence == 'second line.' && calls[sentence] == 1) return null;
             return '翻译：$sentence';
           },
     );
@@ -386,7 +386,7 @@ void main() {
       parseSubtitleLines(
         partialRaw,
       ).map((PlayerSubtitleLine line) => line.chinese),
-      <String>['翻译：first line', ''],
+      <String>['翻译：first line.', ''],
     );
     final String raw = await runner.run(
       episodeId: 'episode-1',
@@ -394,11 +394,11 @@ void main() {
       settings: settings,
     );
 
-    expect(calls['first line'], 1);
-    expect(calls['second line'], 2);
+    expect(calls['first line.'], 1);
+    expect(calls['second line.'], 2);
     expect(
       parseSubtitleLines(raw).map((PlayerSubtitleLine line) => line.chinese),
-      <String>['翻译：first line', '翻译：second line'],
+      <String>['翻译：first line.', '翻译：second line.'],
     );
     expect(subtitleGenerationWarning(raw), isNull);
   });
@@ -426,7 +426,7 @@ void main() {
             required AsrAudioChunk chunk,
             required LearningSettingsState settings,
           }) async {
-            return _chunkJson('chunk 1', chunk.offsetMs + 1000);
+            return _chunkJson('chunk 1.', chunk.offsetMs + 1000);
           },
     );
     final Directory jobDir = await runner.jobDirectory(
@@ -436,7 +436,7 @@ void main() {
     );
     await File('${jobDir.path}/chunks/00000.json')
         .create(recursive: true)
-        .then((File file) => file.writeAsString(_rawChunk('chunk 0', 1000)));
+        .then((File file) => file.writeAsString(_rawChunk('chunk 0.', 1000)));
 
     final String raw = await runner.run(
       episodeId: 'episode-1',
@@ -446,8 +446,8 @@ void main() {
 
     final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
     expect(lines.map((PlayerSubtitleLine line) => line.english), <String>[
-      'chunk 0',
-      'chunk 1',
+      'chunk 0.',
+      'chunk 1.',
     ]);
   });
 
@@ -705,9 +705,9 @@ void main() {
             'version': 1,
             'language': 'en',
             'lines': <Map<String, Object?>>[
-              _chunkLine('second line', 1740),
-              _chunkLine('first line', 1000),
-              _chunkLine('first line', 1050),
+              _chunkLine('second line.', 1740),
+              _chunkLine('first line.', 1000),
+              _chunkLine('first line.', 1050),
             ],
           },
     );
@@ -721,8 +721,8 @@ void main() {
     );
 
     expect(lines.map((PlayerSubtitleLine line) => line.english), <String>[
-      'first line',
-      'second line',
+      'first line.',
+      'second line.',
     ]);
     expect(lines.map((PlayerSubtitleLine line) => line.startMs), <int>[
       1000,
@@ -764,7 +764,7 @@ void main() {
                   <String, Object?>{
                     'startMs': 273068,
                     'endMs': 294108,
-                    'english': 'Ha ha',
+                    'english': 'Ha ha.',
                     'chinese': '',
                     'words': <Map<String, Object?>>[
                       <String, Object?>{
@@ -785,7 +785,7 @@ void main() {
                 'version': 1,
                 'language': 'en',
                 'lines': <Map<String, Object?>>[
-                  _chunkLine('Peppa Pig', 291000),
+                  _chunkLine('Peppa Pig.', 291000),
                 ],
               },
       );
@@ -799,8 +799,8 @@ void main() {
       );
 
       expect(lines.map((PlayerSubtitleLine line) => line.english), <String>[
-        'Ha ha',
-        'Peppa Pig',
+        'Ha ha.',
+        'Peppa Pig.',
       ]);
       expect(lines.first.endMs, 290000);
       expect(lines.first.words.last.endMs, 290000);
@@ -1488,8 +1488,8 @@ Map<String, Object?> _twoLineChunkJson() {
     'version': 1,
     'language': 'en',
     'lines': <Map<String, Object?>>[
-      _chunkLine('first line', 1000),
-      _chunkLine('second line', 2000),
+      _chunkLine('first line.', 1000),
+      _chunkLine('second line.', 2000),
     ],
   };
 }
@@ -1507,7 +1507,7 @@ Map<String, Object?> _overlappingChunkJson() {
       <String, Object?>{
         'startMs': 1000,
         'endMs': 3000,
-        'english': 'first line',
+        'english': 'first line.',
         'chinese': '',
         'words': const <Map<String, Object?>>[
           <String, Object?>{'text': 'first', 'startMs': 1000, 'endMs': 2000},
@@ -1517,7 +1517,7 @@ Map<String, Object?> _overlappingChunkJson() {
       <String, Object?>{
         'startMs': 2000,
         'endMs': 4000,
-        'english': 'second line',
+        'english': 'second line.',
         'chinese': '',
         'words': const <Map<String, Object?>>[
           <String, Object?>{'text': 'second', 'startMs': 2000, 'endMs': 3000},
