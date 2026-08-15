@@ -633,4 +633,54 @@ void main() {
       ),
     );
   });
+
+  test('local whisper provider transcribes offline via override', () async {
+    final File chunk = File(
+      '${Directory.systemTemp.createTempSync('local-whisper-test-').path}/chunk.wav',
+    )..writeAsStringSync('audio');
+    addTearDown(() => chunk.parent.deleteSync(recursive: true));
+
+    final AsrSubtitleService service = AsrSubtitleService(
+      localTranscribeOverride:
+          ({
+            required File file,
+            required int offsetMs,
+            required LearningSettingsState settings,
+          }) async => <String, Object?>{
+            'version': 1,
+            'language': 'en',
+            'lines': <Map<String, Object?>>[
+              <String, Object?>{
+                'startMs': 1000,
+                'endMs': 2000,
+                'english': 'hello world',
+                'chinese': '',
+                'words': <Map<String, Object?>>[
+                  <String, Object?>{
+                    'text': 'hello',
+                    'startMs': 1000,
+                    'endMs': 1400,
+                  },
+                  <String, Object?>{
+                    'text': 'world',
+                    'startMs': 1400,
+                    'endMs': 2000,
+                  },
+                ],
+              },
+            ],
+          },
+    );
+
+    final Map<String, Object?> result = await service.generateCloudChunk(
+      chunk: AsrAudioChunk(file: chunk, offsetMs: 0),
+      settings: LearningSettingsState.defaults().copyWith(
+        asrProvider: localWhisperProviderName,
+      ),
+    );
+
+    final List<dynamic> lines = result['lines']! as List<dynamic>;
+    expect(lines, hasLength(1));
+    expect((lines.single as Map<String, dynamic>)['english'], 'hello world');
+  });
 }

@@ -405,6 +405,8 @@ class SettingsScreen extends ConsumerWidget {
                 builder: (BuildContext context) {
                   final bool isTencentAsr = settings.asrProvider == '腾讯云';
                   final bool isAlibabaAsr = settings.asrProvider == '阿里云百炼';
+                  final bool isLocalWhisperAsr =
+                      settings.asrProvider == localWhisperProviderName;
                   final ({String secretId, String secretKey})
                   tencentCredential = _splitTencentCredential(
                     settings.asrApiKey,
@@ -435,164 +437,174 @@ class SettingsScreen extends ConsumerWidget {
                               .setAsrProvider(value);
                         },
                       ),
-                      if (isTencentAsr) ...<Widget>[
-                        _InputRow(
-                          title: '腾讯云 SecretId',
-                          description: '在腾讯云访问密钥页面创建。',
-                          value: tencentCredential.secretId,
-                          hintText: 'AKIDxxxxxxxx',
-                          obscureText: true,
-                          onChanged: (String value) {
-                            ref
-                                .read(learningSettingsProvider.notifier)
-                                .setAsrApiKey(
-                                  _joinTencentCredential(
-                                    secretId: value,
-                                    secretKey: tencentCredential.secretKey,
-                                  ),
-                                );
-                          },
+                      if (isLocalWhisperAsr)
+                        const _SettingsRowFrame(
+                          child: _TitleBlock(
+                            title: '本地离线识别',
+                            description:
+                                '使用内置 whisper.cpp（ggml-small.en）在本地转写英文，无需联网、无需 API Key。中文翻译仍会调用上方“翻译”设置（需联网）。',
+                          ),
                         ),
-                        _InputRow(
-                          title: '腾讯云 SecretKey',
-                          description: '与 SecretId 配套的密钥。',
-                          value: tencentCredential.secretKey,
-                          hintText: 'SECRET_KEY',
-                          obscureText: true,
-                          onChanged: (String value) {
-                            ref
-                                .read(learningSettingsProvider.notifier)
-                                .setAsrApiKey(
-                                  _joinTencentCredential(
-                                    secretId: tencentCredential.secretId,
-                                    secretKey: value,
-                                  ),
-                                );
-                          },
-                        ),
-                      ] else
-                        _InputRow(
-                          title: isAlibabaAsr ? '百炼 API Key' : 'ASR API Key',
-                          description: isAlibabaAsr
-                              ? '在阿里云百炼创建 API Key；音频仅临时上传用于转写。'
-                              : '用于调用当前 ASR 接口。',
-                          value: settings.asrApiKey,
-                          hintText: 'YOUR_ASR_API_KEY_HERE',
-                          obscureText: true,
-                          onChanged: (String value) {
-                            ref
-                                .read(learningSettingsProvider.notifier)
-                                .setAsrApiKey(value);
-                          },
-                        ),
-                      if (isAlibabaAsr)
-                        _ActionRow(
-                          title: '申请百炼 API Key',
-                          description:
-                              '1. 登录阿里云并开通百炼；2. 在 API Key 管理页创建；3. 复制到上方。',
-                          icon: Icons.open_in_new_rounded,
-                          onTap: () {
-                            openUrl(
-                              Uri.parse(
-                                'https://help.aliyun.com/zh/model-studio/get-api-key',
-                              ),
-                            );
-                          },
-                        ),
-                      _SwitchRow(
-                        title: '自定义 ASR 接口地址',
-                        description: '关闭时使用内置厂商默认 baseUrl 和 model。',
-                        value: settings.useCustomAsrEndpoint,
-                        onChanged: (bool value) {
-                          ref
-                              .read(learningSettingsProvider.notifier)
-                              .setUseCustomAsrEndpoint(value: value);
-                        },
-                      ),
-                      _InputRow(
-                        title: 'ASR Base URL',
-                        description: '默认已内置，可按需覆盖。',
-                        value: settings.asrBaseUrl,
-                        hintText: 'https://api.example.com/v1',
-                        enabled: settings.useCustomAsrEndpoint,
-                        onChanged: (String value) {
-                          ref
-                              .read(learningSettingsProvider.notifier)
-                              .setAsrBaseUrl(value);
-                        },
-                      ),
-                      if (!isTencentAsr && !isAlibabaAsr)
-                        _ModelFetchRow(
-                          title: '获取 ASR 模型',
-                          emptyDescription: '从当前 ASR provider 拉取可用模型列表。',
-                          loadedDescription: '已拿到 ASR 模型列表，可直接在下方选择。',
-                          isLoading: settings.isFetchingAsrModels,
-                          hasModels: settings.availableAsrModels.isNotEmpty,
-                          onTap: () async {
-                            if (settings.asrApiKey.trim().isEmpty) {
-                              _showMessage(context, '请先填写 ASR API Key。');
-                              return;
-                            }
-                            try {
-                              final List<String> models = await ref
+                      if (!isLocalWhisperAsr) ...<Widget>[
+                        if (isTencentAsr) ...<Widget>[
+                          _InputRow(
+                            title: '腾讯云 SecretId',
+                            description: '在腾讯云访问密钥页面创建。',
+                            value: tencentCredential.secretId,
+                            hintText: 'AKIDxxxxxxxx',
+                            obscureText: true,
+                            onChanged: (String value) {
+                              ref
                                   .read(learningSettingsProvider.notifier)
-                                  .fetchAsrModels();
-                              if (!context.mounted) {
-                                return;
-                              }
-                              _showMessage(
-                                context,
-                                models.isEmpty
-                                    ? '未获取到可用 ASR 模型。'
-                                    : '已获取 ${models.length} 个 ASR 模型。',
+                                  .setAsrApiKey(
+                                    _joinTencentCredential(
+                                      secretId: value,
+                                      secretKey: tencentCredential.secretKey,
+                                    ),
+                                  );
+                            },
+                          ),
+                          _InputRow(
+                            title: '腾讯云 SecretKey',
+                            description: '与 SecretId 配套的密钥。',
+                            value: tencentCredential.secretKey,
+                            hintText: 'SECRET_KEY',
+                            obscureText: true,
+                            onChanged: (String value) {
+                              ref
+                                  .read(learningSettingsProvider.notifier)
+                                  .setAsrApiKey(
+                                    _joinTencentCredential(
+                                      secretId: tencentCredential.secretId,
+                                      secretKey: value,
+                                    ),
+                                  );
+                            },
+                          ),
+                        ] else
+                          _InputRow(
+                            title: isAlibabaAsr ? '百炼 API Key' : 'ASR API Key',
+                            description: isAlibabaAsr
+                                ? '在阿里云百炼创建 API Key；音频仅临时上传用于转写。'
+                                : '用于调用当前 ASR 接口。',
+                            value: settings.asrApiKey,
+                            hintText: 'YOUR_ASR_API_KEY_HERE',
+                            obscureText: true,
+                            onChanged: (String value) {
+                              ref
+                                  .read(learningSettingsProvider.notifier)
+                                  .setAsrApiKey(value);
+                            },
+                          ),
+                        if (isAlibabaAsr)
+                          _ActionRow(
+                            title: '申请百炼 API Key',
+                            description:
+                                '1. 登录阿里云并开通百炼；2. 在 API Key 管理页创建；3. 复制到上方。',
+                            icon: Icons.open_in_new_rounded,
+                            onTap: () {
+                              openUrl(
+                                Uri.parse(
+                                  'https://help.aliyun.com/zh/model-studio/get-api-key',
+                                ),
                               );
-                            } catch (_) {
-                              if (!context.mounted) {
-                                return;
-                              }
-                              _showMessage(context, '获取 ASR 模型失败，请检查当前配置。');
-                            }
+                            },
+                          ),
+                        _SwitchRow(
+                          title: '自定义 ASR 接口地址',
+                          description: '关闭时使用内置厂商默认 baseUrl 和 model。',
+                          value: settings.useCustomAsrEndpoint,
+                          onChanged: (bool value) {
+                            ref
+                                .read(learningSettingsProvider.notifier)
+                                .setUseCustomAsrEndpoint(value: value);
                           },
                         ),
-                      if (settings.availableAsrModels.isNotEmpty)
-                        _SelectRow(
-                          title: 'ASR 模型选择',
-                          description: '从当前 provider 返回的模型列表中直接选择。',
-                          value:
-                              settings.availableAsrModels.contains(
-                                settings.asrModel,
-                              )
-                              ? settings.asrModel
-                              : settings.availableAsrModels.first,
-                          options: settings.availableAsrModels,
-                          onChanged: (String? value) {
-                            if (value == null) {
-                              return;
-                            }
+                        _InputRow(
+                          title: 'ASR Base URL',
+                          description: '默认已内置，可按需覆盖。',
+                          value: settings.asrBaseUrl,
+                          hintText: 'https://api.example.com/v1',
+                          enabled: settings.useCustomAsrEndpoint,
+                          onChanged: (String value) {
+                            ref
+                                .read(learningSettingsProvider.notifier)
+                                .setAsrBaseUrl(value);
+                          },
+                        ),
+                        if (!isTencentAsr && !isAlibabaAsr)
+                          _ModelFetchRow(
+                            title: '获取 ASR 模型',
+                            emptyDescription: '从当前 ASR provider 拉取可用模型列表。',
+                            loadedDescription: '已拿到 ASR 模型列表，可直接在下方选择。',
+                            isLoading: settings.isFetchingAsrModels,
+                            hasModels: settings.availableAsrModels.isNotEmpty,
+                            onTap: () async {
+                              if (settings.asrApiKey.trim().isEmpty) {
+                                _showMessage(context, '请先填写 ASR API Key。');
+                                return;
+                              }
+                              try {
+                                final List<String> models = await ref
+                                    .read(learningSettingsProvider.notifier)
+                                    .fetchAsrModels();
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                _showMessage(
+                                  context,
+                                  models.isEmpty
+                                      ? '未获取到可用 ASR 模型。'
+                                      : '已获取 ${models.length} 个 ASR 模型。',
+                                );
+                              } catch (_) {
+                                if (!context.mounted) {
+                                  return;
+                                }
+                                _showMessage(context, '获取 ASR 模型失败，请检查当前配置。');
+                              }
+                            },
+                          ),
+                        if (settings.availableAsrModels.isNotEmpty)
+                          _SelectRow(
+                            title: 'ASR 模型选择',
+                            description: '从当前 provider 返回的模型列表中直接选择。',
+                            value:
+                                settings.availableAsrModels.contains(
+                                  settings.asrModel,
+                                )
+                                ? settings.asrModel
+                                : settings.availableAsrModels.first,
+                            options: settings.availableAsrModels,
+                            onChanged: (String? value) {
+                              if (value == null) {
+                                return;
+                              }
+                              ref
+                                  .read(learningSettingsProvider.notifier)
+                                  .setAsrModel(value);
+                            },
+                          ),
+                        _InputRow(
+                          title: 'ASR Model',
+                          description: isTencentAsr
+                              ? '腾讯英文识别使用 16k_en。'
+                              : isAlibabaAsr
+                              ? '默认使用 qwen3-asr-flash-filetrans，提供词级时间戳。'
+                              : '可手动输入模型名；已获取模型后也可以直接覆盖。',
+                          value: settings.asrModel,
+                          hintText: isTencentAsr
+                              ? '16k_en'
+                              : isAlibabaAsr
+                              ? 'qwen3-asr-flash-filetrans'
+                              : 'whisper-1',
+                          onChanged: (String value) {
                             ref
                                 .read(learningSettingsProvider.notifier)
                                 .setAsrModel(value);
                           },
                         ),
-                      _InputRow(
-                        title: 'ASR Model',
-                        description: isTencentAsr
-                            ? '腾讯英文识别使用 16k_en。'
-                            : isAlibabaAsr
-                            ? '默认使用 qwen3-asr-flash-filetrans，提供词级时间戳。'
-                            : '可手动输入模型名；已获取模型后也可以直接覆盖。',
-                        value: settings.asrModel,
-                        hintText: isTencentAsr
-                            ? '16k_en'
-                            : isAlibabaAsr
-                            ? 'qwen3-asr-flash-filetrans'
-                            : 'whisper-1',
-                        onChanged: (String value) {
-                          ref
-                              .read(learningSettingsProvider.notifier)
-                              .setAsrModel(value);
-                        },
-                      ),
+                      ],
                     ],
                   );
                 },

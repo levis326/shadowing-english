@@ -31,7 +31,13 @@ const List<String> translationProviderOptions = <String>[
   '百度翻译',
   '阿里云翻译',
 ];
-const List<String> asrProviderOptions = <String>['阿里云百炼', 'OpenAI', '腾讯云'];
+const String localWhisperProviderName = '本地 Whisper';
+const List<String> asrProviderOptions = <String>[
+  '阿里云百炼',
+  'OpenAI',
+  '腾讯云',
+  localWhisperProviderName,
+];
 
 const String _learningSettingsStorageKey = 'learning_settings_v1';
 
@@ -102,6 +108,11 @@ const Map<String, TranslationProviderPreset> asrProviderPresets =
         name: '腾讯云',
         baseUrl: 'https://asr.tencentcloudapi.com',
         model: '16k_en',
+      ),
+      localWhisperProviderName: TranslationProviderPreset(
+        name: localWhisperProviderName,
+        baseUrl: '',
+        model: 'ggml-small.en',
       ),
     };
 
@@ -748,6 +759,7 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
   String _normalizeAsrProvider(String value) {
     if (value == 'Tencent Cloud') return '腾讯云';
     if (value == 'Alibaba Cloud') return '阿里云百炼';
+    if (value == 'Local Whisper') return localWhisperProviderName;
     return value;
   }
 

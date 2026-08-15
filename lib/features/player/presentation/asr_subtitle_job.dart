@@ -233,7 +233,10 @@ class AsrSubtitleJobRunner {
 
     List<AsrAudioChunk> chunks = const <AsrAudioChunk>[];
     try {
-      chunks = await service.prepareAudioChunks(video);
+      chunks = await service.prepareAudioChunks(
+        video,
+        wavOutput: settings.asrProvider == localWhisperProviderName,
+      );
       if (chunks.isEmpty) {
         throw const AsrSubtitleGenerationException('没有提取到可识别的音频，原句已保留。');
       }
@@ -392,7 +395,10 @@ class AsrSubtitleJobRunner {
         }
       }
       try {
-        chunks = await service.prepareAudioChunks(video);
+        chunks = await service.prepareAudioChunks(
+          video,
+          wavOutput: settings.asrProvider == localWhisperProviderName,
+        );
       } catch (_) {
         cancellationToken?.throwIfCancelled();
         if (usableReferenceLines.isEmpty) rethrow;

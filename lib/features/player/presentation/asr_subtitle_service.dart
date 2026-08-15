@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../settings/presentation/settings_provider.dart';
 import 'desktop_ffmpeg.dart';
+import 'local_whisper_service.dart';
 
 const MethodChannel _audioToolsChannel = MethodChannel(
   'com.shadowing.english/audio_tools',
@@ -43,6 +44,12 @@ typedef AsrGetJsonOverride =
 typedef AsrPrepareAudioOverride = Future<File> Function(File file);
 typedef AsrPrepareAudioChunksOverride =
     Future<List<AsrAudioChunk>> Function(File file);
+typedef AsrLocalTranscribeOverride =
+    Future<Map<String, Object?>> Function({
+      required File file,
+      required int offsetMs,
+      required LearningSettingsState settings,
+    });
 typedef AsrProgressCallback = void Function(AsrSubtitleProgress progress);
 
 class AsrAudioChunk {
@@ -104,6 +111,7 @@ class AsrSubtitleService {
     this.getJsonOverride,
     this.prepareAudioOverride,
     this.prepareAudioChunksOverride,
+    this.localTranscribeOverride,
     this.now,
   });
 
@@ -118,6 +126,7 @@ class AsrSubtitleService {
   final AsrGetJsonOverride? getJsonOverride;
   final AsrPrepareAudioOverride? prepareAudioOverride;
   final AsrPrepareAudioChunksOverride? prepareAudioChunksOverride;
+  final AsrLocalTranscribeOverride? localTranscribeOverride;
   final DateTime Function()? now;
 
   Future<String> generateWordsJson({
@@ -181,8 +190,11 @@ class AsrSubtitleService {
     ).convert(<String, Object?>{'version': 1, 'language': '', 'lines': lines});
   }
 
-  Future<List<AsrAudioChunk>> prepareAudioChunks(File file) async {
-    return _prepareAudioChunks(file);
+  Future<List<AsrAudioChunk>> prepareAudioChunks(
+    File file, {
+    bool wavOutput = false,
+  }) async {
+    return _prepareAudioChunks(file, wavOutput: wavOutput);
   }
 
   Future<Map<String, Object?>> generateCloudChunk({
@@ -199,7 +211,13 @@ class AsrSubtitleService {
             'Accept': 'application/json',
           },
         );
-    final Object? normalized = _usesAlibabaCloudAsr(settings)
+    final Object? normalized = _usesLocalWhisper(settings)
+        ? await _localTranscribe(
+            file: chunk.file,
+            offsetMs: chunk.offsetMs,
+            settings: settings,
+          )
+        : _usesAlibabaCloudAsr(settings)
         ? await _generateAlibabaQwenChunk(
             file: chunk.file,
             settings: settings,
@@ -229,6 +247,33 @@ class AsrSubtitleService {
     return Map<String, Object?>.from(normalized);
   }
 
+  Future<Object?> _localTranscribe({
+    required File file,
+    required int offsetMs,
+    required LearningSettingsState settings,
+  }) {
+    if (localTranscribeOverride != null) {
+      return localTranscribeOverride!(
+        file: file,
+        offsetMs: offsetMs,
+        settings: settings,
+      );
+    }
+    return _defaultLocalTranscribe(file: file, offsetMs: offsetMs);
+  }
+
+  Future<Object?> _defaultLocalTranscribe({
+    required File file,
+    required int offsetMs,
+  }) async {
+    final Map<String, Object?> raw = await localWhisperService.transcribe(
+      file: file,
+      language: 'en',
+    );
+    final Object? normalized = _normalizeResponse(raw);
+    return _offsetNormalized(normalized, offsetMs);
+  }
+
   Future<Object?> _generateTranscriptionChunk({
     required File file,
     required LearningSettingsState settings,
@@ -242,12 +287,17 @@ class AsrSubtitleService {
       'timestamp_granularities[]': 'word',
     });
 
-    final Response<dynamic> response = postTranscriptionOverride != null
-        ? await postTranscriptionOverride!(options: options, data: data)
-        : await Dio(options).post<dynamic>('/audio/transcriptions', data: data);
-
-    final Object? normalized = _normalizeResponse(response.data);
-    return _offsetNormalized(normalized, offsetMs);
+    try {
+      final Response<dynamic> response = postTranscriptionOverride != null
+          ? await postTranscriptionOverride!(options: options, data: data)
+          : await Dio(
+              options,
+            ).post<dynamic>('/audio/transcriptions', data: data);
+      final Object? normalized = _normalizeResponse(response.data);
+      return _offsetNormalized(normalized, offsetMs);
+    } on DioException catch (error) {
+      throw StateError(_dioErrorMessage(error));
+    }
   }
 
   Future<Object?> _generateMimoChunk({
@@ -968,6 +1018,10 @@ class AsrSubtitleService {
     return null;
   }
 
+  bool _usesLocalWhisper(LearningSettingsState settings) {
+    return settings.asrProvider == localWhisperProviderName;
+  }
+
   bool _usesMimoChatAsr(LearningSettingsState settings) {
     return settings.asrProvider == 'MiMo Token Plan' ||
         settings.asrModel.toLowerCase().startsWith('mimo-v2.5-asr');
@@ -1022,10 +1076,17 @@ class AsrSubtitleService {
     final Object? data = error.response?.data;
     final String text = data == null ? error.message ?? '' : data.toString();
     final String safeText = text.length > 160 ? text.substring(0, 160) : text;
-    return statusCode == null ? safeText : 'HTTP $statusCode $safeText';
+    final String uri = error.requestOptions.uri.toString();
+    final String location = uri.isEmpty ? '' : '（请求地址：$uri）';
+    return statusCode == null
+        ? '$safeText$location'
+        : 'HTTP $statusCode $safeText$location';
   }
 
-  Future<List<AsrAudioChunk>> _prepareAudioChunks(File file) async {
+  Future<List<AsrAudioChunk>> _prepareAudioChunks(
+    File file, {
+    bool wavOutput = false,
+  }) async {
     if (prepareAudioChunksOverride != null) {
       return prepareAudioChunksOverride!(file);
     }
@@ -1055,6 +1116,7 @@ class AsrSubtitleService {
       throw StateError('应用内置音频组件缺失或无法运行，请重新安装最新版本。');
     }
     final Directory dir = await Directory.systemTemp.createTemp('cle_asr_');
+    final String extension = wavOutput ? 'wav' : 'm4a';
     final ProcessResult result = await Process.run(ffmpeg, <String>[
       '-y',
       '-i',
@@ -1064,15 +1126,17 @@ class AsrSubtitleService {
       '1',
       '-ar',
       '16000',
-      '-b:a',
-      '24k',
+      if (wavOutput) ...<String>['-c:a', 'pcm_s16le'] else ...<String>[
+        '-b:a',
+        '24k',
+      ],
       '-f',
       'segment',
       '-segment_time',
       '${_chunkMs ~/ 1000}',
       '-reset_timestamps',
       '1',
-      '${dir.path}${Platform.pathSeparator}chunk_%05d.m4a',
+      '${dir.path}${Platform.pathSeparator}chunk_%05d.$extension',
     ]);
     final List<FileSystemEntity> files = dir.listSync()
       ..sort(
