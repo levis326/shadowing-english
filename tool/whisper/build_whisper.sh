@@ -27,9 +27,12 @@ mkdir -p "$OUTPUT_DIR"
 common_flags=(
   -DCMAKE_BUILD_TYPE=Release
   -DBUILD_SHARED_LIBS=OFF
-  -DWHISPER_BUILD_SERVER=ON
+  -DWHISPER_BUILD_EXAMPLES=ON
   -DWHISPER_BUILD_TESTS=OFF
-  -DWHISPER_BUILD_EXAMPLES=OFF
+  # Portable binary: no -march=native, no OpenMP runtime dependency
+  # (vcomp140.dll on Windows / libomp on macOS).
+  -DGGML_NATIVE=OFF
+  -DGGML_OPENMP=OFF
 )
 
 build_one() {
