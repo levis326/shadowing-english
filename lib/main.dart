@@ -101,4 +101,24 @@ Future<void> _configureDesktopWindow() async {
         )
       : const WindowOptions();
   await windowManager.waitUntilReadyToShow(options);
+
+  // Intercept the window close so the local whisper-server child process is
+  // killed before the app exits; otherwise it keeps the install folder locked.
+  await windowManager.setPreventClose(true);
+  windowManager.addListener(_AppWindowListener());
+}
+
+class _AppWindowListener with WindowListener {
+  @override
+  void onWindowClose() {
+    unawaited(_shutdownAndClose());
+  }
+
+  Future<void> _shutdownAndClose() async {
+    try {
+      await localWhisperService.shutdown();
+    } finally {
+      await windowManager.destroy();
+    }
+  }
 }
