@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-bundle/linux-x64
-          key: whisper-1.7.5-linux-x64-${{ hashFiles('tool/whisper/build_whisper.sh') }}
+          key: whisper-1.9.2-linux-x64-${{ hashFiles('tool/whisper/build_whisper.sh') }}
       - name: Build subtitle Whisper server
         if: steps.whisper-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/build_whisper.sh linux-x64 build/whisper-bundle/linux-x64
@@ -156,7 +156,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-bundle/macos-universal
-          key: whisper-1.7.5-macos-universal-${{ hashFiles('tool/whisper/build_whisper.sh') }}
+          key: whisper-1.9.2-macos-universal-${{ hashFiles('tool/whisper/build_whisper.sh') }}
       - name: Build subtitle Whisper server
         if: steps.whisper-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/build_whisper.sh macos-universal build/whisper-bundle/macos-universal
@@ -249,7 +249,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-bundle/windows-x64
-          key: whisper-1.7.5-windows-x64-${{ hashFiles('tool/whisper/build_whisper.sh') }}
+          key: whisper-1.9.2-windows-x64-${{ hashFiles('tool/whisper/build_whisper.sh') }}
       - name: Build subtitle Whisper server
         if: steps.whisper-cache.outputs.cache-hit != 'true'
         shell: bash

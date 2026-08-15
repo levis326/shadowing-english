@@ -8,7 +8,7 @@ set -euo pipefail
 #
 # The binary is later bundled next to the app executable (see desktop_whisper.dart).
 
-readonly WHISPER_VERSION="v1.7.5"
+readonly WHISPER_VERSION="v1.9.2"
 readonly TARGET="${1:?target is required}"
 readonly OUTPUT_DIR="${2:?output directory is required}"
 
