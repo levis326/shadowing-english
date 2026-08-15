@@ -7,7 +7,7 @@ set -euo pipefail
 
 readonly MODEL_NAME="ggml-small.en.bin"
 readonly MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}"
-readonly MODEL_SHA256="db8a495a91d927739e50b3fc1cc4c6b8f6c2d022"
+readonly MODEL_SHA256="c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d"
 readonly OUTPUT_DIR="${1:?output directory is required}"
 
 mkdir -p "$OUTPUT_DIR"
