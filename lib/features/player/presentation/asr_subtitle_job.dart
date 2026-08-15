@@ -1678,12 +1678,25 @@ class AsrSubtitleJobRunner {
     if (chunks.isEmpty) {
       return 0;
     }
-    if (chunks.length == 1) {
-      return chunks.first.offsetMs + 60000;
-    }
-    final int stepMs =
-        chunks.last.offsetMs - chunks[chunks.length - 2].offsetMs;
-    return chunks.last.offsetMs + stepMs;
+    final int fallbackMs = chunks.length >= 2
+        ? chunks.last.offsetMs - chunks[chunks.length - 2].offsetMs
+        : 58000;
+    // Use the last chunk's actual duration (derived from its file size for
+    // WAV) so a shorter final chunk is not overstated in the progress total.
+    return chunks.last.offsetMs + _chunkDurationMs(chunks.last, fallbackMs);
+  }
+
+  int _chunkDurationMs(AsrAudioChunk chunk, int fallbackMs) {
+    try {
+      if (chunk.file.path.toLowerCase().endsWith('.wav')) {
+        // 16 kHz mono 16-bit PCM = 32000 bytes/second, plus a 44-byte header.
+        final int dataBytes = chunk.file.lengthSync() - 44;
+        if (dataBytes > 0) {
+          return (dataBytes * 1000 / 32000).round();
+        }
+      }
+    } catch (_) {}
+    return fallbackMs;
   }
 
   Future<void> _writeJob({
