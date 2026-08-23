@@ -260,6 +260,24 @@ void main() {
   );
 
   test(
+    'legacy local dictionary translation provider migrates to local NLLB',
+    () async {
+      await Hive.box<String>('prefs').put(
+        'learning_settings_v1',
+        jsonEncode(<String, Object?>{
+          'translationProvider': '本地词典翻译',
+        }),
+      );
+
+      final ProviderContainer legacy = ProviderContainer();
+      addTearDown(legacy.dispose);
+
+      final LearningSettingsState state = legacy.read(learningSettingsProvider);
+      expect(state.translationProvider, localNllbTranslationProviderName);
+    },
+  );
+
+  test(
     'fetch translation models updates available models and selected model',
     () async {
       final ProviderContainer container = ProviderContainer(

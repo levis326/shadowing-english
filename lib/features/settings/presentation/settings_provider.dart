@@ -24,9 +24,10 @@ const List<String> playbackSpeedOptions = <String>[
 ];
 const String noTranslationProviderName = '不使用翻译';
 const String localDictionaryTranslationProviderName = '本地词典翻译';
+const String localNllbTranslationProviderName = '本地 NLLB 翻译';
 const List<String> translationProviderOptions = <String>[
   noTranslationProviderName,
-  localDictionaryTranslationProviderName,
+  localNllbTranslationProviderName,
   'OpenAI',
   'OpenRouter',
   'SiliconFlow',
@@ -64,10 +65,10 @@ const Map<String, TranslationProviderPreset> translationProviderPresets =
         baseUrl: '',
         model: '',
       ),
-      localDictionaryTranslationProviderName: TranslationProviderPreset(
-        name: localDictionaryTranslationProviderName,
+      localNllbTranslationProviderName: TranslationProviderPreset(
+        name: localNllbTranslationProviderName,
         baseUrl: '',
-        model: '',
+        model: 'nllb-200-distilled-600M',
       ),
       'OpenAI': TranslationProviderPreset(
         name: 'OpenAI',
@@ -768,9 +769,17 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
   }
 
   String? _translationProviderOrNull(Object? value) {
-    final String? provider = _stringOrNull(value);
+    final String? provider = _normalizeTranslationProvider(value);
     if (provider == null || !translationProviderOptions.contains(provider)) {
       return null;
+    }
+    return provider;
+  }
+
+  String? _normalizeTranslationProvider(Object? value) {
+    final String? provider = _stringOrNull(value);
+    if (provider == localDictionaryTranslationProviderName) {
+      return localNllbTranslationProviderName;
     }
     return provider;
   }

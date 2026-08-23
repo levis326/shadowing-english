@@ -4,6 +4,11 @@ import 'package:common_learn_english/features/shared/domain/word_lookup_entry.da
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+Future<String?> _fakeNllbTranslate(String sentence) async {
+  if (sentence == 'The cat') return '猫';
+  return null;
+}
+
 void main() {
   test('preserves the full lookup result when sent between windows', () {
     const WordLookupEntry entry = WordLookupEntry(
@@ -308,19 +313,18 @@ void main() {
     expect(entry.definitionEn, isEmpty);
   });
 
-  test('local dictionary translation works offline', () async {
-    TestWidgetsFlutterBinding.ensureInitialized();
-    const WordLookupService service = WordLookupService();
+  test('local NLLB translation is used offline', () async {
+    const WordLookupService service = WordLookupService(
+      localNllbTranslateOverride: _fakeNllbTranslate,
+    );
 
     final String? translation = await service.translateSentence(
       sentence: 'The cat',
       settings: LearningSettingsState.defaults().copyWith(
-        translationProvider: localDictionaryTranslationProviderName,
+        translationProvider: localNllbTranslationProviderName,
       ),
     );
 
-    expect(translation, isNotNull);
-    expect(translation, isNotEmpty);
-    expect(translation, contains(RegExp(r'[\u4e00-\u9fff]')));
+    expect(translation, '猫');
   });
 }

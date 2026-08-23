@@ -271,6 +271,33 @@ jobs:
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash tool/whisper/fetch_model.sh build/whisper-model
+      - name: Cache local NLLB translator
+        id: nllb-cache
+        uses: actions/cache@v4
+        with:
+          path: build/nllb-bundle/windows-x64
+          key: nllb-4.8.1-windows-x64-${{ hashFiles('tool/nllb/build_nllb.sh','tool/nllb/nllb_translate.cpp') }}
+      - name: Build local NLLB translator
+        if: steps.nllb-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash tool/nllb/build_nllb.sh windows-x64 build/nllb-bundle/windows-x64
+      - name: Smoke test local NLLB translator
+        shell: pwsh
+        run: |
+          $nllb = "build/nllb-bundle/windows-x64/nllb-translate.exe"
+          if (-not (Test-Path $nllb)) { exit 1 }
+          & $nllb --help *> $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Cache local NLLB model
+        id: nllb-model-cache
+        uses: actions/cache@v4
+        with:
+          path: build/nllb-model
+          key: nllb-model-600M-int8-${{ hashFiles('tool/nllb/fetch_model.sh') }}
+      - name: Fetch local NLLB model
+        if: steps.nllb-model-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash tool/nllb/fetch_model.sh build/nllb-model
       - name: Bundle subtitle FFmpeg
         shell: pwsh
         run: |
@@ -283,6 +310,18 @@ jobs:
           Copy-Item build/whisper-model/ggml-small.en.bin build/windows/x64/runner/Release/whisper/
           if (-not (Test-Path build/windows/x64/runner/Release/whisper/whisper-server.exe)) { exit 1 }
           if (-not (Test-Path build/windows/x64/runner/Release/whisper/ggml-small.en.bin)) { exit 1 }
+      - name: Bundle local NLLB translator and model
+        shell: pwsh
+        run: |
+          Copy-Item build/nllb-bundle/windows-x64 build/windows/x64/runner/Release/nllb -Recurse
+          Copy-Item build/nllb-model/model.bin build/windows/x64/runner/Release/nllb/
+          Copy-Item build/nllb-model/shared_vocabulary.json build/windows/x64/runner/Release/nllb/
+          Copy-Item build/nllb-model/sentencepiece.bpe.model build/windows/x64/runner/Release/nllb/
+          Copy-Item build/nllb-model/config.json build/windows/x64/runner/Release/nllb/
+          Copy-Item build/nllb-model/MODEL-INFO.txt build/windows/x64/runner/Release/nllb/
+          if (-not (Test-Path build/windows/x64/runner/Release/nllb/nllb-translate.exe)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/nllb/model.bin)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/nllb/sentencepiece.bpe.model)) { exit 1 }
       - name: Package Windows bundle
         shell: pwsh
         env:

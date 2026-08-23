@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/local_nllb_translation.dart';
 import '../../shared/data/word_lookup_service.dart';
 import 'asr_subtitle_cache.dart';
 import 'asr_subtitle_service.dart';
@@ -21,6 +22,11 @@ typedef AsrChunkTranscriber =
 typedef AsrSentenceTranslator =
     Future<String?> Function({
       required String sentence,
+      required LearningSettingsState settings,
+    });
+typedef AsrBatchTranslator =
+    Future<List<String?>> Function({
+      required List<String> sentences,
       required LearningSettingsState settings,
     });
 
@@ -196,6 +202,7 @@ class AsrSubtitleJobRunner {
     this.service = const AsrSubtitleService(),
     this.cloudTranscribeChunk,
     this.translateSentence,
+    this.translateBatch,
   });
 
   final Future<Directory> Function()? supportDirectory;
@@ -203,6 +210,7 @@ class AsrSubtitleJobRunner {
   final AsrSubtitleService service;
   final AsrChunkTranscriber? cloudTranscribeChunk;
   final AsrSentenceTranslator? translateSentence;
+  final AsrBatchTranslator? translateBatch;
 
   static const int _repairableOverlapMs = 500;
   static final Set<String> _activeJobs = <String>{};
@@ -683,6 +691,16 @@ class AsrSubtitleJobRunner {
       decoded['translationWarning'] = configurationError;
       return const JsonEncoder.withIndent('  ').convert(decoded);
     }
+    if (settings.translationProvider == localNllbTranslationProviderName) {
+      return _addChineseTranslationsWithNllb(
+        decoded: decoded,
+        pendingLines: pendingLines,
+        settings: settings,
+        jobDir: jobDir,
+        cancellationToken: cancellationToken,
+        onProgress: onProgress,
+      );
+    }
     final File checkpoint = File(
       '${jobDir.path}${Platform.pathSeparator}translations.json',
     );
@@ -747,11 +765,93 @@ class AsrSubtitleJobRunner {
     return const JsonEncoder.withIndent('  ').convert(decoded);
   }
 
+  Future<String> _addChineseTranslationsWithNllb({
+    required Map<String, dynamic> decoded,
+    required List<Map<String, dynamic>> pendingLines,
+    required LearningSettingsState settings,
+    required Directory jobDir,
+    AsrSubtitleCancellationToken? cancellationToken,
+    void Function(int done, int total)? onProgress,
+  }) async {
+    final File checkpoint = File(
+      '${jobDir.path}${Platform.pathSeparator}translations.json',
+    );
+    final String signature = _translationSignature(settings);
+    final Map<String, String> translations = await _loadTranslations(
+      checkpoint,
+      signature,
+    );
+
+    final List<Map<String, dynamic>> toTranslate = <Map<String, dynamic>>[];
+    final List<String> englishBatch = <String>[];
+    for (final Map<String, dynamic> line in pendingLines) {
+      final String english = (line['english'] as String? ?? '').trim();
+      final String key = _translationLineKey(line, english);
+      final String? cached = translations[key];
+      if (cached != null && cached.trim().isNotEmpty) {
+        line['chinese'] = cached.trim();
+        continue;
+      }
+      toTranslate.add(line);
+      englishBatch.add(english);
+    }
+
+    int done = pendingLines.length - toTranslate.length;
+    onProgress?.call(done, pendingLines.length);
+
+    if (toTranslate.isNotEmpty) {
+      cancellationToken?.throwIfCancelled();
+      final List<String?> results;
+      try {
+        results = await (translateBatch != null
+                ? translateBatch!(sentences: englishBatch, settings: settings)
+                : localNllbTranslationService.translateBatch(englishBatch))
+            .timeout(
+          const Duration(minutes: 6),
+          onTimeout: () => throw TimeoutException('本地 NLLB 翻译超时，请重试。'),
+        );
+      } catch (_) {
+        cancellationToken?.throwIfCancelled();
+        decoded['translationWarning'] =
+            '英文词级字幕已生成，但本地中文翻译失败；请检查后重新生成。';
+        return const JsonEncoder.withIndent('  ').convert(decoded);
+      }
+
+      bool incomplete = false;
+      for (int i = 0; i < toTranslate.length; i += 1) {
+        cancellationToken?.throwIfCancelled();
+        final Map<String, dynamic> line = toTranslate[i];
+        final String english = englishBatch[i];
+        final String key = _translationLineKey(line, english);
+        final String? chinese = results.length > i ? results[i] : null;
+        final String trimmed = chinese?.trim() ?? '';
+        if (trimmed.isEmpty) {
+          incomplete = true;
+          continue;
+        }
+        line['chinese'] = trimmed;
+        translations[key] = trimmed;
+        done += 1;
+        onProgress?.call(done, pendingLines.length);
+      }
+      await _writeJsonAtomically(checkpoint, <String, Object?>{
+        'version': 1,
+        'signature': signature,
+        'translations': translations,
+      });
+      if (incomplete) {
+        decoded['translationWarning'] =
+            '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置后重新生成。';
+      }
+    }
+    return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
   String? _bilingualConfigurationError(LearningSettingsState settings) {
     if (!settings.generateBilingualAsrSubtitles || translateSentence != null) {
       return null;
     }
-    if (settings.translationProvider == localDictionaryTranslationProviderName) {
+    if (settings.translationProvider == localNllbTranslationProviderName) {
       return null;
     }
     if (settings.translationApiKey.trim().isEmpty) {

@@ -302,6 +302,54 @@ void main() {
   );
 
   test(
+    'local NLLB provider translates all pending lines in a single batch',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-job-nllb-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('v');
+      final File chunk = File('${root.path}/chunk.m4a')..writeAsStringSync('a');
+      final List<String> batched = <String>[];
+      final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+        supportDirectory: () async => root,
+        cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+        service: AsrSubtitleService(
+          prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+            AsrAudioChunk(file: chunk, offsetMs: 0),
+          ],
+        ),
+        cloudTranscribeChunk:
+            ({
+              required AsrAudioChunk chunk,
+              required LearningSettingsState settings,
+            }) async => _chunkJson('Hello there', 1000),
+        translateBatch:
+            ({
+              required List<String> sentences,
+              required LearningSettingsState settings,
+            }) async {
+              batched.addAll(sentences);
+              return sentences.map((String _) => '你好。').toList(growable: false);
+            },
+      );
+
+      final String raw = await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: LearningSettingsState.defaults().copyWith(
+          generateBilingualAsrSubtitles: true,
+          translationProvider: localNllbTranslationProviderName,
+        ),
+      );
+
+      expect(batched, <String>['Hello there']);
+      expect(parseSubtitleLines(raw).single.chinese, '你好。');
+    },
+  );
+
+  test(
     'missing translation settings keep the generated English subtitles',
     () async {
       final Directory root = Directory.systemTemp.createTempSync(
