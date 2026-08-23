@@ -62,10 +62,15 @@ project(nllb-translate LANGUAGES C CXX)
 set(CMAKE_BUILD_TYPE Release)
 set(BUILD_SHARED_LIBS OFF)
 
-# Abseil (pulled in by sentencepiece) requires C++17; MSVC defaults to C++14,
-# so pin the standard globally before adding the subprojects.
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Abseil (pulled in by sentencepiece) requires C++17; MSVC defaults to C++14.
+# Abseil verifies this with check_cxx_source_compiles, whose standalone
+# try_compile only inherits cache variables (not a non-cache CMAKE_CXX_STANDARD),
+# so add the flag directly to CMAKE_CXX_FLAGS to guarantee it reaches that check.
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17" CACHE STRING "" FORCE)
+else()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17" CACHE STRING "" FORCE)
+endif()
 
 # CTranslate2: CPU-only, oneDNN GEMM backend, compiler OpenMP for threading.
 set(WITH_MKL OFF CACHE BOOL "" FORCE)
