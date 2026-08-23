@@ -29,7 +29,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
     this.embeddedSubtitleTracks = const <SubtitleTrack>[],
-    this.embeddedSubtitleMode = '关闭内置字幕',
+    this.embeddedSubtitleMode = '不显示',
     this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,

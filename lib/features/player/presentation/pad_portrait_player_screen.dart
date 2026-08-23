@@ -95,7 +95,7 @@ class _PadPortraitPlayerScreenState
   String? _aiSubtitleErrorText;
   bool _usingAiSubtitles = false;
   List<SubtitleTrack> _embeddedSubtitleTracks = const <SubtitleTrack>[];
-  String _embeddedSubtitleMode = '关闭内置字幕';
+  String _embeddedSubtitleMode = '不显示';
   List<PlayerSubtitleLine> _referenceSubtitleLines =
       const <PlayerSubtitleLine>[];
 
@@ -245,7 +245,7 @@ class _PadPortraitPlayerScreenState
       _videoController = controller;
       setState(() {
         _embeddedSubtitleTracks = embeddedTracks;
-        _embeddedSubtitleMode = '关闭内置字幕';
+        _embeddedSubtitleMode = '不显示';
         _videoReady = true;
         _videoLoading = false;
         _videoErrorText = null;
@@ -904,9 +904,9 @@ class _PadPortraitPlayerScreenState
   }
 
   void _handleToggleSubtitles() {
-    final String target = _embeddedSubtitleMode == '关闭内置字幕'
+    final String target = _embeddedSubtitleMode == '不显示'
         ? _preferredEmbeddedSubtitleMode()
-        : '关闭内置字幕';
+        : '不显示';
     _handleSelectEmbeddedSubtitle(target);
   }
 
@@ -915,7 +915,7 @@ class _PadPortraitPlayerScreenState
       (SubtitleTrack track) =>
           track.language == 'chi' || track.language == 'zho' || track.language == 'zh',
     );
-    return hasChinese ? '双语' : '外文';
+    return hasChinese ? '中文' : '外文';
   }
 
   void _handleSelectEmbeddedSubtitle(String mode) {

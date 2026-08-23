@@ -18,7 +18,7 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.subtitleMode,
     required this.subtitleModes,
     this.embeddedSubtitleTracks = const <SubtitleTrack>[],
-    this.embeddedSubtitleMode = '关闭内置字幕',
+    this.embeddedSubtitleMode = '不显示',
     this.currentWordIndex = 0,
     this.highlightWords = false,
     this.subtitleWordHighlightStyle = '绿色填充',
@@ -806,13 +806,13 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                       widget.embeddedSubtitleTracks.isNotEmpty)
                                     _RoundActionButton(
                                       icon: widget.embeddedSubtitleMode ==
-                                              '关闭内置字幕'
+                                              '不显示'
                                           ? Icons.subtitles_off_rounded
                                           : Icons.subtitles_rounded,
                                       tooltip: widget.embeddedSubtitleMode ==
-                                              '关闭内置字幕'
-                                          ? '显示内置字幕'
-                                          : '关闭内置字幕',
+                                              '不显示'
+                                          ? '显示视频字幕'
+                                          : '不显示视频字幕',
                                       compact: compactControls,
                                       tiny: tinyControls,
                                       fullscreen: widget.isFullscreen,
@@ -873,7 +873,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                             >(
                                               enabled: false,
                                               height: 32,
-                                              child: Text('视频内置字幕'),
+                                              child: Text('视频字幕'),
                                             ),
                                             ...embeddedSubtitleModes.map(
                                               (String mode) =>

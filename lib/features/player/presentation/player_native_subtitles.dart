@@ -17,13 +17,13 @@ String embeddedSubtitleTrackLabel(SubtitleTrack track) {
   return title == null || title.isEmpty ? language : '$language · $title';
 }
 
-const String embeddedSubtitleModeOff = '关闭内置字幕';
+const String embeddedSubtitleModeOff = '不显示';
 const String embeddedSubtitleModeForeign = '外文';
-const String embeddedSubtitleModeBilingual = '双语';
+const String embeddedSubtitleModeChinese = '中文';
 const List<String> embeddedSubtitleModes = <String>[
   embeddedSubtitleModeOff,
+  embeddedSubtitleModeChinese,
   embeddedSubtitleModeForeign,
-  embeddedSubtitleModeBilingual,
 ];
 
 bool _isEnglishSubtitleTrack(SubtitleTrack track) {
@@ -36,11 +36,10 @@ bool _isChineseSubtitleTrack(SubtitleTrack track) {
   return language == 'chi' || language == 'zho' || language == 'zh';
 }
 
-/// Maps a built-in subtitle display mode to a concrete embedded track.
+/// Maps a video subtitle display mode to a concrete embedded track.
 ///
-/// `外文` prefers the English (foreign-language) track and `双语` prefers the
-/// Chinese track (paired with the app's foreign learning subtitle to form a
-/// bilingual view). Falls back to the first available track when no matching
+/// `中文` prefers the Chinese track and `外文` prefers the foreign-language
+/// (English) track. Falls back to the first available track when no matching
 /// language exists.
 SubtitleTrack? embeddedSubtitleTrackForMode(
   List<SubtitleTrack> tracks,
