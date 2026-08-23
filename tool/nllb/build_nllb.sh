@@ -41,6 +41,7 @@ cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/n
 # no OpenMP DLL dependency such as vcomp140.dll on Windows).
 cmake -S "$work_dir/oneDNN" -B "$work_dir/dnnl-build" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+  -DCMAKE_MSVC_RUNTIME_LIBRARY='MultiThreaded$<$<CONFIG:Debug>:Debug>' \
   -DDNNL_BUILD_TESTS=OFF \
   -DDNNL_BUILD_EXAMPLES=OFF \
   -DDNNL_LIBRARY_TYPE=STATIC \
@@ -71,6 +72,10 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 # so add the flag directly to CMAKE_CXX_FLAGS to guarantee it reaches that check.
 if(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++17" CACHE STRING "" FORCE)
+  # CTranslate2 forces /MT (static CRT) when built as a static library, so make
+  # every other target (sentencepiece, protobuf, abseil, nllb-translate) match,
+  # otherwise the link fails with LNK2038 RuntimeLibrary mismatch.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17" CACHE STRING "" FORCE)
 endif()
