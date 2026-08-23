@@ -23,8 +23,10 @@ const List<String> playbackSpeedOptions = <String>[
   '1.5×',
 ];
 const String noTranslationProviderName = '不使用翻译';
+const String localDictionaryTranslationProviderName = '本地词典翻译';
 const List<String> translationProviderOptions = <String>[
   noTranslationProviderName,
+  localDictionaryTranslationProviderName,
   'OpenAI',
   'OpenRouter',
   'SiliconFlow',
@@ -59,6 +61,11 @@ const Map<String, TranslationProviderPreset> translationProviderPresets =
     <String, TranslationProviderPreset>{
       noTranslationProviderName: TranslationProviderPreset(
         name: noTranslationProviderName,
+        baseUrl: '',
+        model: '',
+      ),
+      localDictionaryTranslationProviderName: TranslationProviderPreset(
+        name: localDictionaryTranslationProviderName,
         baseUrl: '',
         model: '',
       ),

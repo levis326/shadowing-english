@@ -759,6 +759,7 @@ class _PadPortraitPlayerScreenState
                         onSeek: _handleSeek,
                         onSpeedSelected: _handleSpeedSelected,
                         onSelectSubtitleMode: _handleSetSubtitleMode,
+                        onToggleSubtitles: _handleToggleSubtitles,
                         onSelectEmbeddedSubtitle: _handleSelectEmbeddedSubtitle,
                         onToggleShadowing: _handleToggleShadowing,
                         onToggleLoop: _handleToggleLoop,
@@ -902,6 +903,16 @@ class _PadPortraitPlayerScreenState
     ref.read(learningSettingsProvider.notifier).setSubtitleMode(mode);
     unawaited(_videoPlayer?.setSubtitleTrack(SubtitleTrack.no()));
     _applyPlaybackMode();
+  }
+
+  void _handleToggleSubtitles() {
+    final List<String> modes = state.availableSubtitleModes
+        .where((String mode) => mode != '隐藏')
+        .toList(growable: false);
+    final String target = state.subtitleMode == '隐藏'
+        ? (modes.isEmpty ? '双语' : modes.first)
+        : '隐藏';
+    _handleSetSubtitleMode(target);
   }
 
   void _handleSelectEmbeddedSubtitle(SubtitleTrack? track) {
@@ -1088,7 +1099,10 @@ class _PadPortraitPlayerScreenState
               episodeId: widget.episodeId,
               enSubtitlePath: srtPath,
             );
-        savedSrtFileName = generatedSubtitleSrtFileName(videoPath);
+        savedSrtFileName = generatedSubtitleSrtFileNames(
+          videoPath,
+          lines,
+        ).join('、');
         if (mounted) {
           setState(() {
             _referenceSubtitleLines = lines;
@@ -1166,7 +1180,9 @@ class _PadPortraitPlayerScreenState
           context: context,
           builder: (BuildContext context) => AlertDialog(
             title: const Text('重新生成 AI 字幕？'),
-            content: const Text('这会再次调用已配置的 AI 服务，可能产生费用。生成失败时会保留当前字幕。'),
+            content: const Text(
+              '这会再次调用已配置的 AI 服务，可能产生费用。生成失败时会保留当前字幕；生成成功后会覆盖同目录下已保存的 .srt 字幕文件。',
+            ),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.of(context).pop(false),

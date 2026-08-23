@@ -287,6 +287,21 @@ String generatedSubtitleSrtFileName(
   return '$stem.$languageCode.srt';
 }
 
+/// Returns the list of `.srt` filenames that [saveGeneratedSubtitleSrt] will
+/// write for the given lines (`.en.srt`, plus `.zh.srt` when Chinese exists).
+List<String> generatedSubtitleSrtFileNames(
+  String videoPath,
+  List<PlayerSubtitleLine> lines,
+) {
+  final bool hasChinese = lines.any(
+    (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
+  );
+  return <String>[
+    generatedSubtitleSrtFileName(videoPath),
+    if (hasChinese) generatedSubtitleSrtFileName(videoPath, languageCode: 'zh'),
+  ];
+}
+
 /// Saves the generated subtitle next to the video as `<basename>.en.srt` and
 /// returns the written file path. When the lines contain Chinese translations,
 /// a `<basename>.zh.srt` is written alongside it as well.

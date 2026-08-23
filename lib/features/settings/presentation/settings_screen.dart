@@ -23,6 +23,8 @@ class SettingsScreen extends ConsumerWidget {
     final bool isGoogleTranslate = settings.translationProvider == 'Google 翻译';
     final bool isBaiduTranslate = settings.translationProvider == '百度翻译';
     final bool isAliyunTranslate = settings.translationProvider == '阿里云翻译';
+    final bool isLocalDictionaryTranslation =
+        settings.translationProvider == localDictionaryTranslationProviderName;
     final AsyncValue<TtsEngineSnapshot> ttsEngines = ref.watch(
       ttsEngineSnapshotProvider,
     );
@@ -233,6 +235,13 @@ class SettingsScreen extends ConsumerWidget {
                       .setTranslationProvider(value);
                 },
               ),
+              if (isLocalDictionaryTranslation)
+                const _SettingsRowFrame(
+                  child: _TitleBlock(
+                    title: '本地词典翻译',
+                    description: '使用内置英汉词典离线逐词释义，无需联网、无需 API Key。翻译为单词级别的直译，句子语法可能不完整。',
+                  ),
+                ),
               if (isAiProvider) ...<Widget>[
                 _InputRow(
                   title: 'API Key',

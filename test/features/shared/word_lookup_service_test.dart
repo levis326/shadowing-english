@@ -307,4 +307,20 @@ void main() {
     expect(entry.contextMeaningCn, isNull);
     expect(entry.definitionEn, isEmpty);
   });
+
+  test('local dictionary translation works offline', () async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    const WordLookupService service = WordLookupService();
+
+    final String? translation = await service.translateSentence(
+      sentence: 'The cat',
+      settings: LearningSettingsState.defaults().copyWith(
+        translationProvider: localDictionaryTranslationProviderName,
+      ),
+    );
+
+    expect(translation, isNotNull);
+    expect(translation, isNotEmpty);
+    expect(translation, contains(RegExp(r'[\u4e00-\u9fff]')));
+  });
 }

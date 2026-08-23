@@ -1334,9 +1334,13 @@ void main() {
       onProgress: progress.add,
     );
 
-    expect(progress.last.label, '已识别到 1:31 / 2:00');
-    expect(progress.last.value, closeTo(91000 / 120000, 0.001));
-    expect(progress.last.previewText, 'chunk');
+    final AsrSubtitleProgress chunkProgress = progress.lastWhere(
+      (AsrSubtitleProgress item) => item.previewText == 'chunk',
+    );
+    expect(chunkProgress.label, '已识别到 1:31 / 2:00');
+    expect(chunkProgress.value, closeTo(91000 / 120000, 0.001));
+    expect(chunkProgress.previewText, 'chunk');
+    expect(progress.last.label, '正在校准词级时间轴...');
   });
 
   test(

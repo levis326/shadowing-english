@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/presentation/settings_provider.dart';
@@ -75,7 +76,11 @@ class WordLookupService {
     required LearningSettingsState settings,
   }) async {
     final String text = sentence.trim();
-    if (text.isEmpty || !_canUseRemoteProvider(settings)) return null;
+    if (text.isEmpty) return null;
+    if (settings.translationProvider == localDictionaryTranslationProviderName) {
+      return _translateWithLocalDictionary(text);
+    }
+    if (!_canUseRemoteProvider(settings)) return null;
     try {
       if (_isDirectProvider(settings.translationProvider)) {
         return (await _lookupDirectProvider(
@@ -117,6 +122,58 @@ class WordLookupService {
     } catch (_) {
       return null;
     }
+  }
+
+  static Future<Map<String, String>>? _localDictionaryFuture;
+
+  /// Offline, word-by-word Chinese gloss using the bundled ECDICT dictionary.
+  Future<String?> _translateWithLocalDictionary(String sentence) async {
+    final Map<String, String> dictionary =
+        await (_localDictionaryFuture ??= _loadLocalDictionary());
+    final List<String> words = sentence
+        .split(RegExp("[^A-Za-z0-9’'-]+"))
+        .where((String word) => word.isNotEmpty)
+        .toList(growable: false);
+    final StringBuffer buffer = StringBuffer();
+    for (final String word in words) {
+      final String key = word.toLowerCase().replaceAll('’', "'");
+      final String? gloss = dictionary[key];
+      buffer.write(gloss == null || gloss.isEmpty ? word : gloss);
+    }
+    final String result = buffer.toString().trim();
+    return result.isEmpty ? null : result;
+  }
+
+  static Future<Map<String, String>> _loadLocalDictionary() async {
+    const String asset = 'assets/dictionary/ecdict_core.json';
+    final Map<String, dynamic> decoded =
+        jsonDecode(await rootBundle.loadString(asset)) as Map<String, dynamic>;
+    final Map<String, dynamic> entries =
+        decoded['entries'] as Map<String, dynamic>;
+    return entries.map((String word, dynamic value) {
+      final List<dynamic> fields = value as List<dynamic>;
+      return MapEntry<String, String>(
+        word,
+        _firstDictionaryGloss(fields[0] as String),
+      );
+    });
+  }
+
+  static String _firstDictionaryGloss(String raw) {
+    String value = raw;
+    final int newline = value.indexOf('\n');
+    if (newline >= 0) {
+      value = value.substring(0, newline);
+    }
+    final Match? pos = RegExp(r'^[a-z]+\.\s+').firstMatch(value);
+    if (pos != null) {
+      value = value.substring(pos.end);
+    }
+    final int separator = value.indexOf(RegExp('[,;，；]'));
+    if (separator >= 0) {
+      value = value.substring(0, separator);
+    }
+    return value.trim();
   }
 
   Future<WordLookupEntry> _lookupRemote({

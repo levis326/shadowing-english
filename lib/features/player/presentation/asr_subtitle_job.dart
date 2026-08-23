@@ -525,6 +525,7 @@ class AsrSubtitleJobRunner {
     }
 
     String raw = await _mergeChunks(chunksDir, chunks.length, report: report);
+    _reportProgressPhase(onProgress, chunks.length, '正在整理字幕...');
     if (referenceSubtitleLines.isNotEmpty) {
       final bool hasRecognizedWords = parseSubtitleLines(
         raw,
@@ -541,7 +542,15 @@ class AsrSubtitleJobRunner {
         settings: settings,
         jobDir: jobDir,
         cancellationToken: cancellationToken,
+        onProgress: (int done, int total) {
+          _reportProgressPhase(
+            onProgress,
+            chunks.length,
+            '正在翻译中文字幕 $done/$total',
+          );
+        },
       );
+      _reportProgressPhase(onProgress, chunks.length, '正在校准词级时间轴...');
       completedRaw = _repairFinalWordTimelines(translatedRaw, report: report);
     } catch (error) {
       await report.write(jobDir, 'FAILED');
@@ -649,6 +658,7 @@ class AsrSubtitleJobRunner {
     required LearningSettingsState settings,
     required Directory jobDir,
     AsrSubtitleCancellationToken? cancellationToken,
+    void Function(int done, int total)? onProgress,
   }) async {
     if (!settings.generateBilingualAsrSubtitles) {
       return raw;
@@ -658,11 +668,15 @@ class AsrSubtitleJobRunner {
         jsonDecode(raw) as Map<String, dynamic>;
     final List<dynamic> lines =
         decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
-    final bool needsTranslation = lines.whereType<Map<String, dynamic>>().any(
-      (Map<String, dynamic> line) =>
-          (line['chinese'] as String? ?? '').trim().isEmpty &&
-          (line['english'] as String? ?? '').trim().isNotEmpty,
-    );
+    final List<Map<String, dynamic>> pendingLines = lines
+        .whereType<Map<String, dynamic>>()
+        .where(
+          (Map<String, dynamic> line) =>
+              (line['chinese'] as String? ?? '').trim().isEmpty &&
+              (line['english'] as String? ?? '').trim().isNotEmpty,
+        )
+        .toList(growable: false);
+    final bool needsTranslation = pendingLines.isNotEmpty;
     if (!needsTranslation) return raw;
     final String? configurationError = _bilingualConfigurationError(settings);
     if (configurationError != null) {
@@ -677,6 +691,7 @@ class AsrSubtitleJobRunner {
       checkpoint,
       signature,
     );
+    int done = 0;
     for (final dynamic line in lines) {
       if (line is! Map<String, dynamic>) {
         continue;
@@ -725,6 +740,8 @@ class AsrSubtitleJobRunner {
           'translations': translations,
         });
       }
+      done += 1;
+      onProgress?.call(done, pendingLines.length);
       cancellationToken?.throwIfCancelled();
     }
     return const JsonEncoder.withIndent('  ').convert(decoded);
@@ -732,6 +749,9 @@ class AsrSubtitleJobRunner {
 
   String? _bilingualConfigurationError(LearningSettingsState settings) {
     if (!settings.generateBilingualAsrSubtitles || translateSentence != null) {
+      return null;
+    }
+    if (settings.translationProvider == localDictionaryTranslationProviderName) {
       return null;
     }
     if (settings.translationApiKey.trim().isEmpty) {
@@ -1771,6 +1791,20 @@ class AsrSubtitleJobRunner {
       }
     } catch (_) {}
     return fallbackMs;
+  }
+
+  void _reportProgressPhase(
+    AsrProgressCallback? onProgress,
+    int totalChunks,
+    String label,
+  ) {
+    onProgress?.call(
+      AsrSubtitleProgress(
+        completedChunks: totalChunks,
+        totalChunks: totalChunks,
+        labelOverride: label,
+      ),
+    );
   }
 
   Future<void> _writeJob({

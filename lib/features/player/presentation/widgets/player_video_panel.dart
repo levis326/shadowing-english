@@ -40,6 +40,7 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.onSeek,
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
+    this.onToggleSubtitles,
     this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
@@ -98,6 +99,7 @@ class PlayerVideoPanel extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
+  final VoidCallback? onToggleSubtitles;
   final ValueChanged<SubtitleTrack?>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
@@ -801,6 +803,21 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                           : () => _handleControlTap(
                                               widget.onGenerateAiSubtitles!,
                                             ),
+                                    ),
+                                  if (widget.onToggleSubtitles != null)
+                                    _RoundActionButton(
+                                      icon: widget.subtitleMode == '隐藏'
+                                          ? Icons.subtitles_off_rounded
+                                          : Icons.subtitles_rounded,
+                                      tooltip: widget.subtitleMode == '隐藏'
+                                          ? '显示字幕'
+                                          : '关闭字幕',
+                                      compact: compactControls,
+                                      tiny: tinyControls,
+                                      fullscreen: widget.isFullscreen,
+                                      onPressed: () => _handleControlTap(
+                                        widget.onToggleSubtitles!,
+                                      ),
                                     ),
                                   PopupMenuButton<_SubtitleMenuSelection>(
                                     tooltip: '字幕模式',

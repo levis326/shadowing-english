@@ -66,6 +66,7 @@ class AsrSubtitleProgress {
     this.currentMs,
     this.totalMs,
     this.previewText,
+    this.labelOverride,
   });
 
   final int completedChunks;
@@ -73,6 +74,10 @@ class AsrSubtitleProgress {
   final int? currentMs;
   final int? totalMs;
   final String? previewText;
+
+  /// When set, replaces the derived [label] (used for post-processing phases
+  /// such as translation or timeline repair).
+  final String? labelOverride;
 
   double get value {
     final int? current = currentMs;
@@ -84,6 +89,10 @@ class AsrSubtitleProgress {
   }
 
   String get label {
+    final String? override = labelOverride;
+    if (override != null && override.isNotEmpty) {
+      return override;
+    }
     final int? current = currentMs;
     final int? total = totalMs;
     if (current != null && total != null && total > 0) {
