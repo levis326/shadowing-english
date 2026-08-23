@@ -37,13 +37,14 @@ cp "$script_dir/nllb_translate.cpp" "$work_dir/nllb_translate.cpp"
 mkdir -p "$OUTPUT_DIR"
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
 
-# Build and install oneDNN (static, compiler OpenMP for parallel GEMMs).
+# Build and install oneDNN (static, sequential runtime so the final binary has
+# no OpenMP DLL dependency such as vcomp140.dll on Windows).
 cmake -S "$work_dir/oneDNN" -B "$work_dir/dnnl-build" -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
   -DDNNL_BUILD_TESTS=OFF \
   -DDNNL_BUILD_EXAMPLES=OFF \
   -DDNNL_LIBRARY_TYPE=STATIC \
-  -DDNNL_CPU_RUNTIME=OMP \
+  -DDNNL_CPU_RUNTIME=SEQ \
   -DCMAKE_INSTALL_PREFIX="$work_dir/dnnl-install"
 cmake --build "$work_dir/dnnl-build" --config Release -j"$cpu_count"
 cmake --install "$work_dir/dnnl-build" --config Release
@@ -72,7 +73,8 @@ else()
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17" CACHE STRING "" FORCE)
 endif()
 
-# CTranslate2: CPU-only, oneDNN GEMM backend, compiler OpenMP for threading.
+# CTranslate2: CPU-only, oneDNN GEMM backend. OpenMP is disabled so the final
+# binary stays self-contained (no vcomp140.dll/libgomp dependency).
 set(WITH_MKL OFF CACHE BOOL "" FORCE)
 set(WITH_DNNL ON CACHE BOOL "" FORCE)
 set(WITH_OPENBLAS OFF CACHE BOOL "" FORCE)
@@ -82,7 +84,7 @@ set(WITH_CUDA OFF CACHE BOOL "" FORCE)
 set(WITH_CUDNN OFF CACHE BOOL "" FORCE)
 set(BUILD_CLI OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(OPENMP_RUNTIME "COMP" CACHE STRING "" FORCE)
+set(OPENMP_RUNTIME "NONE" CACHE STRING "" FORCE)
 set(ENABLE_CPU_DISPATCH ON CACHE BOOL "" FORCE)
 add_subdirectory(ctranslate2)
 

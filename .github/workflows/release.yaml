@@ -285,9 +285,11 @@ jobs:
         shell: pwsh
         run: |
           $nllb = "build/nllb-bundle/windows-x64/nllb-translate.exe"
-          if (-not (Test-Path $nllb)) { exit 1 }
-          & $nllb --help *> $null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path $nllb)) { Write-Host "MISSING: $nllb"; exit 1 }
+          & $nllb --help
+          $code = $LASTEXITCODE
+          Write-Host "nllb-translate --help exit code: $code"
+          if ($code -ne 0) { exit $code }
       - name: Cache local NLLB model
         id: nllb-model-cache
         uses: actions/cache@v4
