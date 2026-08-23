@@ -105,9 +105,8 @@ int main(int argc, char* argv[]) {
   try {
     ctranslate2::models::ModelLoader loader(opts.model_dir);
     loader.device = ctranslate2::Device::CPU;
-    // int8_float32 keeps the int8 quantized weights but runs the forward pass
-    // in float32, which is well supported on plain CPUs (no MKL/oneDNN needed)
-    // and gives better translation quality than the fully-quantized int8 path.
+    // int8_float32 keeps the int8 quantized weights in memory (low RAM) and
+    // runs the forward pass in float32. It is backed by the bundled oneDNN GEMM.
     loader.compute_type = ctranslate2::ComputeType::INT8_FLOAT32;
     ctranslate2::Translator translator(loader);
 
@@ -170,7 +169,9 @@ int main(int argc, char* argv[]) {
 
       std::string translated;
       if (!decode_tokens.empty()) {
-        const auto dec_status = sp.Decode(decode_tokens, &translated);
+        const auto dec_status = sp.Decode(
+            absl::MakeConstSpan(decode_tokens),
+            &translated);
         if (!dec_status.ok()) {
           translated.clear();
         }

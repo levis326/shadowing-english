@@ -31,13 +31,13 @@ sha256_of() {
       echo "398726640cc2a02cc6a35277fa3cf2159ce8a1a66b48aa1b6c8837a47e3dd00c"
       ;;
     shared_vocabulary.json)
-      echo "af6771314c673db7660640e91062e5fee96eeb2a"
+      echo "af53bfd0e6f726209e7325e45b87ab3b14e5856f7d42d7b9be91de3287c45267"
       ;;
     sentencepiece.bpe.model)
       echo "14bb8dfb35c0ffdea7bc01e56cea38b9e3d5efcdcb9c251d6b40538e1aab555a"
       ;;
     config.json)
-      echo "b68f534191ebc23c89dbc07de9732c2495366bb1"
+      echo "bf8ade7c3f1683e5f13001bab18b04a1ccd1a6801208efd227ed13b2ff6f15e7"
       ;;
     *)
       echo "" && return 1
