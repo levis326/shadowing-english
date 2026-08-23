@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+
 import 'desktop_nllb.dart';
 
 typedef NllbTranslateBatchOverride = Future<List<String?>> Function({
@@ -97,12 +99,8 @@ const Map<String, String> _whisperToNllbLanguage = <String, String>{
   'yo': 'yor_Latn',
 };
 
-/// Translates sentences with the bundled CTranslate2 NLLB model.
-///
-/// Each call spawns the bundled `nllb-translate` binary with a temp input file
-/// and reads the translated lines back. The batch API keeps a single process
-/// for many sentences (used during subtitle post-processing); single-sentence
-/// lookups reuse the same path.
+/// Manages a long-lived local `nllb-server` process so the bundled NLLB model
+/// is loaded only once, mirroring the whisper-server integration.
 class LocalNllbTranslationService {
   LocalNllbTranslationService({
     this.binaryPathResolver,
@@ -111,7 +109,7 @@ class LocalNllbTranslationService {
     this.translateBatchOverride,
     this.sourceLanguage = desktopNllbSourceLanguage,
     this.defaultTargetLanguage = desktopNllbTargetLanguage,
-    this.timeout = const Duration(minutes: 5),
+    this.port = 8081,
   });
 
   final Future<String?> Function()? binaryPathResolver;
@@ -120,7 +118,84 @@ class LocalNllbTranslationService {
   final NllbTranslateBatchOverride? translateBatchOverride;
   final String sourceLanguage;
   final String defaultTargetLanguage;
-  final Duration timeout;
+  final int port;
+
+  Process? _serverProcess;
+  Future<void>? _starting;
+
+  bool get isRunning => _serverProcess != null;
+
+  Future<void> ensureStarted() async {
+    if (_serverProcess != null) return;
+    final Future<void>? inFlight = _starting;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+    final Future<void> start = _start();
+    _starting = start;
+    try {
+      await start;
+    } finally {
+      _starting = null;
+    }
+  }
+
+  Future<void> _start() async {
+    final String? binary = binaryPathResolver != null
+        ? await binaryPathResolver!()
+        : await findDesktopNllbBinary();
+    final String? modelDir = modelDirResolver != null
+        ? await modelDirResolver!()
+        : await findDesktopNllbModelDir();
+    final String? tokenizer = tokenizerPathResolver != null
+        ? await tokenizerPathResolver!()
+        : await findDesktopNllbTokenizer();
+    if (binary == null || modelDir == null || tokenizer == null) {
+      throw StateError('本地翻译组件缺失，请重新安装最新版本。');
+    }
+    final Process process = await Process.start(binary, <String>[
+      '--model',
+      modelDir,
+      '--tokenizer',
+      tokenizer,
+      '--src-lang',
+      sourceLanguage,
+      '--tgt-lang',
+      defaultTargetLanguage,
+      '--port',
+      '$port',
+    ]);
+    _serverProcess = process;
+    unawaited(process.stdout.drain<void>());
+    unawaited(process.stderr.drain<void>());
+
+    final Dio dio = _healthDio();
+    final DateTime deadline = DateTime.now().add(const Duration(seconds: 45));
+    while (DateTime.now().isBefore(deadline)) {
+      if (await _healthy(dio)) return;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    await shutdown();
+    throw StateError('本地翻译服务启动超时，请重试。');
+  }
+
+  Dio _healthDio() => Dio(
+    BaseOptions(
+      baseUrl: 'http://127.0.0.1:$port',
+      connectTimeout: const Duration(seconds: 2),
+      receiveTimeout: const Duration(seconds: 5),
+    ),
+  );
+
+  Future<bool> _healthy(Dio dio) async {
+    try {
+      final Response<dynamic> response = await dio.get<dynamic>('/health');
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<String?> translate(
     String sentence, {
@@ -156,76 +231,70 @@ class LocalNllbTranslationService {
       );
     }
 
-    final String? binary = binaryPathResolver != null
-        ? await binaryPathResolver!()
-        : await findDesktopNllbBinary();
-    final String? modelDir = modelDirResolver != null
-        ? await modelDirResolver!()
-        : await findDesktopNllbModelDir();
-    final String? tokenizer = tokenizerPathResolver != null
-        ? await tokenizerPathResolver!()
-        : await findDesktopNllbTokenizer();
-    if (binary == null || modelDir == null || tokenizer == null) {
-      throw StateError('本地翻译组件缺失，请重新安装最新版本。');
-    }
-
-    final Directory tempDir = await Directory.systemTemp.createTemp('nllb_');
-    final File inputFile = File(
-      '${tempDir.path}${Platform.pathSeparator}input.txt',
-    );
-    final File outputFile = File(
-      '${tempDir.path}${Platform.pathSeparator}output.txt',
-    );
-    await inputFile.writeAsString('${cleaned.join('\n')}\n');
+    await ensureStarted();
     try {
-      final Process process = await Process.start(
-        binary,
-        <String>[
-          '--model',
-          modelDir,
-          '--tokenizer',
-          tokenizer,
-          '--src-lang',
-          source,
-          '--tgt-lang',
-          target,
-          '--input',
-          inputFile.path,
-          '--output',
-          outputFile.path,
-        ],
+      return await _translateBatchOnce(
+        sentences: cleaned,
+        targetLanguage: target,
+        sourceLanguage: source,
       );
-      final StringBuffer stderrBuffer = StringBuffer();
-      process.stderr.transform(utf8.decoder).listen(stderrBuffer.write);
-      unawaited(process.stdout.drain<void>());
-
-      int exitCode;
-      try {
-        exitCode = await process.exitCode.timeout(timeout);
-      } on TimeoutException {
-        process.kill(ProcessSignal.sigkill);
-        throw StateError('本地翻译超时，请重试。');
-      }
-
-      if (exitCode != 0) {
-        final String error = stderrBuffer.toString().trim();
-        throw StateError(error.isEmpty ? '本地翻译失败。' : '本地翻译失败：$error');
-      }
-      if (!outputFile.existsSync()) {
-        throw StateError('本地翻译未生成结果。');
-      }
-      final List<String> lines = outputFile.readAsLinesSync();
-      final List<String?> results = List<String?>.filled(cleaned.length, null);
-      for (int i = 0; i < cleaned.length && i < lines.length; i++) {
-        final String translated = lines[i].trim();
-        results[i] = translated.isEmpty ? null : translated;
-      }
-      return results;
-    } finally {
-      try {
-        await tempDir.delete(recursive: true);
-      } catch (_) {}
+    } on DioException {
+      // The server may have stalled; restart it once and retry.
+      await shutdown();
+      await ensureStarted();
+      return _translateBatchOnce(
+        sentences: cleaned,
+        targetLanguage: target,
+        sourceLanguage: source,
+      );
     }
+  }
+
+  Future<List<String?>> _translateBatchOnce({
+    required List<String> sentences,
+    required String targetLanguage,
+    required String sourceLanguage,
+  }) async {
+    final Dio dio = Dio(
+      BaseOptions(
+        baseUrl: 'http://127.0.0.1:$port',
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(minutes: 6),
+      ),
+    );
+    final Response<dynamic> response = await dio.post<dynamic>(
+      '/translate',
+      data: jsonEncode(<String, dynamic>{
+        'sentences': sentences,
+        'src_lang': sourceLanguage,
+        'tgt_lang': targetLanguage,
+      }),
+    );
+    final Map<String, dynamic> data = response.data as Map<String, dynamic>;
+    final List<dynamic> translations =
+        data['translations'] as List<dynamic>? ?? const <dynamic>[];
+    final List<String?> results = List<String?>.filled(sentences.length, null);
+    for (int i = 0; i < sentences.length && i < translations.length; i++) {
+      final String translated = (translations[i] as String? ?? '').trim();
+      results[i] = translated.isEmpty ? null : translated;
+    }
+    return results;
+  }
+
+  Future<void> shutdown() async {
+    final Process? process = _serverProcess;
+    _serverProcess = null;
+    if (process == null) return;
+    process.kill();
+    try {
+      await process.exitCode.timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          process.kill(ProcessSignal.sigkill);
+          return process.exitCode;
+        },
+      );
+    } catch (_) {}
   }
 }
 

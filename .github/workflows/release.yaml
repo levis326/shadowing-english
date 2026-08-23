@@ -271,12 +271,15 @@ jobs:
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash tool/whisper/fetch_model.sh build/whisper-model
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - name: Cache local NLLB translator
         id: nllb-cache
         uses: actions/cache@v4
         with:
           path: build/nllb-bundle/windows-x64
-          key: nllb-4.8.1-windows-x64-${{ hashFiles('tool/nllb/build_nllb.sh','tool/nllb/nllb_translate.cpp') }}
+          key: nllb-py312-windows-x64-${{ hashFiles('tool/nllb/build_nllb.sh','tool/nllb/nllb_server.py') }}
       - name: Build local NLLB translator
         if: steps.nllb-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -284,11 +287,11 @@ jobs:
       - name: Smoke test local NLLB translator
         shell: pwsh
         run: |
-          $nllb = "build/nllb-bundle/windows-x64/nllb-translate.exe"
+          $nllb = "build/nllb-bundle/windows-x64/nllb-server.exe"
           if (-not (Test-Path $nllb)) { Write-Host "MISSING: $nllb"; exit 1 }
           & $nllb --help
           $code = $LASTEXITCODE
-          Write-Host "nllb-translate --help exit code: $code"
+          Write-Host "nllb-server --help exit code: $code"
           if ($code -ne 0) { exit $code }
       - name: Cache local NLLB model
         id: nllb-model-cache
@@ -321,7 +324,7 @@ jobs:
           Copy-Item build/nllb-model/sentencepiece.bpe.model build/windows/x64/runner/Release/nllb/
           Copy-Item build/nllb-model/config.json build/windows/x64/runner/Release/nllb/
           Copy-Item build/nllb-model/MODEL-INFO.txt build/windows/x64/runner/Release/nllb/
-          if (-not (Test-Path build/windows/x64/runner/Release/nllb/nllb-translate.exe)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/nllb/nllb-server.exe)) { exit 1 }
           if (-not (Test-Path build/windows/x64/runner/Release/nllb/model.bin)) { exit 1 }
           if (-not (Test-Path build/windows/x64/runner/Release/nllb/sentencepiece.bpe.model)) { exit 1 }
       - name: Package Windows bundle

@@ -8,8 +8,8 @@ const String desktopNllbTokenizerFileName = 'sentencepiece.bpe.model';
 const String desktopNllbSourceLanguage = 'eng_Latn';
 const String desktopNllbTargetLanguage = 'zho_Hans';
 
-/// Filename of the CTranslate2 translation binary bundled with the app.
-const String desktopNllbBinaryName = 'nllb-translate';
+/// Filename of the local NLLB translation server bundled with the app.
+const String desktopNllbBinaryName = 'nllb-server';
 
 List<String> desktopNllbBinaryCandidates({
   String? operatingSystem,
