@@ -28,6 +28,7 @@ typedef AsrBatchTranslator =
     Future<List<String?>> Function({
       required List<String> sentences,
       required LearningSettingsState settings,
+      required String sourceLanguage,
     });
 
 class AsrSubtitleGenerationException implements Exception {
@@ -776,7 +777,10 @@ class AsrSubtitleJobRunner {
     final File checkpoint = File(
       '${jobDir.path}${Platform.pathSeparator}translations.json',
     );
-    final String signature = _translationSignature(settings);
+    final String whisperLanguage =
+        (decoded['language'] as String? ?? '').trim();
+    final String sourceLanguage = nllbSourceLanguageForWhisper(whisperLanguage);
+    final String signature = '${_translationSignature(settings)}|$sourceLanguage';
     final Map<String, String> translations = await _loadTranslations(
       checkpoint,
       signature,
@@ -804,8 +808,15 @@ class AsrSubtitleJobRunner {
       final List<String?> results;
       try {
         results = await (translateBatch != null
-                ? translateBatch!(sentences: englishBatch, settings: settings)
-                : localNllbTranslationService.translateBatch(englishBatch))
+                ? translateBatch!(
+                    sentences: englishBatch,
+                    settings: settings,
+                    sourceLanguage: sourceLanguage,
+                  )
+                : localNllbTranslationService.translateBatch(
+                    englishBatch,
+                    sourceLanguage: sourceLanguage,
+                  ))
             .timeout(
           const Duration(minutes: 6),
           onTimeout: () => throw TimeoutException('本地 NLLB 翻译超时，请重试。'),
@@ -1241,6 +1252,7 @@ class AsrSubtitleJobRunner {
   }) async {
     final List<Map<String, Object?>> lines = <Map<String, Object?>>[];
     final Map<String, String> glossary = <String, String>{};
+    String detectedLanguage = '';
     for (int index = 0; index < totalChunks; index += 1) {
       final File chunkFile = File(
         '${chunksDir.path}${Platform.pathSeparator}${index.toString().padLeft(5, '0')}.json',
@@ -1248,6 +1260,11 @@ class AsrSubtitleJobRunner {
       final Object? decoded = jsonDecode(await chunkFile.readAsString());
       if (decoded is! Map<String, dynamic>) {
         throw StateError('invalid-asr-chunk');
+      }
+      final String chunkLanguage =
+          (decoded['language'] as String? ?? '').trim();
+      if (chunkLanguage.isNotEmpty && detectedLanguage.isEmpty) {
+        detectedLanguage = chunkLanguage;
       }
       lines.addAll(
         (decoded['lines'] as List<dynamic>? ?? const <dynamic>[])
@@ -1283,7 +1300,7 @@ class AsrSubtitleJobRunner {
     );
     return const JsonEncoder.withIndent('  ').convert(<String, Object?>{
       'version': 1,
-      'language': '',
+      'language': detectedLanguage,
       'lines': sentenceLines
           .map(_withoutSourceChunk)
           .toList(growable: false),

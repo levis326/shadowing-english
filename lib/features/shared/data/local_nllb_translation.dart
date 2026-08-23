@@ -7,7 +7,95 @@ import 'desktop_nllb.dart';
 typedef NllbTranslateBatchOverride = Future<List<String?>> Function({
   required List<String> sentences,
   required String targetLanguage,
+  required String sourceLanguage,
 });
+
+/// Maps a Whisper language code (ISO 639-1, as returned by whisper.cpp) to the
+/// NLLB-200 language code used as the translation source prefix. Falls back to
+/// English for unknown or empty languages.
+String nllbSourceLanguageForWhisper(String whisperLanguage) {
+  final String code = whisperLanguage.trim().toLowerCase();
+  return _whisperToNllbLanguage[code] ?? 'eng_Latn';
+}
+
+const Map<String, String> _whisperToNllbLanguage = <String, String>{
+  'en': 'eng_Latn',
+  'zh': 'zho_Hans',
+  'yue': 'yue_Hant',
+  'ja': 'jpn_Jpan',
+  'ko': 'kor_Hang',
+  'fr': 'fra_Latn',
+  'de': 'deu_Latn',
+  'es': 'spa_Latn',
+  'ru': 'rus_Cyrl',
+  'pt': 'por_Latn',
+  'it': 'ita_Latn',
+  'ar': 'arb_Arab',
+  'hi': 'hin_Deva',
+  'tr': 'tur_Latn',
+  'nl': 'nld_Latn',
+  'pl': 'pol_Latn',
+  'vi': 'vie_Latn',
+  'th': 'tha_Thai',
+  'id': 'ind_Latn',
+  'ms': 'zsm_Latn',
+  'cs': 'ces_Latn',
+  'sv': 'swe_Latn',
+  'da': 'dan_Latn',
+  'fi': 'fin_Latn',
+  'no': 'nob_Latn',
+  'he': 'heb_Hebr',
+  'uk': 'ukr_Cyrl',
+  'el': 'ell_Grek',
+  'ro': 'ron_Latn',
+  'hu': 'hun_Latn',
+  'bg': 'bul_Cyrl',
+  'hr': 'hrv_Latn',
+  'sk': 'slk_Latn',
+  'sl': 'slv_Latn',
+  'et': 'est_Latn',
+  'lv': 'lvs_Latn',
+  'lt': 'lit_Latn',
+  'fa': 'pes_Arab',
+  'bn': 'ben_Beng',
+  'ta': 'tam_Taml',
+  'te': 'tel_Telu',
+  'ur': 'urd_Arab',
+  'sw': 'swh_Latn',
+  'af': 'afr_Latn',
+  'sq': 'als_Latn',
+  'am': 'amh_Ethi',
+  'az': 'azj_Latn',
+  'be': 'bel_Cyrl',
+  'bs': 'bos_Latn',
+  'ca': 'cat_Latn',
+  'cy': 'cym_Latn',
+  'eu': 'eus_Latn',
+  'gl': 'glg_Latn',
+  'gu': 'guj_Gujr',
+  'is': 'isl_Latn',
+  'ka': 'kat_Geor',
+  'kk': 'kaz_Cyrl',
+  'km': 'khm_Khmr',
+  'kn': 'kan_Knda',
+  'lo': 'lao_Laoo',
+  'mk': 'mkd_Cyrl',
+  'ml': 'mal_Mlym',
+  'mn': 'khk_Cyrl',
+  'mr': 'mar_Deva',
+  'my': 'mya_Mymr',
+  'ne': 'npi_Deva',
+  'pa': 'pan_Guru',
+  'si': 'sin_Sinh',
+  'sr': 'srp_Cyrl',
+  'tg': 'tgk_Cyrl',
+  'tk': 'tuk_Latn',
+  'tl': 'tgl_Latn',
+  'ug': 'uig_Arab',
+  'uz': 'uzn_Latn',
+  'yi': 'ydd_Hebr',
+  'yo': 'yor_Latn',
+};
 
 /// Translates sentences with the bundled CTranslate2 NLLB model.
 ///
@@ -34,10 +122,15 @@ class LocalNllbTranslationService {
   final String defaultTargetLanguage;
   final Duration timeout;
 
-  Future<String?> translate(String sentence, {String? targetLanguage}) async {
+  Future<String?> translate(
+    String sentence, {
+    String? targetLanguage,
+    String? sourceLanguage,
+  }) async {
     final List<String?> results = await translateBatch(
       <String>[sentence],
       targetLanguage: targetLanguage,
+      sourceLanguage: sourceLanguage,
     );
     return results.isEmpty ? null : results.first;
   }
@@ -45,6 +138,7 @@ class LocalNllbTranslationService {
   Future<List<String?>> translateBatch(
     List<String> sentences, {
     String? targetLanguage,
+    String? sourceLanguage,
   }) async {
     final List<String> cleaned = sentences
         .map((String sentence) => sentence.trim())
@@ -52,11 +146,13 @@ class LocalNllbTranslationService {
         .toList(growable: false);
     if (cleaned.isEmpty) return const <String?>[];
     final String target = targetLanguage ?? defaultTargetLanguage;
+    final String source = sourceLanguage ?? this.sourceLanguage;
 
     if (translateBatchOverride != null) {
       return translateBatchOverride!(
         sentences: cleaned,
         targetLanguage: target,
+        sourceLanguage: source,
       );
     }
 
@@ -90,7 +186,7 @@ class LocalNllbTranslationService {
           '--tokenizer',
           tokenizer,
           '--src-lang',
-          sourceLanguage,
+          source,
           '--tgt-lang',
           target,
           '--input',
