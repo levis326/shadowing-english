@@ -41,7 +41,7 @@ class PlayerMockState {
     _syncCurrentWordIndex(forceLineStart: true);
   }
 
-  static const List<String> subtitleModes = <String>['单英', '英汉'];
+  static const List<String> subtitleModes = <String>['外文', '双语'];
 
   static const List<PlayerSubtitleLine> fallbackLines = <PlayerSubtitleLine>[
     PlayerSubtitleLine(
@@ -88,7 +88,7 @@ class PlayerMockState {
   bool isPlaying = false;
   bool isLooping = false;
   bool isShadowing = false;
-  String subtitleMode = '英汉';
+  String subtitleMode = '双语';
 
   double get playbackRate {
     switch (speed) {
@@ -122,13 +122,13 @@ class PlayerMockState {
 
     final List<String> modes = <String>[];
     if (hasEnglish) {
-      modes.add('单英');
+      modes.add('外文');
     }
     if (hasEnglish && hasChinese) {
-      modes.add('英汉');
+      modes.add('双语');
     }
     if (modes.isEmpty) {
-      modes.add('单英');
+      modes.add('外文');
     }
     return modes;
   }
@@ -274,7 +274,7 @@ class PlayerMockState {
       positionMs = initialPositionMs ?? 0;
       currentWordIndex = 0;
       isPlaying = false;
-      subtitleMode = '单英';
+      subtitleMode = '外文';
       return false;
     }
 

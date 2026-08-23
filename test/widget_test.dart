@@ -45,7 +45,7 @@ class _SubtitleListHarnessState extends State<_SubtitleListHarness> {
         child: PlayerSubtitleList(
           lines: PlayerMockState.fallbackLines,
           activeIndex: _activeIndex,
-          subtitleMode: '英汉',
+          subtitleMode: '双语',
           currentWordIndex: 0,
           fontScale: 1,
           highlightWords: true,
@@ -239,7 +239,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: PlayerMockState.fallbackLines,
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -396,8 +396,8 @@ void main() {
             child: PlayerVideoPanel(
               line: PlayerMockState.fallbackLines.first,
               isPlaying: false,
-              subtitleMode: '英汉',
-              subtitleModes: const <String>['单英', '英汉'],
+              subtitleMode: '双语',
+              subtitleModes: const <String>['外文', '双语'],
               speed: '1.0×',
               isShadowing: false,
               isLooping: false,
@@ -443,8 +443,8 @@ void main() {
           body: PlayerVideoPanel(
             line: PlayerMockState.fallbackLines.first,
             isPlaying: false,
-            subtitleMode: '英汉',
-            subtitleModes: const <String>['英汉'],
+            subtitleMode: '双语',
+            subtitleModes: const <String>['双语'],
             speed: '1.0×',
             isShadowing: false,
             isLooping: false,
@@ -498,8 +498,8 @@ void main() {
           body: PlayerVideoPanel(
             line: PlayerMockState.fallbackLines.first,
             isPlaying: false,
-            subtitleMode: '英汉',
-            subtitleModes: const <String>['英汉'],
+            subtitleMode: '双语',
+            subtitleModes: const <String>['双语'],
             speed: '1.0×',
             isShadowing: false,
             isLooping: false,

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Downloads the bundled Whisper model (English-only small, ggml format).
+# Downloads the bundled Whisper model (multilingual small, ggml format).
 #
 # Usage: tool/whisper/fetch_model.sh <output-dir>
 
-readonly MODEL_NAME="ggml-small.en.bin"
+readonly MODEL_NAME="ggml-small.bin"
 readonly MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}"
-readonly MODEL_SHA256="c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d"
+readonly MODEL_SHA256="1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
 readonly OUTPUT_DIR="${1:?output directory is required}"
 
 mkdir -p "$OUTPUT_DIR"

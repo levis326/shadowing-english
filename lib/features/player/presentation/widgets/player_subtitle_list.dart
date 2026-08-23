@@ -534,7 +534,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                               : null,
                           active,
                         ),
-                        if (widget.subtitleMode == '英汉') ...<Widget>[
+                        if (widget.subtitleMode == '双语') ...<Widget>[
                           const _SelectableLineBreak(),
                           const SizedBox(height: 4),
                           Text(

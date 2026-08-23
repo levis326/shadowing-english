@@ -277,7 +277,7 @@ class AsrSubtitleService {
   }) async {
     final Map<String, Object?> raw = await localWhisperService.transcribe(
       file: file,
-      language: 'en',
+      language: 'auto',
     );
     final Object? normalized = _normalizeResponse(raw);
     return _offsetNormalized(normalized, offsetMs);

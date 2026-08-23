@@ -18,11 +18,11 @@ String embeddedSubtitleTrackLabel(SubtitleTrack track) {
 }
 
 const String embeddedSubtitleModeOff = '关闭内置字幕';
-const String embeddedSubtitleModeEnglish = '单英';
-const String embeddedSubtitleModeBilingual = '英汉';
+const String embeddedSubtitleModeForeign = '外文';
+const String embeddedSubtitleModeBilingual = '双语';
 const List<String> embeddedSubtitleModes = <String>[
   embeddedSubtitleModeOff,
-  embeddedSubtitleModeEnglish,
+  embeddedSubtitleModeForeign,
   embeddedSubtitleModeBilingual,
 ];
 
@@ -38,9 +38,10 @@ bool _isChineseSubtitleTrack(SubtitleTrack track) {
 
 /// Maps a built-in subtitle display mode to a concrete embedded track.
 ///
-/// `单英` prefers the English track and `英汉` prefers the Chinese track
-/// (paired with the app's English learning subtitle to form a bilingual view).
-/// Falls back to the first available track when no matching language exists.
+/// `外文` prefers the English (foreign-language) track and `双语` prefers the
+/// Chinese track (paired with the app's foreign learning subtitle to form a
+/// bilingual view). Falls back to the first available track when no matching
+/// language exists.
 SubtitleTrack? embeddedSubtitleTrackForMode(
   List<SubtitleTrack> tracks,
   String mode,
@@ -48,7 +49,7 @@ SubtitleTrack? embeddedSubtitleTrackForMode(
   if (mode == embeddedSubtitleModeOff || tracks.isEmpty) {
     return null;
   }
-  final bool wantEnglish = mode == embeddedSubtitleModeEnglish;
+  final bool wantEnglish = mode == embeddedSubtitleModeForeign;
   for (final SubtitleTrack track in tracks) {
     final bool matches = wantEnglish
         ? _isEnglishSubtitleTrack(track)

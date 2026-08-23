@@ -165,7 +165,7 @@ void main() {
             child: PlayerSubtitleList(
               lines: lines,
               activeIndex: 1,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -225,7 +225,7 @@ void main() {
             child: PlayerTranscriptPanel(
               lines: lines,
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -282,7 +282,7 @@ void main() {
             child: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[line],
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -510,18 +510,18 @@ void main() {
 
     expect(find.text('doing'), findsWidgets);
 
-    await tester.tap(find.text('英汉'));
+    await tester.tap(find.text('双语'));
     await tester.pumpAndSettle();
-    expect(_hasCheckedMenuItem(tester, '英汉'), isTrue);
+    expect(_hasCheckedMenuItem(tester, '双语'), isTrue);
     await tester.pump(const Duration(milliseconds: 200));
 
-    await tester.tap(find.text('单英'), warnIfMissed: false);
+    await tester.tap(find.text('外文'), warnIfMissed: false);
     await tester.pumpAndSettle();
 
     final ProviderContainer container = ProviderScope.containerOf(
       tester.element(find.byType(PadLandscapePlayerScreen)),
     );
-    expect(container.read(learningSettingsProvider).subtitleMode, '单英');
+    expect(container.read(learningSettingsProvider).subtitleMode, '外文');
 
     expect(find.byIcon(Icons.mic_none_rounded), findsNothing);
 
@@ -583,8 +583,8 @@ void main() {
                     endMs: 1,
                   ),
                   isPlaying: false,
-                  subtitleMode: '单英',
-                  subtitleModes: const <String>['单英'],
+                  subtitleMode: '外文',
+                  subtitleModes: const <String>['外文'],
                   speed: '1.25×',
                   isShadowing: false,
                   isLooping: false,
@@ -618,7 +618,7 @@ void main() {
                 child: PlayerSubtitleList(
                   lines: const <PlayerSubtitleLine>[],
                   activeIndex: 0,
-                  subtitleMode: '单英',
+                  subtitleMode: '外文',
                   currentWordIndex: 0,
                   fontScale: 1,
                   highlightWords: true,
@@ -725,8 +725,8 @@ void main() {
                 ],
               ),
               isPlaying: true,
-              subtitleMode: '单英',
-              subtitleModes: const <String>['单英'],
+              subtitleMode: '外文',
+              subtitleModes: const <String>['外文'],
               currentWordIndex: 2,
               highlightWords: true,
               speed: '1.0×',
@@ -795,8 +795,8 @@ void main() {
             ),
             isPlaying: true,
             speed: '1.0×',
-            subtitleMode: '单英',
-            subtitleModes: const <String>['单英'],
+            subtitleMode: '外文',
+            subtitleModes: const <String>['外文'],
             highlightWords: true,
             subtitleWordHighlightStyle: '黄色填充',
             isShadowing: false,
@@ -855,8 +855,8 @@ void main() {
                   endMs: 25000,
                 ),
                 isPlaying: true,
-                subtitleMode: '单英',
-                subtitleModes: const <String>['单英'],
+                subtitleMode: '外文',
+                subtitleModes: const <String>['外文'],
                 speed: '1.0×',
                 isShadowing: false,
                 isLooping: false,
@@ -1102,7 +1102,7 @@ void main() {
           endMs: 2500,
         ),
       ])
-      ..setSubtitleMode('英汉');
+      ..setSubtitleMode('双语');
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1134,13 +1134,13 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('英汉'));
+    await tester.tap(find.text('双语'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('单英').last, warnIfMissed: false);
+    await tester.tap(find.text('外文').last, warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(find.text('单英'), findsOneWidget);
-    expect(state.subtitleMode, '单英');
+    expect(find.text('外文'), findsOneWidget);
+    expect(state.subtitleMode, '外文');
   });
 
   testWidgets('active subtitle word is boxed when highlighting is enabled', (
@@ -1184,7 +1184,7 @@ void main() {
                 ),
               ],
               activeIndex: 0,
-              subtitleMode: '单英',
+              subtitleMode: '外文',
               currentWordIndex: 2,
               fontScale: 1,
               highlightWords: true,
@@ -1231,7 +1231,7 @@ void main() {
                 ),
               ],
               activeIndex: 0,
-              subtitleMode: '单英',
+              subtitleMode: '外文',
               currentWordIndex: 2,
               fontScale: 1,
               highlightWords: true,
@@ -1328,7 +1328,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1393,7 +1393,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1431,7 +1431,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1474,7 +1474,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1548,7 +1548,7 @@ void main() {
               child: PlayerSubtitleList(
                 lines: const <PlayerSubtitleLine>[_dictionaryLine],
                 activeIndex: 0,
-                subtitleMode: '英汉',
+                subtitleMode: '双语',
                 currentWordIndex: 0,
                 fontScale: 1,
                 highlightWords: true,
@@ -1617,7 +1617,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1700,7 +1700,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1748,7 +1748,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '英汉',
+              subtitleMode: '双语',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,

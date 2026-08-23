@@ -14,7 +14,7 @@ const List<String> subtitleWordHighlightStyleOptions = <String>[
   '描边',
 ];
 
-const List<String> subtitleModeOptions = <String>['单英', '英汉'];
+const List<String> subtitleModeOptions = <String>['外文', '双语'];
 const List<String> playbackSpeedOptions = <String>[
   '0.5×',
   '0.8×',
@@ -127,7 +127,7 @@ const Map<String, TranslationProviderPreset> asrProviderPresets =
       localWhisperProviderName: TranslationProviderPreset(
         name: localWhisperProviderName,
         baseUrl: '',
-        model: 'ggml-small.en',
+        model: 'ggml-small',
       ),
     };
 
@@ -169,7 +169,7 @@ class LearningSettingsState {
     final TranslationProviderPreset defaultAsrPreset =
         asrProviderPresets['阿里云百炼']!;
     return LearningSettingsState(
-      subtitleMode: '英汉',
+      subtitleMode: '双语',
       playbackSpeed: '0.8×',
       fontSize: '中',
       subtitleDelayMs: 0,
@@ -733,11 +733,13 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
       return null;
     }
     switch (mode) {
+      case '英汉':
       case '双语':
-        return '英汉';
+        return '双语';
+      case '单英':
       case '单中':
       case '隐藏':
-        return '单英';
+        return '外文';
       default:
         return mode;
     }

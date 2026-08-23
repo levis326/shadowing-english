@@ -40,6 +40,6 @@ void main() {
       resolvedExecutable: r'C:\App\common_learn_english.exe',
     );
 
-    expect(candidates.first, r'C:\App\whisper\ggml-small.en.bin');
+    expect(candidates.first, r'C:\App\whisper\ggml-small.bin');
   });
 }

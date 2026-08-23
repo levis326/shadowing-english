@@ -139,7 +139,7 @@ AI 识别仍可能受到背景音乐、多人重叠说话、口音和录音质�
 
 桌面安装包内置了用于本地音频提取的精简版 FFmpeg，无需用户额外安装；许可证和构建信息会随应用一起发布。
 
-桌面安装包还内置了 [whisper.cpp](https://github.com/ggml-org/whisper.cpp) 与英文专用 `small` 模型（`ggml-small.en.bin`），可在「设置 → AI 字幕」中选择「本地 Whisper」离线生成词级同步字幕，无需联网、无需 API Key。安装包体积因此增大约 466 MB。
+桌面安装包还内置了 [whisper.cpp](https://github.com/ggml-org/whisper.cpp) 与多语言 `small` 模型（`ggml-small.bin`），可在「设置 → AI 字幕」中选择「本地 Whisper」离线智能识别多国语言并生成词级同步字幕，无需联网、无需 API Key。安装包体积因此增大约 466 MB。
 
 ### 从源码运行
 

@@ -451,7 +451,7 @@ class SettingsScreen extends ConsumerWidget {
                           child: _TitleBlock(
                             title: '本地离线识别',
                             description:
-                                '使用内置 whisper.cpp（ggml-small.en）在本地转写英文，无需联网、无需 API Key。中文翻译仍会调用上方“翻译”设置（需联网）。',
+                                '使用内置 whisper.cpp（ggml-small）在本地智能识别多种语言，无需联网、无需 API Key。中文翻译仍会调用上方“翻译”设置（需联网）。',
                           ),
                         ),
                       if (!isLocalWhisperAsr) ...<Widget>[

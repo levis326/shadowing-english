@@ -1,8 +1,8 @@
 import 'dart:io';
 
-/// Default filename of the bundled Whisper model. The English-only small model
-/// is used because Shadowing English transcribes English speech.
-const String desktopWhisperModelFileName = 'ggml-small.en.bin';
+/// Default filename of the bundled Whisper model. The multilingual small model
+/// auto-detects the spoken language instead of being limited to English.
+const String desktopWhisperModelFileName = 'ggml-small.bin';
 
 List<String> desktopWhisperServerCandidates({
   String? operatingSystem,

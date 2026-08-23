@@ -876,7 +876,7 @@ class PadLandscapePlayerScreenState
                                   ? PlayerSubtitleList(
                                       lines: const <PlayerSubtitleLine>[],
                                       activeIndex: 0,
-                                      subtitleMode: '单英',
+                                      subtitleMode: '外文',
                                       currentWordIndex: 0,
                                       fontScale: settings.fontScale,
                                       highlightWords: settings.highlightWords,
@@ -963,7 +963,7 @@ class PadLandscapePlayerScreenState
       (SubtitleTrack track) =>
           track.language == 'chi' || track.language == 'zho' || track.language == 'zh',
     );
-    return hasChinese ? '英汉' : '单英';
+    return hasChinese ? '双语' : '外文';
   }
 
   void _handleSelectEmbeddedSubtitle(String mode) {

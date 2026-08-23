@@ -99,7 +99,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small.en-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/fetch_model.sh build/whisper-model
@@ -107,9 +107,9 @@ jobs:
         run: |
           mkdir -p build/linux/x64/release/bundle/lib/whisper
           cp -a build/whisper-bundle/linux-x64/. build/linux/x64/release/bundle/lib/whisper/
-          cp build/whisper-model/ggml-small.en.bin build/linux/x64/release/bundle/lib/whisper/
+          cp build/whisper-model/ggml-small.bin build/linux/x64/release/bundle/lib/whisper/
           test -x build/linux/x64/release/bundle/lib/whisper/whisper-server
-          test -s build/linux/x64/release/bundle/lib/whisper/ggml-small.en.bin
+          test -s build/linux/x64/release/bundle/lib/whisper/ggml-small.bin
       - name: Package Linux bundle
         env:
           TAG: ${{ github.ref_name }}
@@ -169,7 +169,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small.en-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/fetch_model.sh build/whisper-model
@@ -185,9 +185,9 @@ jobs:
           test -x "$app_path/Contents/Resources/ffmpeg/ffmpeg"
           mkdir -p "$app_path/Contents/Resources/whisper"
           cp -a build/whisper-bundle/macos-universal/. "$app_path/Contents/Resources/whisper/"
-          cp build/whisper-model/ggml-small.en.bin "$app_path/Contents/Resources/whisper/"
+          cp build/whisper-model/ggml-small.bin "$app_path/Contents/Resources/whisper/"
           test -x "$app_path/Contents/Resources/whisper/whisper-server"
-          test -s "$app_path/Contents/Resources/whisper/ggml-small.en.bin"
+          test -s "$app_path/Contents/Resources/whisper/ggml-small.bin"
           codesign --force --deep --sign - "$app_path"
           codesign --verify --deep --strict "$app_path"
           cp -R "$app_path" dmg-root/
@@ -266,7 +266,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small.en-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         shell: bash
@@ -307,9 +307,9 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item build/whisper-bundle/windows-x64 build/windows/x64/runner/Release/whisper -Recurse
-          Copy-Item build/whisper-model/ggml-small.en.bin build/windows/x64/runner/Release/whisper/
+          Copy-Item build/whisper-model/ggml-small.bin build/windows/x64/runner/Release/whisper/
           if (-not (Test-Path build/windows/x64/runner/Release/whisper/whisper-server.exe)) { exit 1 }
-          if (-not (Test-Path build/windows/x64/runner/Release/whisper/ggml-small.en.bin)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/whisper/ggml-small.bin)) { exit 1 }
       - name: Bundle local NLLB translator and model
         shell: pwsh
         run: |

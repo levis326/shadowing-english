@@ -469,9 +469,9 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
 
   String? _overlayText() {
     switch (widget.subtitleMode) {
-      case '英汉':
+      case '双语':
         return '${widget.line.english}\n${widget.line.chinese}';
-      case '单英':
+      case '外文':
         return widget.line.english;
       default:
         return widget.line.english;
@@ -484,7 +484,7 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
     final bool showChinese =
         overlayText != null &&
         overlayText.contains('\n') &&
-        widget.subtitleMode != '单英';
+        widget.subtitleMode != '外文';
     final bool showPrimaryButton = _showControls || !widget.isPlaying;
     final Duration safeDuration = widget.videoDuration.isNegative
         ? Duration.zero
