@@ -29,7 +29,7 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
     this.embeddedSubtitleTracks = const <SubtitleTrack>[],
-    this.selectedEmbeddedSubtitleId,
+    this.embeddedSubtitleMode = '关闭内置字幕',
     this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
@@ -73,8 +73,8 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
   final List<SubtitleTrack> embeddedSubtitleTracks;
-  final String? selectedEmbeddedSubtitleId;
-  final ValueChanged<SubtitleTrack?>? onSelectEmbeddedSubtitle;
+  final String embeddedSubtitleMode;
+  final ValueChanged<String>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
   final VoidCallback onToggleMuted;
@@ -176,7 +176,7 @@ class _PlayerFullscreenVideoScreenState
               subtitleMode: player.subtitleMode,
               subtitleModes: player.availableSubtitleModes,
               embeddedSubtitleTracks: widget.embeddedSubtitleTracks,
-              selectedEmbeddedSubtitleId: widget.selectedEmbeddedSubtitleId,
+              embeddedSubtitleMode: widget.embeddedSubtitleMode,
               currentWordIndex: player.currentWordIndex,
               highlightWords: widget.highlightWords,
               subtitleWordHighlightStyle: widget.subtitleWordHighlightStyle,
@@ -201,8 +201,8 @@ class _PlayerFullscreenVideoScreenState
                   _refresh(() => widget.onSpeedSelected(value)),
               onSelectSubtitleMode: (String value) =>
                   _refresh(() => widget.onSelectSubtitleMode(value)),
-              onSelectEmbeddedSubtitle: (SubtitleTrack? track) =>
-                  _refresh(() => widget.onSelectEmbeddedSubtitle?.call(track)),
+              onSelectEmbeddedSubtitle: (String mode) =>
+                  _refresh(() => widget.onSelectEmbeddedSubtitle?.call(mode)),
               onToggleShadowing: () => _refresh(widget.onToggleShadowing),
               onToggleLoop: () => _refresh(widget.onToggleLoop),
               onToggleMuted: () {

@@ -337,21 +337,6 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.subtitleMode == '隐藏') {
-      return _SubtitlePlaceholder(
-        icon: Icons.closed_caption_disabled_outlined,
-        title: '字幕已隐藏',
-        body: '在播放器控制栏中重新开启字幕后可恢复列表。',
-        showAiGenerateSubtitles: widget.showAiGenerateSubtitles,
-        generatingAiSubtitles: widget.generatingAiSubtitles,
-        progressValue: widget.aiSubtitleProgressValue,
-        progressText: widget.aiSubtitleProgressText,
-        previewText: widget.aiSubtitlePreviewText,
-        errorText: widget.aiSubtitleErrorText,
-        onGenerateAiSubtitles: widget.onGenerateAiSubtitles,
-      );
-    }
-
     final int totalLineCount = widget.lines.length;
     if (totalLineCount == 0 && widget.showAiGenerateSubtitles) {
       return _SubtitlePlaceholder(
@@ -396,8 +381,6 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
             final bool isLooping = originalIndex == widget.loopingLineIndex;
             final bool isPast = originalIndex < widget.activeIndex;
             final double textOpacity = active ? 1 : (isPast ? 0.84 : 0.60);
-            final double chineseFontSize =
-                (active ? 19.0 : 17.0) * widget.fontScale;
             final double subtitleFontSize = 15 * widget.fontScale;
             const Color inactiveStartTimeColor = Color(0xFFADB7B0);
             const Color inactiveZhTextColor = Color(0xFFB7C2BA);
@@ -544,31 +527,14 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        if (widget.subtitleMode == '单中')
-                          Text(
-                            line.chinese,
-                            style: TextStyle(
-                              fontSize: chineseFontSize,
-                              fontWeight: active
-                                  ? FontWeight.w800
-                                  : FontWeight.w600,
-                              color: active
-                                  ? const Color(0xFF191C1E)
-                                  : inactiveZhTextColor.withValues(
-                                      alpha: textOpacity,
-                                    ),
-                              height: 1.35,
-                            ),
-                          )
-                        else
-                          _buildWordLine(
-                            line.english,
-                            active && line.words.isNotEmpty
-                                ? widget.currentWordIndex
-                                : null,
-                            active,
-                          ),
-                        if (widget.subtitleMode != '单英') ...<Widget>[
+                        _buildWordLine(
+                          line.english,
+                          active && line.words.isNotEmpty
+                              ? widget.currentWordIndex
+                              : null,
+                          active,
+                        ),
+                        if (widget.subtitleMode == '英汉') ...<Widget>[
                           const _SelectableLineBreak(),
                           const SizedBox(height: 4),
                           Text(

@@ -96,7 +96,7 @@ class PadLandscapePlayerScreenState
   String? _aiSubtitleErrorText;
   bool _usingAiSubtitles = false;
   List<SubtitleTrack> _embeddedSubtitleTracks = const <SubtitleTrack>[];
-  String? _selectedEmbeddedSubtitleId;
+  String _embeddedSubtitleMode = '关闭内置字幕';
   List<PlayerSubtitleLine> _referenceSubtitleLines =
       const <PlayerSubtitleLine>[];
 
@@ -246,7 +246,7 @@ class PadLandscapePlayerScreenState
       _videoController = controller;
       setState(() {
         _embeddedSubtitleTracks = embeddedTracks;
-        _selectedEmbeddedSubtitleId = null;
+        _embeddedSubtitleMode = '关闭内置字幕';
         _videoReady = true;
         _videoLoading = false;
         _videoErrorText = null;
@@ -743,8 +743,7 @@ class PadLandscapePlayerScreenState
                               subtitleMode: state.subtitleMode,
                               subtitleModes: state.availableSubtitleModes,
                               embeddedSubtitleTracks: _embeddedSubtitleTracks,
-                              selectedEmbeddedSubtitleId:
-                                  _selectedEmbeddedSubtitleId,
+                              embeddedSubtitleMode: _embeddedSubtitleMode,
                               currentWordIndex: state.currentWordIndex,
                               highlightWords: settings.highlightWords,
                               subtitleWordHighlightStyle:
@@ -877,7 +876,7 @@ class PadLandscapePlayerScreenState
                                   ? PlayerSubtitleList(
                                       lines: const <PlayerSubtitleLine>[],
                                       activeIndex: 0,
-                                      subtitleMode: '隐藏',
+                                      subtitleMode: '单英',
                                       currentWordIndex: 0,
                                       fontScale: settings.fontScale,
                                       highlightWords: settings.highlightWords,
@@ -947,33 +946,34 @@ class PadLandscapePlayerScreenState
   void _handleSetSubtitleMode(String mode) {
     setState(() {
       state.setSubtitleMode(mode);
-      _selectedEmbeddedSubtitleId = null;
     });
     ref.read(learningSettingsProvider.notifier).setSubtitleMode(mode);
-    unawaited(_videoPlayer?.setSubtitleTrack(SubtitleTrack.no()));
     _applyPlaybackMode();
   }
 
   void _handleToggleSubtitles() {
-    final List<String> modes = state.availableSubtitleModes
-        .where((String mode) => mode != '隐藏')
-        .toList(growable: false);
-    final String target = state.subtitleMode == '隐藏'
-        ? (modes.isEmpty ? '双语' : modes.first)
-        : '隐藏';
-    _handleSetSubtitleMode(target);
+    final String target = _embeddedSubtitleMode == '关闭内置字幕'
+        ? _preferredEmbeddedSubtitleMode()
+        : '关闭内置字幕';
+    _handleSelectEmbeddedSubtitle(target);
   }
 
-  void _handleSelectEmbeddedSubtitle(SubtitleTrack? track) {
+  String _preferredEmbeddedSubtitleMode() {
+    final bool hasChinese = _embeddedSubtitleTracks.any(
+      (SubtitleTrack track) =>
+          track.language == 'chi' || track.language == 'zho' || track.language == 'zh',
+    );
+    return hasChinese ? '英汉' : '单英';
+  }
+
+  void _handleSelectEmbeddedSubtitle(String mode) {
     setState(() {
-      _selectedEmbeddedSubtitleId = track?.id;
-      if (track != null) {
-        state.setSubtitleMode('隐藏');
-      }
+      _embeddedSubtitleMode = mode;
     });
-    if (track != null) {
-      ref.read(learningSettingsProvider.notifier).setSubtitleMode('隐藏');
-    }
+    final SubtitleTrack? track = embeddedSubtitleTrackForMode(
+      _embeddedSubtitleTracks,
+      mode,
+    );
     unawaited(_videoPlayer?.setSubtitleTrack(track ?? SubtitleTrack.no()));
   }
 
@@ -1541,7 +1541,7 @@ class PadLandscapePlayerScreenState
             onSpeedSelected: _handleSpeedSelected,
             onSelectSubtitleMode: _handleSetSubtitleMode,
             embeddedSubtitleTracks: _embeddedSubtitleTracks,
-            selectedEmbeddedSubtitleId: _selectedEmbeddedSubtitleId,
+            embeddedSubtitleMode: _embeddedSubtitleMode,
             onSelectEmbeddedSubtitle: _handleSelectEmbeddedSubtitle,
             onToggleShadowing: _handleToggleShadowing,
             onToggleLoop: _handleToggleLoop,

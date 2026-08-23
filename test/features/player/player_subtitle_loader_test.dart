@@ -228,7 +228,7 @@ Hello from file
             endMs: 2000,
           ),
         ])
-        ..setSubtitleMode('单中');
+        ..setSubtitleMode('英汉');
 
       expect(state.subtitleMode, '单英');
     },

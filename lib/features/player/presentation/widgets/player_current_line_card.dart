@@ -58,8 +58,8 @@ class _PlayerCurrentLineCardState extends State<PlayerCurrentLineCard> {
 
   @override
   Widget build(BuildContext context) {
-    final bool showEnglish = widget.subtitleMode != '单中';
-    final bool showChinese = widget.subtitleMode != '单英';
+    const bool showEnglish = true;
+    final bool showChinese = widget.subtitleMode == '英汉';
     final bool highlightEnabled = widget.highlightWords;
     final double englishFontSize = 30 * widget.fontScale;
     final double chineseFontSize = 18 * widget.fontScale;

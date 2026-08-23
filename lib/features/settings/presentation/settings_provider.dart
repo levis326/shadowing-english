@@ -14,7 +14,7 @@ const List<String> subtitleWordHighlightStyleOptions = <String>[
   '描边',
 ];
 
-const List<String> subtitleModeOptions = <String>['双语', '单英', '单中', '隐藏'];
+const List<String> subtitleModeOptions = <String>['单英', '英汉'];
 const List<String> playbackSpeedOptions = <String>[
   '0.5×',
   '0.8×',
@@ -168,7 +168,7 @@ class LearningSettingsState {
     final TranslationProviderPreset defaultAsrPreset =
         asrProviderPresets['阿里云百炼']!;
     return LearningSettingsState(
-      subtitleMode: '双语',
+      subtitleMode: '英汉',
       playbackSpeed: '0.8×',
       fontSize: '中',
       subtitleDelayMs: 0,
@@ -392,7 +392,7 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
       final Map<String, dynamic> json = jsonDecode(raw) as Map<String, dynamic>;
       final String? asrProvider = _asrProviderOrNull(json['asrProvider']);
       return defaults.copyWith(
-        subtitleMode: _stringOrNull(json['subtitleMode']),
+        subtitleMode: _subtitleModeOrNull(json['subtitleMode']),
         playbackSpeed: _stringOrNull(json['playbackSpeed']),
         fontSize: _stringOrNull(json['fontSize']),
         subtitleDelayMs: _intOrNull(json['subtitleDelayMs']),
@@ -724,6 +724,22 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
       return null;
     }
     return raw.trim();
+  }
+
+  String? _subtitleModeOrNull(Object? value) {
+    final String? mode = _stringOrNull(value);
+    if (mode == null) {
+      return null;
+    }
+    switch (mode) {
+      case '双语':
+        return '英汉';
+      case '单中':
+      case '隐藏':
+        return '单英';
+      default:
+        return mode;
+    }
   }
 
   bool? _boolOrNull(Object? value) => value as bool?;

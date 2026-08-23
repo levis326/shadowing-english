@@ -165,7 +165,7 @@ void main() {
             child: PlayerSubtitleList(
               lines: lines,
               activeIndex: 1,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -225,7 +225,7 @@ void main() {
             child: PlayerTranscriptPanel(
               lines: lines,
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -282,7 +282,7 @@ void main() {
             child: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[line],
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
@@ -510,9 +510,9 @@ void main() {
 
     expect(find.text('doing'), findsWidgets);
 
-    await tester.tap(find.text('双语'));
+    await tester.tap(find.text('英汉'));
     await tester.pumpAndSettle();
-    expect(_hasCheckedMenuItem(tester, '双语'), isTrue);
+    expect(_hasCheckedMenuItem(tester, '英汉'), isTrue);
     await tester.pump(const Duration(milliseconds: 200));
 
     await tester.tap(find.text('单英'), warnIfMissed: false);
@@ -583,8 +583,8 @@ void main() {
                     endMs: 1,
                   ),
                   isPlaying: false,
-                  subtitleMode: '隐藏',
-                  subtitleModes: const <String>['隐藏'],
+                  subtitleMode: '单英',
+                  subtitleModes: const <String>['单英'],
                   speed: '1.25×',
                   isShadowing: false,
                   isLooping: false,
@@ -618,7 +618,7 @@ void main() {
                 child: PlayerSubtitleList(
                   lines: const <PlayerSubtitleLine>[],
                   activeIndex: 0,
-                  subtitleMode: '隐藏',
+                  subtitleMode: '单英',
                   currentWordIndex: 0,
                   fontScale: 1,
                   highlightWords: true,
@@ -1102,7 +1102,7 @@ void main() {
           endMs: 2500,
         ),
       ])
-      ..setSubtitleMode('双语');
+      ..setSubtitleMode('英汉');
 
     await tester.pumpWidget(
       MaterialApp(
@@ -1134,7 +1134,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('双语'));
+    await tester.tap(find.text('英汉'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('单英').last, warnIfMissed: false);
     await tester.pumpAndSettle();
@@ -1328,7 +1328,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1393,7 +1393,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1431,7 +1431,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1474,7 +1474,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1548,7 +1548,7 @@ void main() {
               child: PlayerSubtitleList(
                 lines: const <PlayerSubtitleLine>[_dictionaryLine],
                 activeIndex: 0,
-                subtitleMode: '双语',
+                subtitleMode: '英汉',
                 currentWordIndex: 0,
                 fontScale: 1,
                 highlightWords: true,
@@ -1617,7 +1617,7 @@ void main() {
             body: PlayerSubtitleList(
               lines: const <PlayerSubtitleLine>[_dictionaryLine],
               activeIndex: 0,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1700,7 +1700,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
@@ -1748,7 +1748,7 @@ void main() {
           home: Scaffold(
             body: PlayerCurrentLineCard(
               line: _dictionaryLine,
-              subtitleMode: '双语',
+              subtitleMode: '英汉',
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: true,
