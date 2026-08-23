@@ -61,7 +61,9 @@ cmake_minimum_required(VERSION 3.15)
 project(nllb-translate LANGUAGES C CXX)
 
 set(CMAKE_BUILD_TYPE Release)
-set(BUILD_SHARED_LIBS OFF)
+# Force static libraries everywhere (CTranslate2's `option(BUILD_SHARED_LIBS ON)`
+# does not honor a plain `set(BUILD_SHARED_LIBS OFF)` from the parent scope).
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 # Abseil (pulled in by sentencepiece) requires C++17; MSVC defaults to C++14.
 # Abseil verifies this with check_cxx_source_compiles, whose standalone
@@ -116,6 +118,7 @@ build_one() {
   # (protobuf/abseil pulled in by sentencepiece); keep those configuring.
   cmake -S "$work_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DBUILD_SHARED_LIBS=OFF \
     -DDNNL_INCLUDE_DIR="$dnnl_include" \
     -DDNNL_LIBRARY="$dnnl_lib" \
     "$@"
