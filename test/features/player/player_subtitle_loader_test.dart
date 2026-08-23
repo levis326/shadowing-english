@@ -61,6 +61,11 @@ How are you?
     expect(srt, contains('Welcome'));
     expect(srt, isNot(contains('你好')));
 
+    final String chineseSrt = subtitleLinesToSrt(lines, chinese: true);
+    expect(chineseSrt, contains('00:00:01,000 --> 00:00:03,000'));
+    expect(chineseSrt, contains('你好'));
+    expect(chineseSrt, isNot(contains('Hello there')));
+
     expect(
       generatedSubtitleSrtFileName(r'C:\videos\Friends-S01E01.mp4'),
       'Friends-S01E01.en.srt',
@@ -68,6 +73,13 @@ How are you?
     expect(
       generatedSubtitleSrtFileName('/videos/Friends-S01E01.mp4'),
       'Friends-S01E01.en.srt',
+    );
+    expect(
+      generatedSubtitleSrtFileName(
+        '/videos/Friends-S01E01.mp4',
+        languageCode: 'zh',
+      ),
+      'Friends-S01E01.zh.srt',
     );
   });
 

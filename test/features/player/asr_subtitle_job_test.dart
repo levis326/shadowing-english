@@ -808,6 +808,45 @@ void main() {
     },
   );
 
+  test('merges sentence fragments across chunk boundaries', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-sentence-merge-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final File chunk1 = File('${root.path}/chunk1.m4a')..writeAsStringSync('1');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+          AsrAudioChunk(file: chunk1, offsetMs: 58000),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => chunk.file.path == chunk0.path
+          ? _chunkJson('I want to learn', 1000)
+          : _chunkJson('English.', 59000),
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    expect(lines, hasLength(1));
+    expect(lines.single.english, 'I want to learn English.');
+    expect(lines.single.startMs, 1000);
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',

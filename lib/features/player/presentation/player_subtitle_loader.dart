@@ -244,12 +244,12 @@ String _formatTimestamp(int milliseconds) {
 }
 
 /// Converts word-level subtitle lines into a standard `.srt` document.
-String subtitleLinesToSrt(List<PlayerSubtitleLine> lines) {
+String subtitleLinesToSrt(List<PlayerSubtitleLine> lines, {bool chinese = false}) {
   final StringBuffer buffer = StringBuffer();
   int cueIndex = 0;
   for (final PlayerSubtitleLine line in lines) {
-    final String english = line.english.trim();
-    if (english.isEmpty || line.endMs <= line.startMs) {
+    final String text = (chinese ? line.chinese : line.english).trim();
+    if (text.isEmpty || line.endMs <= line.startMs) {
       continue;
     }
     cueIndex += 1;
@@ -258,7 +258,7 @@ String subtitleLinesToSrt(List<PlayerSubtitleLine> lines) {
       ..writeln(
         '${_srtTimestamp(line.startMs)} --> ${_srtTimestamp(line.endMs)}',
       )
-      ..writeln(english)
+      ..writeln(text)
       ..writeln();
   }
   return buffer.toString();
@@ -275,25 +275,41 @@ String _srtTimestamp(int milliseconds) {
       '${millis.toString().padLeft(3, '0')}';
 }
 
-/// Returns the `.en.srt` filename derived from the video filename, e.g.
+/// Returns the `.srt` filename derived from the video filename, e.g.
 /// `Friends-S01E01.mp4` -> `Friends-S01E01.en.srt`.
-String generatedSubtitleSrtFileName(String videoPath) {
+String generatedSubtitleSrtFileName(
+  String videoPath, {
+  String languageCode = 'en',
+}) {
   final String fileName = _fileNameOf(videoPath);
   final int dotIndex = fileName.lastIndexOf('.');
   final String stem = dotIndex > 0 ? fileName.substring(0, dotIndex) : fileName;
-  return '$stem.en.srt';
+  return '$stem.$languageCode.srt';
 }
 
 /// Saves the generated subtitle next to the video as `<basename>.en.srt` and
-/// returns the written file path.
+/// returns the written file path. When the lines contain Chinese translations,
+/// a `<basename>.zh.srt` is written alongside it as well.
 Future<String> saveGeneratedSubtitleSrt({
   required String videoPath,
   required List<PlayerSubtitleLine> lines,
 }) async {
-  final String srtPath = '${File(videoPath).parent.path}'
+  final String enPath = '${File(videoPath).parent.path}'
       '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath)}';
-  await File(srtPath).writeAsString(subtitleLinesToSrt(lines), flush: true);
-  return srtPath;
+  await File(enPath).writeAsString(subtitleLinesToSrt(lines), flush: true);
+
+  final bool hasChinese = lines.any(
+    (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
+  );
+  if (hasChinese) {
+    final String zhPath = '${File(videoPath).parent.path}'
+        '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath, languageCode: 'zh')}';
+    await File(zhPath).writeAsString(
+      subtitleLinesToSrt(lines, chinese: true),
+      flush: true,
+    );
+  }
+  return enPath;
 }
 
 String _fileNameOf(String path) {
