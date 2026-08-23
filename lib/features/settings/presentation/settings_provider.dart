@@ -164,8 +164,10 @@ class LearningSettingsState {
   });
 
   factory LearningSettingsState.defaults() {
+    // Default to the bundled local NLLB translation so AI subtitle generation
+    // produces Chinese subtitles out of the box (no API key required).
     final TranslationProviderPreset defaultPreset =
-        translationProviderPresets[noTranslationProviderName]!;
+        translationProviderPresets[localNllbTranslationProviderName]!;
     final TranslationProviderPreset defaultAsrPreset =
         asrProviderPresets['阿里云百炼']!;
     return LearningSettingsState(

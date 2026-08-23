@@ -25,17 +25,17 @@ void main() {
     hiveDir.deleteSync(recursive: true);
   });
 
-  test('defaults to no translation source', () {
+  test('defaults to local NLLB translation', () {
     final ProviderContainer container = ProviderContainer();
     addTearDown(container.dispose);
 
     final LearningSettingsState state = container.read(
       learningSettingsProvider,
     );
-    expect(state.translationProvider, '不使用翻译');
+    expect(state.translationProvider, localNllbTranslationProviderName);
     expect(state.translationApiKey, isEmpty);
     expect(state.translationBaseUrl, isEmpty);
-    expect(state.translationModel, isEmpty);
+    expect(state.translationModel, 'nllb-200-distilled-600M');
   });
 
   test('translation provider presets fill default base url and model', () {

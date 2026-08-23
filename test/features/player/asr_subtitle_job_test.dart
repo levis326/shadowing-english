@@ -294,6 +294,7 @@ void main() {
         videoPath: video.path,
         settings: LearningSettingsState.defaults().copyWith(
           generateBilingualAsrSubtitles: true,
+          translationProvider: 'OpenAI',
         ),
       );
 
@@ -380,6 +381,7 @@ void main() {
         videoPath: video.path,
         settings: LearningSettingsState.defaults().copyWith(
           generateBilingualAsrSubtitles: true,
+          translationProvider: 'OpenAI',
         ),
       );
 
@@ -423,6 +425,7 @@ void main() {
     );
     final LearningSettingsState settings = _settings().copyWith(
       generateBilingualAsrSubtitles: true,
+      translationProvider: 'OpenAI',
     );
 
     final String partialRaw = await runner.run(
