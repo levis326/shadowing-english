@@ -17,6 +17,7 @@ import 'features/player/presentation/local_whisper_service.dart';
 import 'features/player/presentation/player_backend.dart';
 import 'features/player/presentation/transcript_reader_window.dart';
 import 'features/shared/data/local_nllb_translation.dart';
+import 'features/shared/data/local_pronunciation_service.dart';
 import 'flavors/app_flavor.dart';
 import 'hive/hive.dart';
 import 'my_app.dart';
@@ -30,13 +31,15 @@ Future<void> main(List<String> args) async {
 
 AppLifecycleListener? _appLifecycleListener;
 
-/// Kills the long-lived local whisper-server and nllb-server processes when the
-/// app exits, so the bundled directories are not left locked by orphans.
+/// Kills the long-lived local whisper-server, nllb-server and
+/// pronunciation-server processes when the app exits, so the bundled
+/// directories are not left locked by orphans.
 void _registerLifecycleCleanup() {
   _appLifecycleListener ??= AppLifecycleListener(
     onDetach: () {
       unawaited(localWhisperService.shutdown());
       unawaited(localNllbTranslationService.shutdown());
+      unawaited(localPronunciationService.shutdown());
     },
   );
 }
@@ -122,6 +125,7 @@ class _AppWindowListener with WindowListener {
     try {
       await localWhisperService.shutdown();
       await localNllbTranslationService.shutdown();
+      await localPronunciationService.shutdown();
     } finally {
       await windowManager.destroy();
     }
