@@ -40,7 +40,6 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.onSeek,
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
-    this.onToggleSubtitles,
     this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
@@ -99,7 +98,6 @@ class PlayerVideoPanel extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
-  final VoidCallback? onToggleSubtitles;
   final ValueChanged<String>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
@@ -801,24 +799,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                           : () => _handleControlTap(
                                               widget.onGenerateAiSubtitles!,
                                             ),
-                                    ),
-                                  if (widget.onToggleSubtitles != null &&
-                                      widget.embeddedSubtitleTracks.isNotEmpty)
-                                    _RoundActionButton(
-                                      icon: widget.embeddedSubtitleMode ==
-                                              '不显示'
-                                          ? Icons.subtitles_off_rounded
-                                          : Icons.subtitles_rounded,
-                                      tooltip: widget.embeddedSubtitleMode ==
-                                              '不显示'
-                                          ? '显示视频字幕'
-                                          : '不显示视频字幕',
-                                      compact: compactControls,
-                                      tiny: tinyControls,
-                                      fullscreen: widget.isFullscreen,
-                                      onPressed: () => _handleControlTap(
-                                        widget.onToggleSubtitles!,
-                                      ),
                                     ),
                                   PopupMenuButton<_SubtitleMenuSelection>(
                                     tooltip: '字幕模式',

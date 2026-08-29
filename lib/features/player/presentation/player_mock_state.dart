@@ -90,6 +90,13 @@ class PlayerMockState {
   bool isShadowing = false;
   String subtitleMode = '双语';
 
+  /// One-shot replay boundary for the 听写/跟读 "重播本句" action.
+  ///
+  /// When set, playback stops (pauses) as soon as the video position reaches
+  /// this timestamp, so a single click replays exactly one sentence. Cleared
+  /// by any explicit navigation or play/pause action.
+  int? singlePlayEndMs;
+
   double get playbackRate {
     switch (speed) {
       case '0.5×':
@@ -195,6 +202,7 @@ class PlayerMockState {
     positionMs = videoStartMsForLine(activeLineIndex);
     currentWordIndex = 0;
     isPlaying = false;
+    singlePlayEndMs = null;
   }
 
   void selectSpeed(String nextSpeed) {
@@ -203,6 +211,7 @@ class PlayerMockState {
 
   void toggleLoop() {
     isLooping = !isLooping;
+    singlePlayEndMs = null;
   }
 
   bool toggleLineLoopAt(int index) {
@@ -211,6 +220,7 @@ class PlayerMockState {
     }
     if (isLooping && activeLineIndex == index) {
       isLooping = false;
+      singlePlayEndMs = null;
       return false;
     }
     selectLine(index);
@@ -226,9 +236,11 @@ class PlayerMockState {
   void togglePlaying({bool allowWithoutLines = false}) {
     if (!hasLines && !allowWithoutLines) {
       isPlaying = false;
+      singlePlayEndMs = null;
       return;
     }
     isPlaying = !isPlaying;
+    singlePlayEndMs = null;
     if (isPlaying && hasLines) {
       _syncCurrentWordIndex();
     }
@@ -242,6 +254,7 @@ class PlayerMockState {
     positionMs = videoStartMsForLine(activeLineIndex);
     currentWordIndex = 0;
     isPlaying = false;
+    singlePlayEndMs = null;
   }
 
   void nextLine() {
@@ -252,6 +265,7 @@ class PlayerMockState {
     positionMs = videoStartMsForLine(activeLineIndex);
     currentWordIndex = 0;
     isPlaying = false;
+    singlePlayEndMs = null;
   }
 
   bool loadLines(
@@ -265,6 +279,7 @@ class PlayerMockState {
 
     lines = validLines;
     generatedWordDefinitions = wordDefinitions;
+    singlePlayEndMs = null;
     final int? initialPositionMs =
         _parseTimestampToMs(initialStartTime) ??
         _parseTimestampToMs(_initialStartTime);
@@ -312,6 +327,7 @@ class PlayerMockState {
     activeLineIndex = lineIndex;
     positionMs = milliseconds;
     currentWordIndex = 0;
+    singlePlayEndMs = null;
     return true;
   }
 

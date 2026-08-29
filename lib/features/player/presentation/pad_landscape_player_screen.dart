@@ -207,7 +207,14 @@ class PadLandscapePlayerScreenState
       _videoErrorText = null;
     });
 
-    final Player player = Player();
+    final Player player = Player(
+      configuration: PlayerConfiguration(
+        // Render embedded (video) subtitles natively via libass so that
+        // selecting 不显示 (`sid=no`) reliably hides them. Android keeps
+        // libass disabled because it needs an explicit subtitle font.
+        libass: defaultTargetPlatform != TargetPlatform.android,
+      ),
+    );
     final VideoController controller = VideoController(
       player,
       configuration: VideoControllerConfiguration(
@@ -420,6 +427,21 @@ class PadLandscapePlayerScreenState
 
   void _onVideoProgress(Duration position) {
     if (!mounted) {
+      return;
+    }
+
+    // One-shot sentence replay (逐句练习 · 重播本句): pause exactly once the
+    // video reaches the sentence end, without advancing into the next line.
+    final int? singlePlayEndMs = state.singlePlayEndMs;
+    if (singlePlayEndMs != null && position.inMilliseconds >= singlePlayEndMs) {
+      setState(() {
+        _videoPosition = position;
+        state.singlePlayEndMs = null;
+        state.isPlaying = false;
+      });
+      _syncTranscriptReader();
+      PlayerSystemMediaControls.updatePlaybackState(isPlaying: false);
+      unawaited(_videoPlayer?.pause());
       return;
     }
 
@@ -767,7 +789,6 @@ class PadLandscapePlayerScreenState
                               onSeek: _handleSeek,
                               onSpeedSelected: _handleSpeedSelected,
                               onSelectSubtitleMode: _handleSetSubtitleMode,
-                              onToggleSubtitles: _handleToggleSubtitles,
                               onSelectEmbeddedSubtitle:
                                   _handleSelectEmbeddedSubtitle,
                               onToggleShadowing: _handleToggleShadowing,
@@ -950,21 +971,6 @@ class PadLandscapePlayerScreenState
     });
     ref.read(learningSettingsProvider.notifier).setSubtitleMode(mode);
     _applyPlaybackMode();
-  }
-
-  void _handleToggleSubtitles() {
-    final String target = _embeddedSubtitleMode == '不显示'
-        ? _preferredEmbeddedSubtitleMode()
-        : '不显示';
-    _handleSelectEmbeddedSubtitle(target);
-  }
-
-  String _preferredEmbeddedSubtitleMode() {
-    final bool hasChinese = _embeddedSubtitleTracks.any(
-      (SubtitleTrack track) =>
-          track.language == 'chi' || track.language == 'zho' || track.language == 'zh',
-    );
-    return hasChinese ? '中文' : '外文';
   }
 
   void _handleSelectEmbeddedSubtitle(String mode) {
@@ -1476,15 +1482,45 @@ class PadLandscapePlayerScreenState
     setState(() {
       state.selectLine(index);
     });
+    _syncTranscriptReader();
     _seekToActiveLine();
+    // Pause the video at the sentence start so the practice dialog opens over
+    // a paused player; "重播本句" then plays exactly one sentence per click.
+    _applyPlaybackMode();
+    _lastTrackedVideoPosition = _currentVideoPosition();
     final PlayerSubtitleLine line = state.lines[index];
     showDialog<void>(
       context: context,
       builder: (BuildContext context) => SentencePracticeDialog(
         sentence: line.english,
-        onReplay: _handleReplayLine,
+        onReplay: () => unawaited(_handleDictationReplay()),
       ),
     );
+  }
+
+  Future<void> _handleDictationReplay() async {
+    if (!state.hasLines || _videoPlayer == null || !_videoReady) {
+      _showMessage('视频尚未准备好');
+      return;
+    }
+    final int lineIndex = state.activeLineIndex;
+    final int startMs = state.videoStartMsForLine(lineIndex);
+    final int endMs = state.videoEndMsForLine(lineIndex);
+    setState(() {
+      state
+        ..selectLine(lineIndex)
+        ..singlePlayEndMs = endMs
+        ..isPlaying = true;
+    });
+    _syncTranscriptReader();
+    final Player player = _videoPlayer!;
+    await player.pause();
+    await player.seek(Duration(milliseconds: startMs));
+    await player.setRate(state.playbackRate);
+    _lastTrackedVideoPosition = Duration(milliseconds: startMs);
+    await player.play();
+    _recordCurrentSentenceStudy();
+    _showMessage('已重播当前句');
   }
 
   void _handleAiExplain(int index) {
