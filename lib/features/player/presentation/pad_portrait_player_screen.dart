@@ -40,7 +40,7 @@ import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
 import 'widgets/player_transcript_panel.dart';
 import 'widgets/player_video_panel.dart';
-import 'widgets/pronunciation_practice_dialog.dart';
+import 'widgets/sentence_practice_dialog.dart';
 
 class PadPortraitPlayerScreen extends ConsumerStatefulWidget {
   const PadPortraitPlayerScreen({
@@ -1432,8 +1432,10 @@ class _PadPortraitPlayerScreenState
     final PlayerSubtitleLine line = state.lines[index];
     showDialog<void>(
       context: context,
-      builder: (BuildContext context) =>
-          PronunciationPracticeDialog(sentence: line.english),
+      builder: (BuildContext context) => SentencePracticeDialog(
+        sentence: line.english,
+        onReplay: _handleReplayLine,
+      ),
     );
   }
 

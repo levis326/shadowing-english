@@ -528,7 +528,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz_rounded).first);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('跟读评测'));
+    await tester.tap(find.text('逐句练习'));
     await tester.pumpAndSettle();
 
     expect(find.text('开始跟读'), findsOneWidget);
