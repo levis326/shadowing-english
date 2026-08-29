@@ -81,6 +81,7 @@ dependencies:
   flutter_tts:
     path: third_party/flutter_tts
   alphabet_list_view: ^1.2.1
+  record: ^7.1.1
 
 
 dev_dependencies:

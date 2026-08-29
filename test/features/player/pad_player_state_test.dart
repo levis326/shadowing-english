@@ -528,10 +528,10 @@ void main() {
     await tester.tap(find.byIcon(Icons.more_horiz_rounded).first);
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('加入听写练习'));
+    await tester.tap(find.text('跟读评测'));
     await tester.pumpAndSettle();
 
-    expect(find.text('已加入听写练习'), findsOneWidget);
+    expect(find.text('开始跟读'), findsOneWidget);
   });
 
   testWidgets('player shows real empty state when subtitles are missing', (

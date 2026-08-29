@@ -40,6 +40,7 @@ import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
 import 'widgets/player_transcript_panel.dart';
 import 'widgets/player_video_panel.dart';
+import 'widgets/pronunciation_practice_dialog.dart';
 
 class PadPortraitPlayerScreen extends ConsumerStatefulWidget {
   const PadPortraitPlayerScreen({
@@ -1428,7 +1429,12 @@ class _PadPortraitPlayerScreenState
       state.selectLine(index);
     });
     _seekToActiveLine();
-    _showMessage('已加入听写练习');
+    final PlayerSubtitleLine line = state.lines[index];
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) =>
+          PronunciationPracticeDialog(sentence: line.english),
+    );
   }
 
   void _handleAiExplain(int index) {

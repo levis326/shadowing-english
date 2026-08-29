@@ -667,8 +667,8 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                   onTap: () => Navigator.of(context).pop('loop'),
                 ),
                 ListTile(
-                  leading: const Icon(Icons.edit_note_rounded),
-                  title: const Text('加入听写练习'),
+                  leading: const Icon(Icons.record_voice_over_rounded),
+                  title: const Text('跟读评测'),
                   onTap: () => Navigator.of(context).pop('dictation'),
                 ),
               ],
