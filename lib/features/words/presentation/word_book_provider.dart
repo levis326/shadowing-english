@@ -614,6 +614,14 @@ class WordBookNotifier extends Notifier<List<WordEntry>> {
       jsonEncode(state.map((WordEntry item) => item.toJson()).toList()),
     );
   }
+
+  /// Clears the whole word book (used by 设置 → 清除应用缓存与生词记录).
+  Future<void> clearAll() async {
+    state = const <WordEntry>[];
+    if (Hive.isBoxOpen('prefs')) {
+      await Hive.box<String>('prefs').delete(_wordBookStorageKey);
+    }
+  }
 }
 
 List<String> tokenizeWords(String sentence) =>

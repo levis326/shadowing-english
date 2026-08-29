@@ -170,6 +170,13 @@ class DailyEnglishService {
       }),
     );
   }
+
+  /// Clears the cached daily English content (used by
+  /// 设置 → 清除应用缓存与生词记录).
+  Future<void> clearCache() async {
+    if (!Hive.isBoxOpen('prefs')) return;
+    await Hive.box<String>('prefs').delete(_dailyEnglishStorageKey);
+  }
 }
 
 String _dayKey(DateTime date) =>

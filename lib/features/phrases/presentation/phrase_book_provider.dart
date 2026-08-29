@@ -351,6 +351,14 @@ class PhraseBookNotifier extends Notifier<List<PhraseEntry>> {
       jsonEncode(state.map((PhraseEntry item) => item.toJson()).toList()),
     );
   }
+
+  /// Clears the whole phrase book (used by 设置 → 清除应用缓存与生词记录).
+  Future<void> clearAll() async {
+    state = const <PhraseEntry>[];
+    if (Hive.isBoxOpen('prefs')) {
+      await Hive.box<String>('prefs').delete(_phraseBookStorageKey);
+    }
+  }
 }
 
 const Map<int, int> _reviewIntervalDays = <int, int>{

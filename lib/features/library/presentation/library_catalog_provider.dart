@@ -178,6 +178,33 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     }
   }
 
+  /// Resets watch progress for every episode while keeping the courses
+  /// themselves (used by 设置 → 清除应用缓存与生词记录).
+  Future<void> resetEpisodeProgress() async {
+    state = state
+        .map((LibraryCourseData course) {
+          final List<LibraryEpisodeItem> episodes = course.episodes
+              .map(
+                (LibraryEpisodeItem item) => item.copyWith(
+                  completed: false,
+                  progressPercent: 0,
+                  lastWatchedStr: '',
+                  progressTimeStr: '',
+                  totalTimeStr: '',
+                ),
+              )
+              .toList(growable: false);
+          return course.copyWith(
+            episodes: episodes,
+            progressPercent: 0,
+            completedEpisodes: 0,
+            lastStudiedStr: '',
+          );
+        })
+        .toList(growable: false);
+    await _persistImportedCourses();
+  }
+
   String _formatDuration(Duration duration) {
     final int totalSeconds = duration.inSeconds;
     final int minutes = totalSeconds ~/ 60;

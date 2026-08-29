@@ -175,6 +175,19 @@ class LearningActivityNotifier extends Notifier<LearningActivityState> {
       );
     });
   }
+
+  /// Clears all learning activity records (used by
+  /// 设置 → 清除应用缓存与生词记录).
+  Future<void> clearAll() async {
+    _persistTimer?.cancel();
+    _persistTimer = null;
+    state = const LearningActivityState(
+      records: <String, LearningDailyRecord>{},
+    );
+    if (Hive.isBoxOpen('prefs')) {
+      await Hive.box<String>('prefs').delete(_learningActivityStorageKey);
+    }
+  }
 }
 
 class LearningActivityState {

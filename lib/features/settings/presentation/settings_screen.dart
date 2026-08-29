@@ -1,12 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../utils/url_utils.dart';
+import '../../home/presentation/learning_dashboard_provider.dart';
+import '../../library/presentation/library_catalog_provider.dart';
 import '../../navigation/presentation/navigation_destination.dart';
+import '../../phrases/presentation/phrase_book_provider.dart';
+import '../../shared/data/daily_english_service.dart';
 import '../../shared/data/word_pronunciation_service.dart';
 import '../../shared/presentation/pad/pad_compact.dart';
 import '../../shared/presentation/pad/pad_scaffold.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
+import '../../words/presentation/word_book_provider.dart';
+import '../data/local_data_backup_service.dart';
 import 'ai_subtitle_management_screen.dart';
 import 'app_update_provider.dart';
 import 'settings_provider.dart';
@@ -656,13 +664,14 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               _ActionRow(
-                title: '备份同步云端数据',
-                description: '将您本地记录的 142 个词汇与学习周期备份，支持多设备同步。',
-                onTap: () => _showMessage(context, '精听学习进度和短语本备份同步成功！'),
+                title: '备份数据到本地',
+                description: '将生词本、短语本、学习记录与设置备份到应用数据目录下的 backup 子文件夹，无需联网。',
+                icon: Icons.backup_rounded,
+                onTap: () => _handleBackupToLocal(context),
               ),
               _ActionRow(
                 title: '清除应用缓存与生词记录',
-                description: '清除所有收藏例句和缓存图片，重置应用到初始状态。',
+                description: '清空生词本、短语本、学习记录与播放进度，删除 AI 字幕缓存，并恢复默认设置。',
                 danger: true,
                 onTap: () => _confirmReset(context, ref),
               ),
@@ -684,13 +693,36 @@ class SettingsScreen extends ConsumerWidget {
     );
   }
 
+  Future<void> _handleBackupToLocal(BuildContext context) async {
+    try {
+      final File backupFile = await const LocalDataBackupService()
+          .backupToLocal();
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(
+        context,
+        '备份成功，文件保存在：${backupFile.path}',
+        duration: const Duration(seconds: 8),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, '备份失败，请稍后重试。');
+    }
+  }
+
   Future<void> _confirmReset(BuildContext context, WidgetRef ref) async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('确认清除缓存'),
-          content: const Text('确定要清除缓存和重置所有学习数据吗？这会清空您的生词本。'),
+          title: const Text('确认清除缓存与生词记录'),
+          content: const Text(
+            '确定要清除吗？将清空生词本、短语本、学习记录与播放进度，'
+            '删除 AI 字幕缓存，并恢复默认设置。导入的课程和视频不会被删除。',
+          ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -710,8 +742,32 @@ class SettingsScreen extends ConsumerWidget {
     if (!context.mounted) {
       return;
     }
-    ref.read(learningSettingsProvider.notifier).resetToDefaults();
-    _showMessage(context, '缓存清除成功，数据已重置！');
+
+    final int wordCount = ref.read(wordBookProvider).length;
+    final int phraseCount = ref.read(phraseBookProvider).length;
+    try {
+      final int removedFiles = await const LocalDataBackupService()
+          .clearCachedFiles();
+      await ref.read(dailyEnglishServiceProvider).clearCache();
+      await ref.read(wordBookProvider.notifier).clearAll();
+      await ref.read(phraseBookProvider.notifier).clearAll();
+      await ref.read(learningActivityProvider.notifier).clearAll();
+      await ref.read(libraryCatalogProvider.notifier).resetEpisodeProgress();
+      ref.read(learningSettingsProvider.notifier).resetToDefaults();
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(
+        context,
+        '已清除 $wordCount 个生词、$phraseCount 条短语、学习记录与播放进度，删除 $removedFiles 个缓存文件，设置已恢复默认。',
+        duration: const Duration(seconds: 6),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, '清除失败，请稍后重试。');
+    }
   }
 
   void _handleUpdateAction(WidgetRef ref, AppUpdateState state) {
@@ -746,10 +802,16 @@ class SettingsScreen extends ConsumerWidget {
     return '已下载 ${downloaded.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} MB。';
   }
 
-  void _showMessage(BuildContext context, String message) {
+  void _showMessage(
+    BuildContext context,
+    String message, {
+    Duration duration = const Duration(seconds: 4),
+  }) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: duration),
+      );
   }
 
   bool _isAiProvider(String provider) {
