@@ -1267,14 +1267,18 @@ class _MiniPillAction extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           if (iconText != null)
-            Text(
-              iconText!,
-              style: TextStyle(
-                fontSize: tiny ? 12 : 14,
-                fontWeight: FontWeight.w800,
-                color: fullscreen
-                    ? Colors.white
-                    : AppDesignTokens.primaryBlueDark,
+            Flexible(
+              child: Text(
+                iconText!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: tiny ? 12 : 14,
+                  fontWeight: FontWeight.w800,
+                  color: fullscreen
+                      ? Colors.white
+                      : AppDesignTokens.primaryBlueDark,
+                ),
               ),
             )
           else
@@ -1287,14 +1291,18 @@ class _MiniPillAction extends StatelessWidget {
             ),
           if (label != null) ...<Widget>[
             SizedBox(width: tiny ? 4 : 6),
-            Text(
-              label!,
-              style: TextStyle(
-                fontSize: tiny ? 11 : 12,
-                fontWeight: FontWeight.w800,
-                color: fullscreen
-                    ? Colors.white
-                    : AppDesignTokens.primaryBlueDark,
+            Flexible(
+              child: Text(
+                label!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: tiny ? 11 : 12,
+                  fontWeight: FontWeight.w800,
+                  color: fullscreen
+                      ? Colors.white
+                      : AppDesignTokens.primaryBlueDark,
+                ),
               ),
             ),
           ],

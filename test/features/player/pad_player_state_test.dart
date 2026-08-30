@@ -356,7 +356,12 @@ void main() {
     await tester.tap(find.text('1.0×').last, warnIfMissed: false);
     await tester.pumpAndSettle();
 
-    expect(find.text('1.0×'), findsWidgets);
+    // 窄栏下速度胶囊只显示图标，重新打开菜单确认 1.0× 已被选中。
+    await tester.tap(find.byTooltip('播放速度'));
+    await tester.pumpAndSettle();
+    expect(_hasCheckedMenuItem(tester, '1.0×'), isTrue);
+    await tester.tap(find.text('1.0×').last, warnIfMissed: false);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byIcon(Icons.skip_next_rounded).first);
     await tester.pumpAndSettle();
@@ -368,7 +373,7 @@ void main() {
 
     expect(find.text('doing'), findsWidgets);
 
-    await tester.tap(find.text('双语'));
+    await tester.tap(find.byTooltip('字幕模式'));
     await tester.pumpAndSettle();
     expect(_hasCheckedMenuItem(tester, '双语'), isTrue);
     await tester.pump(const Duration(milliseconds: 200));

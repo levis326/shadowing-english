@@ -39,7 +39,8 @@ import 'widgets/ai_subtitle_generation_progress_dialog.dart';
 import 'widgets/player_top_bar.dart';
 import 'widgets/player_video_panel.dart';
 import 'widgets/sentence_practice_dialog.dart';
-import 'widgets/shadowing_panel.dart';
+import 'widgets/shadowing_focus_panel.dart';
+import 'widgets/subtitle_navigator_panel.dart';
 
 class PadPortraitPlayerScreen extends ConsumerStatefulWidget {
   const PadPortraitPlayerScreen({
@@ -94,8 +95,8 @@ class _PadPortraitPlayerScreenState
   String? _aiSubtitlePreviewText;
   String? _aiSubtitleErrorText;
   bool _usingAiSubtitles = false;
-  final GlobalKey<ShadowingPanelState> _shadowingPanelKey =
-      GlobalKey<ShadowingPanelState>(debugLabel: 'portrait-shadowing-panel');
+  final GlobalKey<ShadowingFocusPanelState> _shadowingPanelKey =
+      GlobalKey<ShadowingFocusPanelState>(debugLabel: 'portrait-shadowing-focus');
   bool _shadowingRecordingArmed = false;
   List<PlayerSubtitleLine> _referenceSubtitleLines =
       const <PlayerSubtitleLine>[];
@@ -747,129 +748,126 @@ class _PadPortraitPlayerScreenState
       body: AppLoadingOverlay(
         isLoading: _isBootstrapping,
         message: '正在打开课程...',
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(0, compactPlayer ? 4 : 12, 0, 12),
-                child: Column(
-                  children: <Widget>[
-                    Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: playerHorizontalPadding,
-                      ),
-                      child: PlayerVideoPanel(
-                        line: activeLine,
-                        isPlaying: state.isPlaying,
-                        speed: state.speed,
-                        subtitleMode: state.subtitleMode,
-                        subtitleModes: state.availableSubtitleModes,
-                        isShadowing: state.isShadowing,
-                        isLooping: state.isLooping,
-                        isMuted: _isMuted,
-                        volumeLevel: _volumeLevel,
-                        onTogglePlaying: _handleTogglePlaying,
-                        onPreviousLine: _handlePreviousLine,
-                        onReplayLine: _handleReplayLine,
-                        onNextLine: _handleNextLine,
-                        onSeekBackward: () => _handleSeekBySeconds(-10),
-                        onSeekForward: () => _handleSeekBySeconds(10),
-                        activeIndex: state.activeLineIndex,
-                        totalLines: state.lines.length,
-                        onSelectLine: _goToLine,
-                        onSeek: _handleSeek,
-                        onSpeedSelected: _handleSpeedSelected,
-                        onSelectSubtitleMode: _handleSetSubtitleMode,
-                        onToggleShadowing: _handleToggleShadowing,
-                        onToggleLoop: _handleToggleLoop,
-                        onToggleMuted: _handleToggleMuted,
-                        onVolumeChanged: _handleVolumeChanged,
-                        onToggleFullscreen: () => _handleOpenFullscreen(
-                          course?.episodes ?? const <LibraryEpisodeItem>[],
-                        ),
-                        videoSurface: _isFullscreenOpen
-                            ? null
-                            : _buildVideoSurface(),
-                        videoAspectRatio: _videoAspectRatio,
-                        videoReady: _videoReady,
-                        videoLoading: _videoLoading,
-                        videoDuration: _videoDuration,
-                        videoPosition: _videoPosition,
-                        videoErrorText: _videoErrorText,
-                        showAiGenerateSubtitles: canGenerateAiSubtitles,
-                        onGenerateAiSubtitles: _generatingAiSubtitles
-                            ? null
-                            : _handleGenerateAiSubtitles,
-                      ),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(0, compactPlayer ? 4 : 12, 0, 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: playerHorizontalPadding,
+                  ),
+                  child: PlayerVideoPanel(
+                    line: activeLine,
+                    isPlaying: state.isPlaying,
+                    speed: state.speed,
+                    subtitleMode: state.subtitleMode,
+                    subtitleModes: state.availableSubtitleModes,
+                    isShadowing: state.isShadowing,
+                    isLooping: state.isLooping,
+                    isMuted: _isMuted,
+                    volumeLevel: _volumeLevel,
+                    onTogglePlaying: _handleTogglePlaying,
+                    onPreviousLine: _handlePreviousLine,
+                    onReplayLine: _handleReplayLine,
+                    onNextLine: _handleNextLine,
+                    onSeekBackward: () => _handleSeekBySeconds(-10),
+                    onSeekForward: () => _handleSeekBySeconds(10),
+                    activeIndex: state.activeLineIndex,
+                    totalLines: state.lines.length,
+                    onSelectLine: _goToLine,
+                    onSeek: _handleSeek,
+                    onSpeedSelected: _handleSpeedSelected,
+                    onSelectSubtitleMode: _handleSetSubtitleMode,
+                    onToggleShadowing: _handleToggleShadowing,
+                    onToggleLoop: _handleToggleLoop,
+                    onToggleMuted: _handleToggleMuted,
+                    onVolumeChanged: _handleVolumeChanged,
+                    onToggleFullscreen: () => _handleOpenFullscreen(
+                      course?.episodes ?? const <LibraryEpisodeItem>[],
                     ),
-                    SizedBox(height: compactPlayer ? 6 : 10),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: ShadowingPanel(
-                            key: _shadowingPanelKey,
-                            lines: state.lines,
-                            activeIndex: state.activeLineIndex,
-                            subtitleMode: state.subtitleMode,
-                            currentWordIndex: state.currentWordIndex,
-                            fontScale: settings.fontScale,
-                            highlightWords: settings.highlightWords,
-                            subtitleWordHighlightStyle:
-                                settings.subtitleWordHighlightStyle,
-                            subtitleWordHighlightBorderWidth:
-                                settings.subtitleWordHighlightBorderWidth,
-                            onTapLine: _goToLine,
-                            onCollectWord: (String word) =>
-                                _handleCollectWord(word, courseContext),
-                            onFavoriteWord: _handleFavoriteWord,
-                            onBookmarkLine: (int index) =>
-                                _handleBookmarkLine(index, courseContext),
-                            onLoopFromLine: _handleLoopFromLine,
-                            onDictationLine: _handleDictationLine,
-                            onAiExplain: _handleAiExplain,
-                            loopingLineIndex: state.isLooping
-                                ? state.activeLineIndex
-                                : null,
-                            isPlaying: state.isPlaying,
-                            onTogglePlaying: _handleTogglePlaying,
-                            onPronounce: _stopVideo,
-                            onRegenerateAiSubtitles:
-                                _usingAiSubtitles &&
-                                    !_generatingAiSubtitles
-                                ? _handleRegenerateAiSubtitles
-                                : null,
-                            onDeleteAiSubtitles: _usingAiSubtitles
-                                ? _handleDeleteAiSubtitles
-                                : null,
-                            onRegenerateAiLine: _usingAiSubtitles
-                                ? _handleRegenerateAiLine
-                                : null,
-                            onArmRecording: _handleArmShadowingRecording,
-                            showAiGenerateSubtitles: canGenerateAiSubtitles,
-                            generatingAiSubtitles: _generatingAiSubtitles,
-                            aiSubtitleProgressValue: _aiSubtitleProgressValue,
-                            aiSubtitleProgressText: _aiSubtitleProgressText,
-                            aiSubtitlePreviewText: _aiSubtitlePreviewText,
-                            aiSubtitleErrorText: _aiSubtitleErrorText,
-                            onGenerateAiSubtitles: _generatingAiSubtitles
-                                ? null
-                                : _handleGenerateAiSubtitles,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                    videoSurface: _isFullscreenOpen
+                        ? null
+                        : _buildVideoSurface(),
+                    videoAspectRatio: _videoAspectRatio,
+                    videoReady: _videoReady,
+                    videoLoading: _videoLoading,
+                    videoDuration: _videoDuration,
+                    videoPosition: _videoPosition,
+                    videoErrorText: _videoErrorText,
+                    showAiGenerateSubtitles: canGenerateAiSubtitles,
+                    onGenerateAiSubtitles: _generatingAiSubtitles
+                        ? null
+                        : _handleGenerateAiSubtitles,
+                  ),
                 ),
               ),
-            ),
-          ],
+              SizedBox(width: compactPlayer ? 6 : 10),
+              Expanded(
+                child: _PanelCard(
+                  child: ShadowingFocusPanel(
+                    key: _shadowingPanelKey,
+                    line: activeLine,
+                    currentWordIndex: state.currentWordIndex,
+                    fontScale: settings.fontScale,
+                    highlightWords: settings.highlightWords,
+                    subtitleWordHighlightStyle:
+                        settings.subtitleWordHighlightStyle,
+                    subtitleWordHighlightBorderWidth:
+                        settings.subtitleWordHighlightBorderWidth,
+                    onCollectWord: (String word) =>
+                        _handleCollectWord(word, courseContext),
+                    onFavoriteWord: _handleFavoriteWord,
+                    onArmRecording: _handleArmShadowingRecording,
+                    onPronounce: _stopVideo,
+                  ),
+                ),
+              ),
+              SizedBox(width: compactPlayer ? 6 : 10),
+              Expanded(
+                child: _PanelCard(
+                  child: SubtitleNavigatorPanel(
+                    lines: state.lines,
+                    activeIndex: state.activeLineIndex,
+                    fontScale: settings.fontScale,
+                    onTapLine: _goToLine,
+                    onCollectWord: (String word) =>
+                        _handleCollectWord(word, courseContext),
+                    onFavoriteWord: _handleFavoriteWord,
+                    onBookmarkLine: (int index) =>
+                        _handleBookmarkLine(index, courseContext),
+                    onLoopFromLine: _handleLoopFromLine,
+                    onDictationLine: _handleDictationLine,
+                    onAiExplain: _handleAiExplain,
+                    loopingLineIndex: state.isLooping
+                        ? state.activeLineIndex
+                        : null,
+                    onPronounce: _stopVideo,
+                    onRegenerateAiSubtitles:
+                        _usingAiSubtitles && !_generatingAiSubtitles
+                        ? _handleRegenerateAiSubtitles
+                        : null,
+                    onDeleteAiSubtitles: _usingAiSubtitles
+                        ? _handleDeleteAiSubtitles
+                        : null,
+                    onRegenerateAiLine: _usingAiSubtitles
+                        ? _handleRegenerateAiLine
+                        : null,
+                    showAiGenerateSubtitles: canGenerateAiSubtitles,
+                    generatingAiSubtitles: _generatingAiSubtitles,
+                    aiSubtitleProgressValue: _aiSubtitleProgressValue,
+                    aiSubtitleProgressText: _aiSubtitleProgressText,
+                    aiSubtitlePreviewText: _aiSubtitlePreviewText,
+                    aiSubtitleErrorText: _aiSubtitleErrorText,
+                    onGenerateAiSubtitles: _generatingAiSubtitles
+                        ? null
+                        : _handleGenerateAiSubtitles,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1595,6 +1593,25 @@ class _PadPortraitPlayerScreenState
       controls: null,
       pauseUponEnteringBackgroundMode: false,
       filterQuality: FilterQuality.medium,
+    );
+  }
+}
+
+class _PanelCard extends StatelessWidget {
+  const _PanelCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: child,
     );
   }
 }
