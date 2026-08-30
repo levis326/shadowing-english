@@ -36,12 +36,10 @@ import 'player_video_init.dart';
 import 'subtitle_reference_review.dart';
 import 'transcript_reader_session.dart';
 import 'widgets/ai_subtitle_generation_progress_dialog.dart';
-import 'widgets/player_episode_strip.dart';
-import 'widgets/player_subtitle_list.dart';
 import 'widgets/player_top_bar.dart';
-import 'widgets/player_transcript_panel.dart';
 import 'widgets/player_video_panel.dart';
 import 'widgets/sentence_practice_dialog.dart';
+import 'widgets/shadowing_panel.dart';
 
 class PadLandscapePlayerScreen extends ConsumerStatefulWidget {
   const PadLandscapePlayerScreen({
@@ -96,8 +94,9 @@ class PadLandscapePlayerScreenState
   String? _aiSubtitlePreviewText;
   String? _aiSubtitleErrorText;
   bool _usingAiSubtitles = false;
-  List<SubtitleTrack> _embeddedSubtitleTracks = const <SubtitleTrack>[];
-  String _embeddedSubtitleMode = '不显示';
+  final GlobalKey<ShadowingPanelState> _shadowingPanelKey =
+      GlobalKey<ShadowingPanelState>(debugLabel: 'landscape-shadowing-panel');
+  bool _shadowingRecordingArmed = false;
   List<PlayerSubtitleLine> _referenceSubtitleLines =
       const <PlayerSubtitleLine>[];
 
@@ -232,6 +231,7 @@ class PadLandscapePlayerScreenState
       final List<SubtitleTrack> embeddedTracks = embeddedSubtitleTracks(
         player.state.tracks.subtitle,
       );
+      // 视频区不再显示任何字幕：始终关闭内嵌字幕轨。
       await player.setSubtitleTrack(SubtitleTrack.no());
       await player.setRate(state.playbackRate);
       await player.setVolume(_volumeLevel * 100);
@@ -253,8 +253,6 @@ class PadLandscapePlayerScreenState
       _videoPlayer = player;
       _videoController = controller;
       setState(() {
-        _embeddedSubtitleTracks = embeddedTracks;
-        _embeddedSubtitleMode = '不显示';
         _videoReady = true;
         _videoLoading = false;
         _videoErrorText = null;
@@ -430,10 +428,12 @@ class PadLandscapePlayerScreenState
       return;
     }
 
-    // One-shot sentence replay (逐句练习 · 重播本句): pause exactly once the
-    // video reaches the sentence end, without advancing into the next line.
+    // One-shot sentence replay (逐句练习 · 重播本句 / 跟读自动录音): pause
+    // exactly once the video reaches the sentence end.
     final int? singlePlayEndMs = state.singlePlayEndMs;
     if (singlePlayEndMs != null && position.inMilliseconds >= singlePlayEndMs) {
+      final bool startShadowingRecording = _shadowingRecordingArmed;
+      _shadowingRecordingArmed = false;
       setState(() {
         _videoPosition = position;
         state.singlePlayEndMs = null;
@@ -442,6 +442,11 @@ class PadLandscapePlayerScreenState
       _syncTranscriptReader();
       PlayerSystemMediaControls.updatePlaybackState(isPlaying: false);
       unawaited(_videoPlayer?.pause());
+      if (startShadowingRecording) {
+        unawaited(
+          _shadowingPanelKey.currentState?.onSentencePlaybackFinished(),
+        );
+      }
       return;
     }
 
@@ -756,78 +761,48 @@ class PadLandscapePlayerScreenState
                   children: <Widget>[
                     Expanded(
                       flex: 2,
-                      child: Column(
-                        children: <Widget>[
-                          Expanded(
-                            child: PlayerVideoPanel(
-                              line: activeLine,
-                              isPlaying: state.isPlaying,
-                              speed: state.speed,
-                              subtitleMode: state.subtitleMode,
-                              subtitleModes: state.availableSubtitleModes,
-                              embeddedSubtitleTracks: _embeddedSubtitleTracks,
-                              embeddedSubtitleMode: _embeddedSubtitleMode,
-                              currentWordIndex: state.currentWordIndex,
-                              highlightWords: settings.highlightWords,
-                              subtitleWordHighlightStyle:
-                                  settings.subtitleWordHighlightStyle,
-                              subtitleWordHighlightBorderWidth:
-                                  settings.subtitleWordHighlightBorderWidth,
-                              isShadowing: state.isShadowing,
-                              isLooping: state.isLooping,
-                              isMuted: _isMuted,
-                              volumeLevel: _volumeLevel,
-                              onTogglePlaying: _handleTogglePlaying,
-                              onPreviousLine: _handlePreviousLine,
-                              onReplayLine: _handleReplayLine,
-                              onNextLine: _handleNextLine,
-                              onSeekBackward: () => _handleSeekBySeconds(-10),
-                              onSeekForward: () => _handleSeekBySeconds(10),
-                              activeIndex: state.activeLineIndex,
-                              totalLines: state.lines.length,
-                              onSelectLine: _goToLine,
-                              onSeek: _handleSeek,
-                              onSpeedSelected: _handleSpeedSelected,
-                              onSelectSubtitleMode: _handleSetSubtitleMode,
-                              onSelectEmbeddedSubtitle:
-                                  _handleSelectEmbeddedSubtitle,
-                              onToggleShadowing: _handleToggleShadowing,
-                              onToggleLoop: _handleToggleLoop,
-                              onToggleMuted: _handleToggleMuted,
-                              onVolumeChanged: _handleVolumeChanged,
-                              onSubtitleLookupOpen: _stopVideo,
-                              onCollectWord: (String word) =>
-                                  _handleCollectWord(word, courseContext),
-                              onFavoriteWord: _handleFavoriteWord,
-                              onPronounce: _stopVideo,
-                              onToggleFullscreen: () => _handleOpenFullscreen(
-                                course?.episodes ??
-                                    const <LibraryEpisodeItem>[],
-                              ),
-                              videoSurface: _isFullscreenOpen
-                                  ? null
-                                  : _buildVideoSurface(),
-                              videoAspectRatio: _videoAspectRatio,
-                              videoReady: _videoReady,
-                              videoLoading: _videoLoading,
-                              videoDuration: _videoDuration,
-                              videoPosition: _videoPosition,
-                              videoErrorText: _videoErrorText,
-                              showAiGenerateSubtitles: canGenerateAiSubtitles,
-                              onGenerateAiSubtitles: _generatingAiSubtitles
-                                  ? null
-                                  : _handleGenerateAiSubtitles,
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          PlayerEpisodeStrip(
-                            episodes:
-                                course?.episodes ??
-                                const <LibraryEpisodeItem>[],
-                            activeEpisodeId: widget.episodeId,
-                            onOpenEpisode: _openEpisode,
-                          ),
-                        ],
+                      child: PlayerVideoPanel(
+                        line: activeLine,
+                        isPlaying: state.isPlaying,
+                        speed: state.speed,
+                        subtitleMode: state.subtitleMode,
+                        subtitleModes: state.availableSubtitleModes,
+                        isShadowing: state.isShadowing,
+                        isLooping: state.isLooping,
+                        isMuted: _isMuted,
+                        volumeLevel: _volumeLevel,
+                        onTogglePlaying: _handleTogglePlaying,
+                        onPreviousLine: _handlePreviousLine,
+                        onReplayLine: _handleReplayLine,
+                        onNextLine: _handleNextLine,
+                        onSeekBackward: () => _handleSeekBySeconds(-10),
+                        onSeekForward: () => _handleSeekBySeconds(10),
+                        activeIndex: state.activeLineIndex,
+                        totalLines: state.lines.length,
+                        onSelectLine: _goToLine,
+                        onSeek: _handleSeek,
+                        onSpeedSelected: _handleSpeedSelected,
+                        onSelectSubtitleMode: _handleSetSubtitleMode,
+                        onToggleShadowing: _handleToggleShadowing,
+                        onToggleLoop: _handleToggleLoop,
+                        onToggleMuted: _handleToggleMuted,
+                        onVolumeChanged: _handleVolumeChanged,
+                        onToggleFullscreen: () => _handleOpenFullscreen(
+                          course?.episodes ?? const <LibraryEpisodeItem>[],
+                        ),
+                        videoSurface: _isFullscreenOpen
+                            ? null
+                            : _buildVideoSurface(),
+                        videoAspectRatio: _videoAspectRatio,
+                        videoReady: _videoReady,
+                        videoLoading: _videoLoading,
+                        videoDuration: _videoDuration,
+                        videoPosition: _videoPosition,
+                        videoErrorText: _videoErrorText,
+                        showAiGenerateSubtitles: canGenerateAiSubtitles,
+                        onGenerateAiSubtitles: _generatingAiSubtitles
+                            ? null
+                            : _handleGenerateAiSubtitles,
                       ),
                     ),
                     const SizedBox(width: 22),
@@ -846,95 +821,53 @@ class PadLandscapePlayerScreenState
                             ),
                           ],
                         ),
-                        child: Column(
-                          children: <Widget>[
-                            Expanded(
-                              child: state.hasLines
-                                  ? PlayerTranscriptPanel(
-                                      lines: state.lines,
-                                      activeIndex: state.activeLineIndex,
-                                      subtitleMode: state.subtitleMode,
-                                      currentWordIndex: state.currentWordIndex,
-                                      fontScale: settings.fontScale,
-                                      highlightWords: settings.highlightWords,
-                                      subtitleWordHighlightStyle:
-                                          settings.subtitleWordHighlightStyle,
-                                      subtitleWordHighlightBorderWidth: settings
-                                          .subtitleWordHighlightBorderWidth,
-                                      onTapLine: _goToLine,
-                                      onCollectWord: (String word) =>
-                                          _handleCollectWord(
-                                            word,
-                                            courseContext,
-                                          ),
-                                      onFavoriteWord: _handleFavoriteWord,
-                                      onBookmarkLine: (int index) =>
-                                          _handleBookmarkLine(
-                                            index,
-                                            courseContext,
-                                          ),
-                                      onLoopFromLine: _handleLoopFromLine,
-                                      onDictationLine: _handleDictationLine,
-                                      onAiExplain: _handleAiExplain,
-                                      loopingLineIndex: state.isLooping
-                                          ? state.activeLineIndex
-                                          : null,
-                                      isPlaying: state.isPlaying,
-                                      onTogglePlaying: _handleTogglePlaying,
-                                      onPronounce: _stopVideo,
-                                      onRegenerateAiSubtitles:
-                                          _usingAiSubtitles &&
-                                              !_generatingAiSubtitles
-                                          ? _handleRegenerateAiSubtitles
-                                          : null,
-                                      onDeleteAiSubtitles: _usingAiSubtitles
-                                          ? _handleDeleteAiSubtitles
-                                          : null,
-                                      onRegenerateAiLine: _usingAiSubtitles
-                                          ? _handleRegenerateAiLine
-                                          : null,
-                                    )
-                                  : canGenerateAiSubtitles
-                                  ? PlayerSubtitleList(
-                                      lines: const <PlayerSubtitleLine>[],
-                                      activeIndex: 0,
-                                      subtitleMode: '外文',
-                                      currentWordIndex: 0,
-                                      fontScale: settings.fontScale,
-                                      highlightWords: settings.highlightWords,
-                                      onTapLine: (_) {},
-                                      onCollectWord: (_) {},
-                                      onBookmarkLine: (_) {},
-                                      onLoopFromLine: (_) {},
-                                      onDictationLine: (_) {},
-                                      onAiExplain: (_) {},
-                                      onPronounce: _stopVideo,
-                                      showAiGenerateSubtitles: true,
-                                      generatingAiSubtitles:
-                                          _generatingAiSubtitles,
-                                      aiSubtitleProgressValue:
-                                          _aiSubtitleProgressValue,
-                                      aiSubtitleProgressText:
-                                          _aiSubtitleProgressText,
-                                      aiSubtitlePreviewText:
-                                          _aiSubtitlePreviewText,
-                                      aiSubtitleErrorText: _aiSubtitleErrorText,
-                                      onGenerateAiSubtitles:
-                                          _handleGenerateAiSubtitles,
-                                    )
-                                  : const Center(
-                                      child: Text(
-                                        '当前剧集没有可用字幕或视频',
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF5F6368),
-                                        ),
-                                      ),
-                                    ),
-                            ),
-                          ],
+                        child: ShadowingPanel(
+                          key: _shadowingPanelKey,
+                          lines: state.lines,
+                          activeIndex: state.activeLineIndex,
+                          subtitleMode: state.subtitleMode,
+                          currentWordIndex: state.currentWordIndex,
+                          fontScale: settings.fontScale,
+                          highlightWords: settings.highlightWords,
+                          subtitleWordHighlightStyle:
+                              settings.subtitleWordHighlightStyle,
+                          subtitleWordHighlightBorderWidth:
+                              settings.subtitleWordHighlightBorderWidth,
+                          onTapLine: _goToLine,
+                          onCollectWord: (String word) =>
+                              _handleCollectWord(word, courseContext),
+                          onFavoriteWord: _handleFavoriteWord,
+                          onBookmarkLine: (int index) =>
+                              _handleBookmarkLine(index, courseContext),
+                          onLoopFromLine: _handleLoopFromLine,
+                          onDictationLine: _handleDictationLine,
+                          onAiExplain: _handleAiExplain,
+                          loopingLineIndex: state.isLooping
+                              ? state.activeLineIndex
+                              : null,
+                          isPlaying: state.isPlaying,
+                          onTogglePlaying: _handleTogglePlaying,
+                          onPronounce: _stopVideo,
+                          onRegenerateAiSubtitles:
+                              _usingAiSubtitles && !_generatingAiSubtitles
+                              ? _handleRegenerateAiSubtitles
+                              : null,
+                          onDeleteAiSubtitles: _usingAiSubtitles
+                              ? _handleDeleteAiSubtitles
+                              : null,
+                          onRegenerateAiLine: _usingAiSubtitles
+                              ? _handleRegenerateAiLine
+                              : null,
+                          onArmRecording: _handleArmShadowingRecording,
+                          showAiGenerateSubtitles: canGenerateAiSubtitles,
+                          generatingAiSubtitles: _generatingAiSubtitles,
+                          aiSubtitleProgressValue: _aiSubtitleProgressValue,
+                          aiSubtitleProgressText: _aiSubtitleProgressText,
+                          aiSubtitlePreviewText: _aiSubtitlePreviewText,
+                          aiSubtitleErrorText: _aiSubtitleErrorText,
+                          onGenerateAiSubtitles: _generatingAiSubtitles
+                              ? null
+                              : _handleGenerateAiSubtitles,
                         ),
                       ),
                     ),
@@ -945,16 +878,6 @@ class PadLandscapePlayerScreenState
           ],
         ),
       ),
-    );
-  }
-
-  void _openEpisode(LibraryEpisodeItem episode) {
-    if (episode.id == widget.episodeId) {
-      return;
-    }
-    context.goNamed(
-      SGRoute.player.name,
-      pathParameters: <String, String>{'episodeId': episode.id},
     );
   }
 
@@ -971,17 +894,6 @@ class PadLandscapePlayerScreenState
     });
     ref.read(learningSettingsProvider.notifier).setSubtitleMode(mode);
     _applyPlaybackMode();
-  }
-
-  void _handleSelectEmbeddedSubtitle(String mode) {
-    setState(() {
-      _embeddedSubtitleMode = mode;
-    });
-    final SubtitleTrack? track = embeddedSubtitleTrackForMode(
-      _embeddedSubtitleTracks,
-      mode,
-    );
-    unawaited(_videoPlayer?.setSubtitleTrack(track ?? SubtitleTrack.no()));
   }
 
   void _handleTogglePlaying() {
@@ -1523,6 +1435,35 @@ class PadLandscapePlayerScreenState
     _showMessage('已重播当前句');
   }
 
+  /// 跟读面板「点击录音」：先精确播放本句，播完后由
+  /// `_onVideoProgress` 通知面板自动开始录音。
+  void _handleArmShadowingRecording() {
+    if (!state.hasLines || _videoPlayer == null || !_videoReady) {
+      _showMessage('视频尚未准备好');
+      return;
+    }
+    final int lineIndex = state.activeLineIndex;
+    final int startMs = state.videoStartMsForLine(lineIndex);
+    final int endMs = state.videoEndMsForLine(lineIndex);
+    _shadowingRecordingArmed = true;
+    setState(() {
+      state
+        ..selectLine(lineIndex)
+        ..singlePlayEndMs = endMs
+        ..isPlaying = true;
+    });
+    _syncTranscriptReader();
+    final Player player = _videoPlayer!;
+    unawaited(() async {
+      await player.pause();
+      await player.seek(Duration(milliseconds: startMs));
+      await player.setRate(state.playbackRate);
+      _lastTrackedVideoPosition = Duration(milliseconds: startMs);
+      await player.play();
+      _recordCurrentSentenceStudy();
+    }());
+  }
+
   void _handleAiExplain(int index) {
     final PlayerSubtitleLine line = state.lines[index];
     showDialog<void>(
@@ -1584,9 +1525,6 @@ class PadLandscapePlayerScreenState
             onSeek: _handleSeek,
             onSpeedSelected: _handleSpeedSelected,
             onSelectSubtitleMode: _handleSetSubtitleMode,
-            embeddedSubtitleTracks: _embeddedSubtitleTracks,
-            embeddedSubtitleMode: _embeddedSubtitleMode,
-            onSelectEmbeddedSubtitle: _handleSelectEmbeddedSubtitle,
             onToggleShadowing: _handleToggleShadowing,
             onToggleLoop: _handleToggleLoop,
             onToggleMuted: _handleToggleMuted,

@@ -2,14 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:media_kit/media_kit.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
-import '../../../shared/presentation/word_lookup_popup.dart';
 import '../player_mock_state.dart';
-import '../player_native_subtitles.dart';
-import 'subtitle_word_highlight_style.dart';
 
 class PlayerVideoPanel extends StatefulWidget {
   const PlayerVideoPanel({
@@ -17,12 +13,6 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.isPlaying,
     required this.subtitleMode,
     required this.subtitleModes,
-    this.embeddedSubtitleTracks = const <SubtitleTrack>[],
-    this.embeddedSubtitleMode = '不显示',
-    this.currentWordIndex = 0,
-    this.highlightWords = false,
-    this.subtitleWordHighlightStyle = '绿色填充',
-    this.subtitleWordHighlightBorderWidth = 2.5,
     required this.speed,
     required this.isShadowing,
     required this.isLooping,
@@ -40,16 +30,11 @@ class PlayerVideoPanel extends StatefulWidget {
     required this.onSeek,
     required this.onSpeedSelected,
     required this.onSelectSubtitleMode,
-    this.onSelectEmbeddedSubtitle,
     required this.onToggleShadowing,
     required this.onToggleLoop,
     required this.onToggleMuted,
     required this.onVolumeChanged,
     required this.onToggleFullscreen,
-    this.onSubtitleLookupOpen,
-    this.onCollectWord,
-    this.onFavoriteWord,
-    this.onPronounce,
     this.onToggleEpisodePanel,
     this.isEpisodePanelOpen = false,
     this.onToggleSubtitlePanel,
@@ -75,12 +60,6 @@ class PlayerVideoPanel extends StatefulWidget {
   final bool isPlaying;
   final String subtitleMode;
   final List<String> subtitleModes;
-  final List<SubtitleTrack> embeddedSubtitleTracks;
-  final String embeddedSubtitleMode;
-  final int currentWordIndex;
-  final bool highlightWords;
-  final String subtitleWordHighlightStyle;
-  final double subtitleWordHighlightBorderWidth;
   final String speed;
   final bool isShadowing;
   final bool isLooping;
@@ -98,16 +77,11 @@ class PlayerVideoPanel extends StatefulWidget {
   final ValueChanged<double> onSeek;
   final ValueChanged<String> onSpeedSelected;
   final ValueChanged<String> onSelectSubtitleMode;
-  final ValueChanged<String>? onSelectEmbeddedSubtitle;
   final VoidCallback onToggleShadowing;
   final VoidCallback onToggleLoop;
   final VoidCallback onToggleMuted;
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleFullscreen;
-  final VoidCallback? onSubtitleLookupOpen;
-  final ValueChanged<String>? onCollectWord;
-  final ValueChanged<String>? onFavoriteWord;
-  final VoidCallback? onPronounce;
   final VoidCallback? onToggleEpisodePanel;
   final bool isEpisodePanelOpen;
   final VoidCallback? onToggleSubtitlePanel;
@@ -157,7 +131,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
   double? _gestureStartBrightness;
   double _brightnessLevel = 0.5;
   bool _canChangeSystemBrightness = true;
-  OverlayEntry? _subtitleLookupOverlayEntry;
   late final FocusNode _keyboardFocusNode;
   _PlayerContentFit _contentFit = _PlayerContentFit.wide;
 
@@ -176,14 +149,10 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
         widget.activeIndex != oldWidget.activeIndex) {
       _scheduleAutoHide();
     }
-    if (widget.line.english != oldWidget.line.english) {
-      _closeSubtitleLookup();
-    }
   }
 
   @override
   void dispose() {
-    _closeSubtitleLookup();
     _controlsTimer?.cancel();
     _gestureHintTimer?.cancel();
     _keyboardFocusNode.dispose();
@@ -237,83 +206,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
         });
       }
     });
-  }
-
-  void _openSubtitleLookup(BuildContext anchorContext, String word) {
-    _closeSubtitleLookup();
-    widget.onSubtitleLookupOpen?.call();
-    _setControlsVisible(false);
-    final OverlayState overlayState = Overlay.of(context, rootOverlay: true);
-    final RenderBox overlayBox =
-        overlayState.context.findRenderObject()! as RenderBox;
-    final RenderBox anchorBox = anchorContext.findRenderObject()! as RenderBox;
-    final Offset anchorTopLeft = anchorBox.localToGlobal(
-      Offset.zero,
-      ancestor: overlayBox,
-    );
-    final Size anchorSize = anchorBox.size;
-    _subtitleLookupOverlayEntry = OverlayEntry(
-      builder: (BuildContext overlayContext) {
-        final EdgeInsets padding = MediaQuery.paddingOf(overlayContext);
-        final Size overlaySize = MediaQuery.sizeOf(overlayContext);
-        const double popupWidth = 392;
-        const double popupMaxHeight = 520;
-        const double gap = 10;
-        const double inset = 16;
-        final double popupHeight = (overlaySize.height - padding.top - 80)
-            .clamp(180.0, popupMaxHeight);
-        final double left =
-            (anchorTopLeft.dx + (anchorSize.width / 2) - (popupWidth / 2))
-                .clamp(inset, overlaySize.width - popupWidth - inset);
-        final bool showAbove = anchorTopLeft.dy > popupHeight + gap + inset;
-        final double top = showAbove
-            ? anchorTopLeft.dy - popupHeight - gap
-            : (anchorTopLeft.dy + anchorSize.height + gap).clamp(
-                padding.top + inset,
-                overlaySize.height - popupHeight - inset,
-              );
-        return Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onTap: _closeSubtitleLookup,
-              ),
-            ),
-            Positioned(
-              top: top,
-              left: left,
-              width: popupWidth,
-              child: Material(
-                color: Colors.transparent,
-                child: WordLookupPopupCard(
-                  rawWord: word,
-                  contextSentence: widget.line.english,
-                  showAbove: showAbove,
-                  maxHeight: popupHeight,
-                  onPronounce: widget.onPronounce,
-                  onClose: _closeSubtitleLookup,
-                  onCollect: () {
-                    _closeSubtitleLookup();
-                    widget.onCollectWord?.call(word);
-                  },
-                  onFavorite: widget.onFavoriteWord == null
-                      ? null
-                      : () => widget.onFavoriteWord!(word),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-    overlayState.insert(_subtitleLookupOverlayEntry!);
-    setState(() {});
-  }
-
-  void _closeSubtitleLookup() {
-    _subtitleLookupOverlayEntry?.remove();
-    _subtitleLookupOverlayEntry = null;
   }
 
   Future<void> _loadSystemBrightnessState() async {
@@ -465,24 +357,8 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
     _scheduleAutoHide();
   }
 
-  String? _overlayText() {
-    switch (widget.subtitleMode) {
-      case '双语':
-        return '${widget.line.english}\n${widget.line.chinese}';
-      case '外文':
-        return widget.line.english;
-      default:
-        return widget.line.english;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final String? overlayText = _overlayText();
-    final bool showChinese =
-        overlayText != null &&
-        overlayText.contains('\n') &&
-        widget.subtitleMode != '外文';
     final bool showPrimaryButton = _showControls || !widget.isPlaying;
     final Duration safeDuration = widget.videoDuration.isNegative
         ? Duration.zero
@@ -500,8 +376,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
         color: widget.isFullscreen ? Colors.black : const Color(0xFF111827),
         child: _buildVideoStage(
           context,
-          overlayText,
-          showChinese,
           showPrimaryButton,
           hasVideoDuration,
           effectiveProgress,
@@ -537,8 +411,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
 
   Widget _buildVideoStage(
     BuildContext context,
-    String? overlayText,
-    bool showChinese,
     bool showPrimaryButton,
     bool hasVideoDuration,
     double effectiveProgress,
@@ -558,9 +430,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
             : (tinyControls ? 12 : 16);
         final double sceneHeaderTopInset =
             widget.sceneHeaderTopInset ?? topInset;
-        final double subtitleBottom = _showControls
-            ? (tinyControls ? 126 : (compactControls ? 138 : 146))
-            : 40;
         return Focus(
           focusNode: _keyboardFocusNode,
           autofocus: true,
@@ -648,47 +517,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                     const Positioned.fill(
                       child: Align(
                         child: CircularProgressIndicator(color: Colors.white),
-                      ),
-                    ),
-                  if (overlayText != null)
-                    Positioned(
-                      left: widget.isFullscreen ? 40 : (tinyControls ? 18 : 24),
-                      right: widget.isFullscreen
-                          ? 40
-                          : (tinyControls ? 18 : 24),
-                      bottom: subtitleBottom,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          _buildEnglishSubtitle(
-                            showChinese ? widget.line.english : overlayText,
-                            tinyControls: tinyControls,
-                          ),
-                          if (showChinese) ...<Widget>[
-                            SizedBox(height: tinyControls ? 6 : 10),
-                            Text(
-                              widget.line.chinese,
-                              textAlign: TextAlign.center,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: widget.isFullscreen
-                                    ? (tinyControls ? 15 : 18)
-                                    : (tinyControls ? 14 : 16),
-                                fontWeight: FontWeight.w700,
-                                height: 1.35,
-                                color: const Color(0xFFF7F7F7),
-                                shadows: const <Shadow>[
-                                  Shadow(
-                                    color: Color(0xB3000000),
-                                    blurRadius: 8,
-                                    offset: Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ],
                       ),
                     ),
                   Center(
@@ -800,78 +628,29 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
                                               widget.onGenerateAiSubtitles!,
                                             ),
                                     ),
-                                  PopupMenuButton<_SubtitleMenuSelection>(
+                                  PopupMenuButton<String>(
                                     tooltip: '字幕模式',
-                                    onSelected: (_SubtitleMenuSelection value) {
-                                      if (value.mode != null) {
-                                        widget.onSelectSubtitleMode(
-                                          value.mode!,
-                                        );
-                                      } else {
-                                        widget.onSelectEmbeddedSubtitle?.call(
-                                          value.embeddedMode!,
-                                        );
-                                      }
+                                    onSelected: (String value) {
+                                      widget.onSelectSubtitleMode(value);
                                       _scheduleAutoHide();
                                     },
                                     itemBuilder: (BuildContext context) =>
-                                        <
-                                          PopupMenuEntry<_SubtitleMenuSelection>
-                                        >[
-                                          const PopupMenuItem<
-                                            _SubtitleMenuSelection
-                                          >(
+                                        <PopupMenuEntry<String>>[
+                                          const PopupMenuItem<String>(
                                             enabled: false,
                                             height: 32,
-                                            child: Text('学习字幕'),
+                                            child: Text('字幕'),
                                           ),
                                           ...widget.subtitleModes.map(
                                             (String mode) =>
-                                                CheckedPopupMenuItem<
-                                                  _SubtitleMenuSelection
-                                                >(
-                                                  value:
-                                                      _SubtitleMenuSelection.mode(
-                                                        mode,
-                                                      ),
+                                                CheckedPopupMenuItem<String>(
+                                                  value: mode,
                                                   checked:
                                                       mode ==
                                                       widget.subtitleMode,
                                                   child: Text(mode),
                                                 ),
                                           ),
-                                          if (widget
-                                              .embeddedSubtitleTracks
-                                              .isNotEmpty) ...<
-                                            PopupMenuEntry<
-                                              _SubtitleMenuSelection
-                                            >
-                                          >[
-                                            const PopupMenuDivider(),
-                                            const PopupMenuItem<
-                                              _SubtitleMenuSelection
-                                            >(
-                                              enabled: false,
-                                              height: 32,
-                                              child: Text('视频字幕'),
-                                            ),
-                                            ...embeddedSubtitleModes.map(
-                                              (String mode) =>
-                                                  CheckedPopupMenuItem<
-                                                    _SubtitleMenuSelection
-                                                  >(
-                                                    value:
-                                                        _SubtitleMenuSelection.embedded(
-                                                          mode,
-                                                        ),
-                                                    checked:
-                                                        mode ==
-                                                        widget
-                                                            .embeddedSubtitleMode,
-                                                    child: Text(mode),
-                                                  ),
-                                            ),
-                                          ],
                                         ],
                                     child: _MiniPillAction(
                                       icon: Icons.closed_caption_rounded,
@@ -1086,100 +865,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
     );
   }
 
-  Widget _buildEnglishSubtitle(String text, {required bool tinyControls}) {
-    final TextStyle style = TextStyle(
-      fontSize: widget.isFullscreen
-          ? (tinyControls ? 24 : 34)
-          : (tinyControls ? 22 : 28),
-      fontWeight: FontWeight.w800,
-      height: 1.25,
-      color: Colors.white,
-      shadows: const <Shadow>[
-        Shadow(color: Color(0xCC000000), blurRadius: 10, offset: Offset(0, 3)),
-      ],
-    );
-    final List<String> tokens = text
-        .split(' ')
-        .where((String token) => token.isNotEmpty)
-        .toList(growable: false);
-    if (tokens.isEmpty) {
-      return Text(
-        text,
-        textAlign: TextAlign.center,
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: style,
-      );
-    }
-
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 6,
-      runSpacing: 6,
-      children: tokens
-          .asMap()
-          .entries
-          .map((MapEntry<int, String> entry) {
-            final bool highlighted =
-                widget.highlightWords &&
-                widget.line.words.isNotEmpty &&
-                entry.key == widget.currentWordIndex;
-            return Builder(
-              builder: (BuildContext tokenContext) {
-                return GestureDetector(
-                  key: ValueKey<String>('video-subtitle-word-${entry.key}'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _openSubtitleLookup(tokenContext, entry.value),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: SubtitleWordHighlightStyle.background(
-                        widget.subtitleWordHighlightStyle,
-                        highlighted: highlighted,
-                      ),
-                      borderRadius: BorderRadius.circular(7),
-                      border: Border.all(
-                        color: SubtitleWordHighlightStyle.borderColor(
-                          widget.subtitleWordHighlightStyle,
-                          highlighted: highlighted,
-                        ),
-                        width: SubtitleWordHighlightStyle.borderWidth(
-                          widget.subtitleWordHighlightStyle,
-                          highlighted: highlighted,
-                          width: widget.subtitleWordHighlightBorderWidth,
-                        ),
-                      ),
-                    ),
-                    child: Text(
-                      entry.value,
-                      style: style.copyWith(
-                        decoration: SubtitleWordHighlightStyle.textDecoration(
-                          widget.subtitleWordHighlightStyle,
-                          highlighted: highlighted,
-                        ),
-                        decorationColor:
-                            SubtitleWordHighlightStyle.textDecorationColor(
-                              widget.subtitleWordHighlightStyle,
-                              highlighted: highlighted,
-                            ),
-                        decorationThickness:
-                            highlighted &&
-                                widget.subtitleWordHighlightStyle == '下划线'
-                            ? 2
-                            : null,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            );
-          })
-          .toList(growable: false),
-    );
-  }
 
   Widget _buildVideoBackdrop() {
     if (widget.videoSurface == null || !widget.videoReady) {
@@ -1210,15 +895,6 @@ class _PlayerVideoPanelState extends State<PlayerVideoPanel> {
       ),
     );
   }
-}
-
-class _SubtitleMenuSelection {
-  const _SubtitleMenuSelection.mode(this.mode) : embeddedMode = null;
-
-  const _SubtitleMenuSelection.embedded(this.embeddedMode) : mode = null;
-
-  final String? mode;
-  final String? embeddedMode;
 }
 
 enum _PlayerGestureMode { seek, volume, brightness }
