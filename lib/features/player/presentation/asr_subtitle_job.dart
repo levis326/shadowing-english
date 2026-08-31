@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../../../utils/app_paths.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../shared/data/local_nllb_translation.dart';
 import '../../shared/data/word_lookup_service.dart';
@@ -896,7 +896,7 @@ class AsrSubtitleJobRunner {
     required LearningSettingsState settings,
   }) async {
     final Directory support = supportDirectory == null
-        ? await getApplicationSupportDirectory()
+        ? await AppPaths.dataDirectory()
         : await supportDirectory!();
     final String key = _jobKey(
       episodeId: episodeId,

@@ -4,9 +4,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../../../../utils/app_paths.dart';
 import '../../../shared/data/local_pronunciation_service.dart';
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
@@ -147,7 +147,7 @@ class ShadowingFocusPanelState extends ConsumerState<ShadowingFocusPanel> {
       return;
     }
     try {
-      final Directory tempDir = await getTemporaryDirectory();
+      final Directory tempDir = await AppPaths.tempDirectory();
       final String path =
           '${tempDir.path}${Platform.pathSeparator}shadowing_reading.wav';
       await _recorder.start(

@@ -2,9 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../../../../utils/app_paths.dart';
 import '../../../shared/data/local_pronunciation_service.dart';
 
 /// A dialog offering two sentence-practice modes for the selected line:
@@ -74,7 +74,7 @@ class _SentencePracticeDialogState extends State<SentencePracticeDialog>
         });
         return;
       }
-      final Directory tempDir = await getTemporaryDirectory();
+      final Directory tempDir = await AppPaths.tempDirectory();
       final String path =
           '${tempDir.path}${Platform.pathSeparator}pron_reading.wav';
       await _recorder.start(

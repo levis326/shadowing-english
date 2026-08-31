@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
-
+import '../../../utils/app_paths.dart';
 import '../../settings/presentation/settings_provider.dart';
 
 class AiSubtitleCacheEntry {
@@ -30,9 +29,12 @@ class AiSubtitleCacheEntry {
 }
 
 class AsrSubtitleCache {
+  /// Cache files live under `<数据目录>/asr_subtitles` (portable desktop:
+  /// `<exe目录>/data/asr_subtitles`); exports go under the downloads root
+  /// (portable desktop: the same `<exe目录>/data` folder).
   const AsrSubtitleCache({
-    this.appSupportDirectory = getApplicationSupportDirectory,
-    this.downloadsDirectory = getDownloadsDirectory,
+    this.appSupportDirectory = AppPaths.dataDirectory,
+    this.downloadsDirectory = AppPaths.downloadsRootDirectory,
   });
 
   final Future<Directory> Function() appSupportDirectory;

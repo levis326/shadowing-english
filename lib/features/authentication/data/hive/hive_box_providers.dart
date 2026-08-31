@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../../../hive/hive.dart';
 import '../../domain/login_request.dart';
 
 part 'hive_box_providers.g.dart';
@@ -35,7 +36,7 @@ Future<List<int>> _deviceKey() async {
 /// plain `@riverpod` auto-disposes when no-longer-used.
 @riverpod
 Future<Box<LoginCredentials>> userBox(Ref ref) async {
-  await Hive.initFlutter(); // hive_ce_flutter
+  await initHiveStorage(); // portable data dir next to the exe / web storage
   final List<int> key = await _deviceKey();
   return Hive.openBox<LoginCredentials>(
     'userBox',
@@ -45,6 +46,6 @@ Future<Box<LoginCredentials>> userBox(Ref ref) async {
 
 @riverpod
 Future<Box<String>> themeBox(Ref ref) async {
-  await Hive.initFlutter(); // hive_ce_flutter
+  await initHiveStorage(); // portable data dir next to the exe / web storage
   return Hive.openBox<String>('themeBox');
 }

@@ -2,17 +2,20 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:hive_ce/hive.dart';
-import 'package:path_provider/path_provider.dart';
+
+import '../../../utils/app_paths.dart';
 
 /// Local backup & cache maintenance used by the settings screen.
 ///
-/// Data is backed up into the `backup` subdirectory of the application
-/// support directory (the directory where the app keeps its local data),
-/// i.e. `<应用数据目录>/backup/<时间戳>/shadowing_backup.json`.
+/// Data is backed up into the `backup` subdirectory of the application data
+/// directory, i.e. `<数据目录>/backup/<时间戳>/shadowing_backup.json`.
+/// On Windows / Linux the data directory is `<exe目录>/data`, so backups
+/// travel with the app folder (portable); elsewhere it is the platform
+/// application-support directory.
 class LocalDataBackupService {
   const LocalDataBackupService({
-    this.appSupportDirectory = getApplicationSupportDirectory,
-    this.temporaryDirectory = getTemporaryDirectory,
+    this.appSupportDirectory = AppPaths.dataDirectory,
+    this.temporaryDirectory = AppPaths.tempDirectory,
   });
 
   final Future<Directory> Function() appSupportDirectory;
@@ -20,7 +23,7 @@ class LocalDataBackupService {
 
   /// Writes a complete snapshot of the locally stored learning data
   /// (the Hive `prefs` box: 生词本、短语本、学习记录、设置、课程与进度等)
-  /// into a timestamped folder under `<应用数据目录>/backup/`.
+  /// into a timestamped folder under `<数据目录>/backup/`.
   Future<File> backupToLocal() async {
     final Directory root = await appSupportDirectory();
     final Directory targetDir = Directory(
@@ -62,8 +65,9 @@ class LocalDataBackupService {
   }
 
   /// Deletes generated caches:
-  ///  - the AI subtitle cache directory (`<应用数据目录>/asr_subtitles`);
-  ///  - leftover app temp files (`pron_reading*.wav`, `cle_asr_*` chunks).
+  ///  - the AI subtitle cache directory (`<数据目录>/asr_subtitles`);
+  ///  - leftover app temp files (`pron_reading*.wav`, `shadowing_reading*.wav`,
+  ///    `cle_asr_*` chunks).
   ///
   /// Returns the number of removed files.
   Future<int> clearCachedFiles() async {
@@ -96,7 +100,9 @@ class LocalDataBackupService {
         final String name = entity.path
             .split(Platform.pathSeparator)
             .last;
-        if (!name.startsWith('pron_reading') && !name.startsWith('cle_asr_')) {
+        if (!name.startsWith('pron_reading') &&
+            !name.startsWith('shadowing_reading') &&
+            !name.startsWith('cle_asr_')) {
           continue;
         }
         try {

@@ -5,7 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path_provider/path_provider.dart';
+
+import '../../../utils/app_paths.dart';
 
 const String _releasesUrl =
     'https://api.github.com/repos/MarkYuanGo/shadowing-english/releases?per_page=100';
@@ -72,13 +73,10 @@ class AppUpdateService {
     AppUpdate update, {
     void Function(int received, int total)? onProgress,
   }) async {
-    final Directory root =
-        await getDownloadsDirectory() ??
-        await getApplicationDocumentsDirectory();
-    final Directory destination = Directory(
-      '${root.path}${Platform.pathSeparator}Shadowing English',
-    );
-    await destination.create(recursive: true);
+    // Portable desktop builds download the installer next to the exe
+    // (`<exe目录>/data/updates`); other platforms keep the old
+    // `Downloads/Shadowing English` folder.
+    final Directory destination = await AppPaths.updatesDirectory();
     final File file = File(
       '${destination.path}${Platform.pathSeparator}${update.assetName}',
     );

@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 
+import '../../../utils/app_paths.dart';
 import '../../settings/presentation/settings_provider.dart';
 import 'desktop_ffmpeg.dart';
 import 'local_whisper_service.dart';
@@ -1136,7 +1137,10 @@ class AsrSubtitleService {
     if (ffmpeg == null) {
       throw StateError('应用内置音频组件缺失或无法运行，请重新安装最新版本。');
     }
-    final Directory dir = await Directory.systemTemp.createTemp('cle_asr_');
+    // Chunked audio is split into the app's portable temp dir so no files
+    // are left in the system temp on desktop builds.
+    final Directory tempRoot = await AppPaths.tempDirectory();
+    final Directory dir = await tempRoot.createTemp('cle_asr_');
     final String extension = wavOutput ? 'wav' : 'm4a';
     final ProcessResult result = await Process.run(ffmpeg, <String>[
       '-y',

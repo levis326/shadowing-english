@@ -3,8 +3,8 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../../../utils/app_paths.dart';
 import 'import_match.dart';
 
 typedef OnlineVideoDownloadProgress =
@@ -197,7 +197,9 @@ class OnlineVideoImporter {
   }
 
   Future<Directory> _newDirectory(String name, String source) async {
-    final Directory root = await getApplicationSupportDirectory();
+    // Portable desktop builds store imported videos under `<exe目录>/data/
+    // imported_sources`, so courses travel with the app folder.
+    final Directory root = await AppPaths.dataDirectory();
     final String key = sha1
         .convert(utf8.encode(source))
         .toString()
