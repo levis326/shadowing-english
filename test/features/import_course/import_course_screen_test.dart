@@ -4,6 +4,7 @@ import 'package:common_learn_english/features/import_course/domain/android_impor
 import 'package:common_learn_english/features/import_course/domain/import_match.dart';
 import 'package:common_learn_english/features/import_course/presentation/widgets/import_course_flow.dart';
 import 'package:common_learn_english/features/library/presentation/library_catalog_provider.dart';
+import 'package:common_learn_english/features/library/presentation/library_mock_data.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -83,11 +84,27 @@ void main() {
     expect(find.textContaining('智能解析匹配剧集'), findsWidgets);
     expect(find.byTooltip('返回上一步'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
-    await tester.pump();
+    // 导入会把媒体文件真实复制进应用数据目录（真实 IO），
+    // 必须在 runAsync 中触发并等待完成。
+    await tester.runAsync(() async {
+      await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
     await tester.pumpAndSettle();
 
     expect(find.textContaining('智能导入课程成功'), findsOneWidget);
+    final LibraryEpisodeItem importedEpisode = container
+        .read(libraryCatalogProvider)
+        .first
+        .episodes
+        .first;
+    final Directory copiedDir = File(importedEpisode.videoAsset!).parent;
+    addTearDown(() {
+      if (copiedDir.existsSync()) {
+        copiedDir.deleteSync(recursive: true);
+      }
+    });
   });
 
   testWidgets('import screen no longer shows cover generation progress while importing', (
@@ -130,11 +147,30 @@ void main() {
     await tester.pump(const Duration(milliseconds: 700));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
-    await tester.pump();
+    // 导入会把媒体文件真实复制进应用数据目录（真实 IO），
+    // 必须在 runAsync 中触发并等待完成。
+    await tester.runAsync(() async {
+      await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
 
     expect(find.textContaining('正在生成封面'), findsNothing);
     await tester.pumpAndSettle();
+    final ProviderContainer usedContainer = ProviderScope.containerOf(
+      tester.element(find.byType(ImportCourseFlow)),
+    );
+    final LibraryEpisodeItem importedEpisode = usedContainer
+        .read(libraryCatalogProvider)
+        .first
+        .episodes
+        .first;
+    final Directory copiedDir = File(importedEpisode.videoAsset!).parent;
+    addTearDown(() {
+      if (copiedDir.existsSync()) {
+        copiedDir.deleteSync(recursive: true);
+      }
+    });
   });
 
   testWidgets('android import uses picked folder name instead of first episode name', (
@@ -187,9 +223,26 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '开始解析'));
     await tester.pump(const Duration(milliseconds: 700));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
+    // 导入会把媒体文件真实复制进应用数据目录（真实 IO），
+    // 必须在 runAsync 中触发并等待完成。
+    await tester.runAsync(() async {
+      await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    });
     await tester.pumpAndSettle();
 
     expect(container.read(libraryCatalogProvider).first.title, 'Friends');
+    final LibraryEpisodeItem importedEpisode = container
+        .read(libraryCatalogProvider)
+        .first
+        .episodes
+        .first;
+    final Directory copiedDir = File(importedEpisode.videoAsset!).parent;
+    addTearDown(() {
+      if (copiedDir.existsSync()) {
+        copiedDir.deleteSync(recursive: true);
+      }
+    });
   });
 }

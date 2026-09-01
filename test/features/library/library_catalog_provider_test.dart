@@ -543,6 +543,17 @@ void main() {
       );
 
       expect(imported, isTrue);
+      final LibraryEpisodeItem importedEpisode = container
+          .read(libraryCatalogProvider)
+          .first
+          .episodes
+          .first;
+      // 导入时媒体文件已复制进应用数据目录（便携化）。
+      final Directory copiedEpisodeDir = File(
+        importedEpisode.videoAsset!,
+      ).parent;
+      expect(copiedEpisodeDir.existsSync(), isTrue);
+
       final String importedCourseId = container
           .read(libraryCatalogProvider)
           .first
@@ -550,8 +561,69 @@ void main() {
 
       await notifier.deleteCourses(<String>{importedCourseId});
 
-      expect(videoRoot.existsSync(), isFalse);
-      expect(subtitleRoot.existsSync(), isFalse);
+      // 应用管理的数据目录副本被删除；用户原始文件保留。
+      expect(copiedEpisodeDir.existsSync(), isFalse);
+      expect(videoRoot.existsSync(), isTrue);
+      expect(subtitleRoot.existsSync(), isTrue);
+    });
+
+    test('local import copies media into the app data directory', () async {
+      final Directory sourceDir = Directory.systemTemp.createTempSync(
+        'library-portable-copy-source-',
+      );
+      addTearDown(() => sourceDir.deleteSync(recursive: true));
+      final File videoFile = File('${sourceDir.path}/Lesson01.mp4')
+        ..writeAsStringSync('video-bytes');
+      final File englishSubtitle = File('${sourceDir.path}/Lesson01.en.srt')
+        ..writeAsStringSync('hello');
+      final File chineseSubtitle = File('${sourceDir.path}/Lesson01.zh.srt')
+        ..writeAsStringSync('你好');
+
+      final ProviderContainer container = ProviderContainer();
+      addTearDown(container.dispose);
+      final LibraryCatalogNotifier notifier = container.read(
+        libraryCatalogProvider.notifier,
+      );
+
+      final bool imported = await notifier.importCourseFromMatches(
+        rows: <ImportMatchRow>[
+          _makeRow(
+            videoPath: videoFile.path,
+            videoFile: 'Lesson01.mp4',
+            englishSubtitlePath: englishSubtitle.path,
+            chineseSubtitlePath: chineseSubtitle.path,
+          ),
+        ],
+        videoFolder: sourceDir.path,
+        subtitleFolder: sourceDir.path,
+      );
+
+      expect(imported, isTrue);
+      final LibraryEpisodeItem episode = container
+          .read(libraryCatalogProvider)
+          .first
+          .episodes
+          .first;
+      final String copiedVideo = episode.videoAsset!;
+      final Directory copiedDir = File(copiedVideo).parent;
+      addTearDown(() {
+        if (copiedDir.existsSync()) {
+          copiedDir.deleteSync(recursive: true);
+        }
+      });
+
+      // 视频与字幕都复制到了 <数据目录>/imported_sources/<courseId>/ 下。
+      expect(copiedVideo, contains('imported_sources'));
+      expect(File(copiedVideo).existsSync(), isTrue);
+      expect(File(copiedVideo).readAsStringSync(), 'video-bytes');
+      expect(episode.enSubtitleAsset, isNotNull);
+      expect(episode.enSubtitleAsset, contains('imported_sources'));
+      expect(File(episode.enSubtitleAsset!).existsSync(), isTrue);
+      expect(episode.cnSubtitleAsset, isNotNull);
+      expect(episode.cnSubtitleAsset, contains('imported_sources'));
+      expect(File(episode.cnSubtitleAsset!).existsSync(), isTrue);
+      // 原始文件保留不动。
+      expect(videoFile.existsSync(), isTrue);
     });
   });
 

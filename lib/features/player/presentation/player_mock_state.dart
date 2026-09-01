@@ -154,6 +154,17 @@ class PlayerMockState {
       return false;
     }
 
+    // 单句播放边界（点击某句 / 跟读练习重播本句）：播完这句就暂停，
+    // 不自动进入下一句。
+    final int? singlePlayEnd = singlePlayEndMs;
+    if (singlePlayEnd != null && positionMs >= singlePlayEnd) {
+      positionMs = singlePlayEnd;
+      isPlaying = false;
+      singlePlayEndMs = null;
+      _syncCurrentWordIndex();
+      return false;
+    }
+
     final PlayerSubtitleLine currentLine = lines[activeLineIndex];
     if (_subtitlePositionMs >= currentLine.endMs) {
       if (isLooping) {

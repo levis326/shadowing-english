@@ -548,9 +548,14 @@ class _PadPortraitPlayerScreenState
   }
 
   void _goToLine(int index) {
+    if (!state.hasLines || index < 0 || index >= state.lines.length) {
+      return;
+    }
+    // 点击某句：视频跳到这句开头播放，播完这句就暂停，不继续往下播。
     setState(() {
       state
         ..selectLine(index)
+        ..singlePlayEndMs = state.videoEndMsForLine(index)
         ..isPlaying = true;
     });
     _syncTranscriptReader();
@@ -1436,10 +1441,7 @@ class _PadPortraitPlayerScreenState
     final int startMs = state.videoStartMsForLine(lineIndex);
     final int endMs = state.videoEndMsForLine(lineIndex);
     setState(() {
-      state
-        ..selectLine(lineIndex)
-        ..singlePlayEndMs = endMs
-        ..isPlaying = true;
+      state.selectLine(lineIndex);
     });
     _syncTranscriptReader();
     final Player player = _videoPlayer!;
@@ -1447,6 +1449,16 @@ class _PadPortraitPlayerScreenState
     await player.seek(Duration(milliseconds: startMs));
     await player.setRate(state.playbackRate);
     _lastTrackedVideoPosition = Duration(milliseconds: startMs);
+    if (!mounted) {
+      return;
+    }
+    // 在 seek 完成之后再设置单句结束点，避免 seek 前的旧进度事件
+    // 提前触发“播完暂停”。
+    setState(() {
+      state
+        ..singlePlayEndMs = endMs
+        ..isPlaying = true;
+    });
     await player.play();
     _recordCurrentSentenceStudy();
     _showMessage('已重播当前句');
@@ -1462,12 +1474,8 @@ class _PadPortraitPlayerScreenState
     final int lineIndex = state.activeLineIndex;
     final int startMs = state.videoStartMsForLine(lineIndex);
     final int endMs = state.videoEndMsForLine(lineIndex);
-    _shadowingRecordingArmed = true;
     setState(() {
-      state
-        ..selectLine(lineIndex)
-        ..singlePlayEndMs = endMs
-        ..isPlaying = true;
+      state.selectLine(lineIndex);
     });
     _syncTranscriptReader();
     final Player player = _videoPlayer!;
@@ -1476,6 +1484,17 @@ class _PadPortraitPlayerScreenState
       await player.seek(Duration(milliseconds: startMs));
       await player.setRate(state.playbackRate);
       _lastTrackedVideoPosition = Duration(milliseconds: startMs);
+      if (!mounted) {
+        return;
+      }
+      // 在 seek 完成之后再设置单句结束点并开始播放，保证跟读练习时
+      // 左边视频正好播放本句、播完即停，然后自动开始录音。
+      _shadowingRecordingArmed = true;
+      setState(() {
+        state
+          ..singlePlayEndMs = endMs
+          ..isPlaying = true;
+      });
       await player.play();
       _recordCurrentSentenceStudy();
     }());

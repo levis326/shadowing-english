@@ -277,14 +277,22 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     if (newRows.isEmpty) {
       return false;
     }
+
+    // 便携化：本地导入的视频/字幕复制进应用数据目录
+    // （`<数据目录>/imported_sources/<courseId>/`），课程媒体随程序文件夹移动，
+    // 换电脑/换盘符后依然能播放；已在数据目录内的文件不重复复制。
+    final List<ImportMatchRow> storedRows = await _copyRowsIntoDataDirectory(
+      newRows,
+      courseId: courseId,
+    );
     final List<LibraryEpisodeItem> episodes = <LibraryEpisodeItem>[
-      for (int index = 0; index < newRows.length; index++)
+      for (int index = 0; index < storedRows.length; index++)
         _buildEpisodeItem(
-          newRows[index],
+          storedRows[index],
           courseId: courseId,
           episodeId: _buildEpisodeId(
             courseId,
-            newRows[index],
+            storedRows[index],
             (targetCourse?.episodes.length ?? 0) + index,
           ),
           coverImage: '',
@@ -424,6 +432,95 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
       return path;
     }
     return AppPaths.toPortablePath(path, dataRootPath) ?? path;
+  }
+
+  /// Copies each row's video and subtitle files into
+  /// `<数据目录>/imported_sources/<courseId>/` so imported courses travel with
+  /// the app folder. Files already inside the data directory are left as-is.
+  Future<List<ImportMatchRow>> _copyRowsIntoDataDirectory(
+    List<ImportMatchRow> rows, {
+    required String courseId,
+  }) async {
+    final Directory dataRoot = await AppPaths.dataDirectory();
+    final String dataRootPath = dataRoot.path;
+
+    final List<ImportMatchRow> storedRows = <ImportMatchRow>[];
+    for (final ImportMatchRow row in rows) {
+      final String? copiedVideo = await _copyIntoDataDirectory(
+        row.videoPath,
+        dataRootPath,
+        courseId,
+      );
+      final Map<String, ImportSubtitleTrack> tracks =
+          <String, ImportSubtitleTrack>{};
+      for (final MapEntry<String, ImportSubtitleTrack> entry
+          in row.subtitleTracks.entries) {
+        final String? copiedTrack = await _copyIntoDataDirectory(
+          entry.value.path,
+          dataRootPath,
+          courseId,
+        );
+        tracks[entry.key] = ImportSubtitleTrack(
+          languageCode: entry.value.languageCode,
+          languageLabel: entry.value.languageLabel,
+          path: copiedTrack ?? entry.value.path,
+        );
+      }
+      storedRows.add(
+        row.copyWith(
+          videoPath: copiedVideo ?? row.videoPath,
+          subtitleTracks: tracks,
+        ),
+      );
+    }
+    return storedRows;
+  }
+
+  /// Copies one file into the course folder inside the app data directory.
+  /// Returns the new path, the original path when the file is already inside
+  /// the data directory, or null when copying failed (callers then keep the
+  /// original in-place path).
+  Future<String?> _copyIntoDataDirectory(
+    String sourcePath,
+    String dataRootPath,
+    String courseId,
+  ) async {
+    if (sourcePath.trim().isEmpty) {
+      return null;
+    }
+    final File source = File(sourcePath);
+    if (!source.existsSync()) {
+      return null;
+    }
+    final String normalizedSource = source.path.replaceAll(
+      String.fromCharCode(92),
+      '/',
+    );
+    final String normalizedRoot = dataRootPath.replaceAll(
+      String.fromCharCode(92),
+      '/',
+    );
+    if (normalizedSource.startsWith('$normalizedRoot/')) {
+      return source.path;
+    }
+    final String fileName = source.path.split(Platform.pathSeparator).last;
+    final File target = File(
+      '$dataRootPath${Platform.pathSeparator}imported_sources'
+      '${Platform.pathSeparator}$courseId${Platform.pathSeparator}$fileName',
+    );
+    if (target.path == source.path) {
+      return source.path;
+    }
+    try {
+      if (!target.existsSync() || target.lengthSync() != source.lengthSync()) {
+        await target.parent.create(recursive: true);
+        await source.copy(target.path);
+      }
+      return target.path;
+    } catch (_) {
+      // Best effort: on failure the original in-place path is still usable.
+      return null;
+    }
   }
 
   List<LibraryCourseData> _decodeCourses(String raw) {
