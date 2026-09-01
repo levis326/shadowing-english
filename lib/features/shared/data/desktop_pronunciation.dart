@@ -3,9 +3,11 @@ import 'dart:io';
 /// Filename of the local pronunciation evaluation server bundled with the app.
 const String desktopPronunciationBinaryName = 'pronunciation-server';
 
-/// Name of the bundled wav2vec2 checkpoint (torchaudio cache layout).
+/// Name of the bundled wav2vec2-large-960h checkpoint (torchaudio cache
+/// layout). The large model scores pronunciation noticeably better than the
+/// previous base-960h model and drives the per-syllable scores.
 const String desktopPronunciationModelFileName =
-    'wav2vec2_fairseq_base_ls960_asr_ls960.pth';
+    'wav2vec2_fairseq_large_ls960_asr_ls960.pth';
 
 List<String> desktopPronunciationBinaryCandidates({
   String? operatingSystem,

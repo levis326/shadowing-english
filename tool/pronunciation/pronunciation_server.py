@@ -2,17 +2,26 @@
 
 Mirrors the whisper-server / nllb-server pattern: the app starts this process
 once and talks to it over HTTP. It uses the prebuilt CPU PyTorch/TorchAudio
-wheels and the wav2vec2-base-960h model to force-align a transcript to the
-user's recorded speech, returning an overall score plus per-word scores.
+wheels and the wav2vec2-large-960h model to force-align a transcript to the
+user's recorded speech, returning an overall score plus per-word and
+per-syllable scores.
 
 Endpoints:
   GET  /health     -> 200 {"status":"ok"}
   POST /evaluate   -> {"audio": "<base64 wav>", "text": "sentence",
-                       "sample_rate": 16000}
-                      -> {"score": 0.8, "words": [{"word":"THE","score":0.9}, ...]}
+                        "sample_rate": 16000}
+                       -> {"score": 0.8,
+                           "words": [{"word": "WEATHER",
+                                      "score": 0.7,
+                                      "syllables": [
+                                          {"syllable": "WEA", "score": 0.9},
+                                          {"syllable": "THER", "score": 0.5},
+                                      ]}, ...]}
 
-Character-level CTC alignment is used because wav2vec2-base-960h predicts
-characters (with '|' as the word boundary token).
+Character-level CTC alignment is used because wav2vec2-large-960h predicts
+characters (with '|' as the word boundary token). Syllable scores are derived
+by syllabifying each word's spelling and mapping the per-character CTC
+probabilities onto the syllables in order.
 """
 
 import argparse
@@ -28,6 +37,9 @@ import torchaudio
 
 BLANK = 0
 WORD_BOUNDARY = 1
+_VOWELS = "AEIOUY"
+# Consonant digraphs that belong together inside one syllable.
+_DIGRAPHS = {"CH", "CK", "GH", "NG", "PH", "QU", "SH", "TH", "WH", "WR", "KN", "GN"}
 
 
 def text_to_tokens(text, dictionary):
@@ -42,8 +54,124 @@ def text_to_tokens(text, dictionary):
     return tokens
 
 
-def score_path(path, log_scores, labels):
-    """Convert a forced-alignment path into an overall + per-word score."""
+def syllabify(word):
+    """Splits a word's spelling into syllables with a letter-based heuristic.
+
+    Each syllable contains exactly one vowel nucleus (consecutive vowels form
+    a single nucleus, so diphthongs stay together). Consonant clusters between
+    nuclei are split with simple onset maximization: one consonant goes to the
+    following syllable, two are split one each, and longer clusters keep one
+    consonant as the previous syllable's coda.
+
+    Examples: "weather" -> ["WEA", "THER"], "computer" -> ["COM", "PU", "TER"].
+    """
+    letters = [c for c in word.upper() if c.isalpha()]
+    if not letters:
+        return []
+
+    nuclei = []  # inclusive letter index ranges of vowel nuclei
+    index = 0
+    while index < len(letters):
+        if letters[index] in _VOWELS:
+            start = index
+            while index + 1 < len(letters) and letters[index + 1] in _VOWELS:
+                index += 1
+            nuclei.append((start, index))
+        index += 1
+
+    if not nuclei:
+        return ["".join(letters)]
+
+    boundaries = []  # letter index where each syllable starts
+    boundaries.append(0)
+    for nucleus_index in range(1, len(nuclei)):
+        previous_end = nuclei[nucleus_index - 1][1]
+        next_start = nuclei[nucleus_index][0]
+        cluster = letters[previous_end + 1 : next_start]
+        if len(cluster) <= 1:
+            # Attach the single consonant to the following syllable.
+            boundaries.append(previous_end + 1)
+        elif len(cluster) == 2 and "".join(cluster) in _DIGRAPHS:
+            # Keep consonant digraphs (TH, SH, CH, ...) in one syllable.
+            boundaries.append(previous_end + 1)
+        else:
+            # One consonant stays with the previous syllable (coda), the rest
+            # starts the next syllable.
+            boundaries.append(previous_end + 2)
+    last = len(letters)
+
+    syllables = []
+    for position, start in enumerate(boundaries):
+        end = boundaries[position + 1] if position + 1 < len(boundaries) else last
+        syllables.append("".join(letters[start:end]))
+    return syllables
+
+
+def map_chars_to_syllables(observed_chars, char_probs, syllables):
+    """Maps ordered per-character CTC probabilities onto syllable spellings.
+
+    Forced alignment runs every transcript character through at least one
+    frame, so `observed_chars` matches the word's letters in order — except
+    that consecutive identical characters may have collapsed into one (e.g.
+    "ll", "ee"). Such doubled letters reuse the previous letter's probability.
+    """
+    observed = [c for c in observed_chars if c.isalpha()]
+    result = []
+    observed_index = 0
+    for syllable in syllables:
+        syllable_scores = []
+        for letter in syllable:
+            if (
+                observed_index < len(observed)
+                and observed_index < len(char_probs)
+                and observed[observed_index] == letter
+            ):
+                syllable_scores.append(char_probs[observed_index])
+                observed_index += 1
+            else:
+                # Collapsed doubled letter or a minor mismatch: reuse the
+                # probability of the previously seen character.
+                if observed_index > 0:
+                    syllable_scores.append(char_probs[observed_index - 1])
+                elif char_probs:
+                    syllable_scores.append(char_probs[0])
+                else:
+                    syllable_scores.append(0.0)
+        result.append(
+            {
+                "syllable": syllable,
+                "score": sum(syllable_scores) / len(syllable_scores),
+            }
+        )
+    return result
+
+
+def build_word_result(spelling, observed_chars, char_probs):
+    """Builds the per-word score plus per-syllable scores for one word.
+
+    `spelling` is the word's true spelling from the transcript; syllable
+    boundaries are derived from it. `observed_chars` are the letters actually
+    emitted by CTC (consecutive repeats collapsed), with `char_probs` aligned
+    to them.
+    """
+    display_word = "".join(c for c in spelling.upper() if c.isalpha())
+    syllables = syllabify(display_word)
+    mapped = (
+        map_chars_to_syllables(observed_chars, char_probs, syllables)
+        if syllables
+        else []
+    )
+    score = (
+        sum(item["score"] for item in mapped) / len(mapped)
+        if mapped
+        else (sum(char_probs) / len(char_probs) if char_probs else 0.0)
+    )
+    return {"word": display_word, "score": score, "syllables": mapped}
+
+
+def score_path(path, log_scores, labels, transcript_words):
+    """Convert a forced-alignment path into overall + per-word + per-syllable
+    scores."""
     probs = log_scores.exp()
 
     # Collapse consecutive CTC repeats, keeping the peak probability of each
@@ -62,24 +190,29 @@ def score_path(path, log_scores, labels):
     words = []
     chars = []
     char_probs = []
+    word_index = 0
     for token, p in collapsed:
         if token == WORD_BOUNDARY:
             if chars:
-                words.append(
-                    {
-                        "word": "".join(chars),
-                        "score": sum(char_probs) / len(char_probs),
-                    }
+                spelling = (
+                    transcript_words[word_index]
+                    if word_index < len(transcript_words)
+                    else "".join(chars)
                 )
+                words.append(build_word_result(spelling, "".join(chars), char_probs))
                 chars.clear()
                 char_probs.clear()
+                word_index += 1
             continue
         chars.append(labels[token])
         char_probs.append(p)
     if chars:
-        words.append(
-            {"word": "".join(chars), "score": sum(char_probs) / len(char_probs)}
+        spelling = (
+            transcript_words[word_index]
+            if word_index < len(transcript_words)
+            else "".join(chars)
         )
+        words.append(build_word_result(spelling, "".join(chars), char_probs))
 
     overall = sum(w["score"] for w in words) / len(words) if words else 0.0
     return {"score": overall, "words": words}
@@ -149,7 +282,8 @@ class PronunciationHandler(BaseHTTPRequestHandler):
                 torch.tensor([emission.shape[1]]),
                 torch.tensor([len(tokens)]),
             )
-        return score_path(path[0], log_scores[0], self.labels)
+        transcript_words = [word for word in text.upper().split()]
+        return score_path(path[0], log_scores[0], self.labels, transcript_words)
 
     def _write_json(self, status, payload):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -169,7 +303,7 @@ def main():
         "--model-dir",
         required=True,
         help="Directory holding the cached wav2vec2 model "
-        "(hub/checkpoints/wav2vec2_fairseq_base_ls960_asr_ls960.pth)",
+        "(hub/checkpoints/wav2vec2_fairseq_large_ls960_asr_ls960.pth)",
     )
     parser.add_argument("--port", type=int, default=8082)
     args = parser.parse_args()
@@ -177,7 +311,7 @@ def main():
     # The bundled model is the torchaudio-cached checkpoint; point TORCH_HOME at
     # it so bundle.get_model() loads locally instead of downloading.
     os.environ["TORCH_HOME"] = args.model_dir
-    bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
+    bundle = torchaudio.pipelines.WAV2VEC2_ASR_LARGE_960H
     PronunciationHandler.model = bundle.get_model()
     PronunciationHandler.labels = list(bundle.get_labels())
     PronunciationHandler.dictionary = {

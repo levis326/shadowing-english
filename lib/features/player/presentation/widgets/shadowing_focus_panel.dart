@@ -564,11 +564,30 @@ class ShadowingFocusPanelState extends ConsumerState<ShadowingFocusPanel> {
     final int correct = result.words
         .where((PronunciationWordScore word) => word.score >= 0.7)
         .length;
+    final bool hasSyllables = result.words.any(
+      (PronunciationWordScore word) => word.syllables.isNotEmpty,
+    );
+    final int totalSyllables = result.words.fold<int>(
+      0,
+      (int sum, PronunciationWordScore word) =>
+          sum + (word.syllables.isNotEmpty ? word.syllables.length : 1),
+    );
+    final int correctSyllables = result.words.fold<int>(
+      0,
+      (int sum, PronunciationWordScore word) =>
+          sum +
+          word.syllables
+              .where((PronunciationSyllableScore syllable) => syllable.score >= 0.7)
+              .length,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Text(
-          '${result.words.length} 个词中 $correct 个正确',
+          hasSyllables
+              ? '${result.words.length} 个词中 $correct 个正确 · '
+                    '$correctSyllables/$totalSyllables 个音节标准'
+              : '${result.words.length} 个词中 $correct 个正确',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -588,20 +607,13 @@ class ShadowingFocusPanelState extends ConsumerState<ShadowingFocusPanel> {
                 color: _wordColor(word.score).withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Text(
-                word.word,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _wordColor(word.score),
-                ),
-              ),
+              child: _buildWordScoreText(word, 15),
             );
           }).toList(growable: false),
         ),
         const SizedBox(height: 6),
         const Text(
-          '绿色=标准 · 黄色=一般 · 红色=需改进',
+          '按音节着色：绿色=标准 · 黄色=一般 · 红色=需改进',
           style: TextStyle(fontSize: 12, color: Color(0xFF7E8A82)),
         ),
       ],
@@ -612,6 +624,49 @@ class ShadowingFocusPanelState extends ConsumerState<ShadowingFocusPanel> {
     if (score >= 0.7) return const Color(0xFF2E9E5B);
     if (score >= 0.4) return const Color(0xFFE0A106);
     return const Color(0xFFD5483F);
+  }
+
+  /// 词内按音节着色显示：每个音节单独用其得分配色，音节之间用“·”分隔；
+  /// 旧版服务没有音节数据时退回整词配色。
+  Widget _buildWordScoreText(PronunciationWordScore word, double fontSize) {
+    final List<PronunciationSyllableScore> syllables = word.syllables;
+    if (syllables.isEmpty) {
+      return Text(
+        word.word,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w700,
+          color: _wordColor(word.score),
+        ),
+      );
+    }
+    return Text.rich(
+      TextSpan(
+        children: <InlineSpan>[
+          for (int index = 0; index < syllables.length; index++) ...<
+            InlineSpan
+          >[
+            if (index > 0)
+              TextSpan(
+                text: '·',
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0x997E8A82),
+                ),
+              ),
+            TextSpan(
+              text: syllables[index].syllable,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: _wordColor(syllables[index].score),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   // --- 单词查词 ---

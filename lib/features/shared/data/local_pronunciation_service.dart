@@ -7,19 +7,49 @@ import 'package:dio/dio.dart';
 
 import 'desktop_pronunciation.dart';
 
-/// A per-word pronunciation score returned by the local server.
+/// A per-syllable pronunciation score returned by the local server.
+class PronunciationSyllableScore {
+  const PronunciationSyllableScore({
+    required this.syllable,
+    required this.score,
+  });
+
+  factory PronunciationSyllableScore.fromJson(Map<String, dynamic> json) {
+    return PronunciationSyllableScore(
+      syllable: (json['syllable'] as String? ?? '').trim(),
+      score: (json['score'] as num? ?? 0).toDouble(),
+    );
+  }
+
+  final String syllable;
+  final double score;
+}
+
+/// A per-word pronunciation score returned by the local server, including the
+/// finer-grained per-syllable scores when the server provides them.
 class PronunciationWordScore {
-  const PronunciationWordScore({required this.word, required this.score});
+  const PronunciationWordScore({
+    required this.word,
+    required this.score,
+    this.syllables = const <PronunciationSyllableScore>[],
+  });
 
   factory PronunciationWordScore.fromJson(Map<String, dynamic> json) {
+    final List<dynamic> rawSyllables =
+        json['syllables'] as List<dynamic>? ?? const <dynamic>[];
     return PronunciationWordScore(
       word: (json['word'] as String? ?? '').trim(),
       score: (json['score'] as num? ?? 0).toDouble(),
+      syllables: rawSyllables
+          .whereType<Map<String, dynamic>>()
+          .map(PronunciationSyllableScore.fromJson)
+          .toList(growable: false),
     );
   }
 
   final String word;
   final double score;
+  final List<PronunciationSyllableScore> syllables;
 }
 
 /// The overall + per-word pronunciation evaluation of one spoken sentence.

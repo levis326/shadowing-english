@@ -9,8 +9,21 @@ void main() {
       <String, dynamic>{
         'score': 0.8,
         'words': <Map<String, dynamic>>[
-          <String, dynamic>{'word': 'THE', 'score': 0.9},
-          <String, dynamic>{'word': 'WEATHER', 'score': 0.7},
+          <String, dynamic>{
+            'word': 'THE',
+            'score': 0.9,
+            'syllables': <Map<String, dynamic>>[
+              <String, dynamic>{'syllable': 'THE', 'score': 0.9},
+            ],
+          },
+          <String, dynamic>{
+            'word': 'WEATHER',
+            'score': 0.7,
+            'syllables': <Map<String, dynamic>>[
+              <String, dynamic>{'syllable': 'WEA', 'score': 0.9},
+              <String, dynamic>{'syllable': 'THER', 'score': 0.5},
+            ],
+          },
         ],
       },
     );
@@ -19,7 +32,24 @@ void main() {
     expect(result.words, hasLength(2));
     expect(result.words.first.word, 'THE');
     expect(result.words.first.score, 0.9);
+    expect(result.words.first.syllables.single.syllable, 'THE');
     expect(result.words.last.word, 'WEATHER');
+    expect(result.words.last.syllables, hasLength(2));
+    expect(result.words.last.syllables.last.syllable, 'THER');
+    expect(result.words.last.syllables.last.score, 0.5);
+  });
+
+  test('PronunciationResult tolerates old server JSON without syllables', () {
+    final PronunciationResult result = PronunciationResult.fromJson(
+      <String, dynamic>{
+        'score': 0.8,
+        'words': <Map<String, dynamic>>[
+          <String, dynamic>{'word': 'THE', 'score': 0.9},
+        ],
+      },
+    );
+
+    expect(result.words.single.syllables, isEmpty);
   });
 
   test('evaluate returns an empty result for empty input', () async {
