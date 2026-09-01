@@ -235,6 +235,61 @@ void main() {
     },
   );
 
+  test(
+    'standalone cache (no stored reference) stays valid when a derived srt '
+    'reference appears after restart',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-cache-restart-bilingual-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('video');
+      final AsrSubtitleCache cache = AsrSubtitleCache(
+        appSupportDirectory: () async => root,
+      );
+      final LearningSettingsState settings = LearningSettingsState.defaults();
+      await cache.write(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        content: '{"version":1,"lines":[]}',
+        settings: settings,
+      );
+
+      // 重新打开节目：参考字幕（生成的 .en.srt）存在并带签名，但缓存是
+      // 无参考独立生成的，此时不应因签名不匹配而丢弃双语 AI 字幕。
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings,
+          referenceSignature: 'derived-srt-signature',
+        ),
+        isNotNull,
+      );
+
+      // 有参考生成的缓存仍然会被不同参考签名正确地判为失效。
+      final File video2 = File('${root.path}/lesson2.mp4')
+        ..writeAsStringSync('video2');
+      await cache.write(
+        episodeId: 'ep01',
+        videoPath: video2.path,
+        content: '{"version":1,"lines":[]}',
+        settings: settings,
+        referenceSignature: 'original-reference',
+      );
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video2.path,
+          settings: settings,
+          referenceSignature: 'different-reference',
+        ),
+        isNull,
+      );
+    },
+  );
+
   test('cache removes old adopted reference subtitles', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-cache-adopted-reference-',

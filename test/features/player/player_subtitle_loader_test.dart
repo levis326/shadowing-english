@@ -216,7 +216,7 @@ Hello from file
   });
 
   test(
-    'player state falls back to english-only mode when chinese is missing',
+    'player state always offers 外文/双语 modes and keeps the explicit choice',
     () {
       final PlayerMockState state = PlayerMockState()
         ..loadLines(const <PlayerSubtitleLine>[
@@ -230,6 +230,12 @@ Hello from file
         ])
         ..setSubtitleMode('双语');
 
+      // 没有中文数据时也保留用户显式选择的“双语”（显示效果与外文一致），
+      // 字幕菜单固定提供“外文 / 双语”两个选项。
+      expect(state.subtitleMode, '双语');
+      expect(state.availableSubtitleModes, <String>['外文', '双语']);
+
+      state.setSubtitleMode('外文');
       expect(state.subtitleMode, '外文');
     },
   );

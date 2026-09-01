@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_ce/hive.dart';
 
+import '../../../utils/app_paths.dart';
 import '../../import_course/domain/import_match.dart';
 import 'library_mock_data.dart';
 
@@ -131,11 +132,15 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     }
   }
 
-  /// Attaches a generated `.srt` subtitle to an episode so it is recognized as
-  /// the episode's English subtitle on subsequent loads.
+  /// Attaches generated `.srt` subtitles to an episode so they are recognized
+  /// as the episode's subtitles on subsequent loads. When a Chinese `.zh.srt`
+  /// is provided it is attached as the Chinese subtitle as well, so the
+  /// episode keeps showing bilingual subtitles even after the AI subtitle
+  /// cache has been cleared.
   Future<void> attachSubtitleToEpisode({
     required String episodeId,
     required String enSubtitlePath,
+    String? zhSubtitlePath,
   }) async {
     bool changed = false;
     state = state
@@ -154,9 +159,16 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
                   languageLabel: '英文字幕',
                   path: enSubtitlePath,
                 ),
+                if (zhSubtitlePath != null && zhSubtitlePath.isNotEmpty)
+                  LibrarySubtitleTrackItem(
+                    languageCode: 'zh',
+                    languageLabel: '中文字幕',
+                    path: zhSubtitlePath,
+                  ),
                 ...current.subtitleTracks.where(
                   (LibrarySubtitleTrackItem track) =>
-                      !track.languageCode.toLowerCase().startsWith('en'),
+                      !track.languageCode.toLowerCase().startsWith('en') &&
+                      !track.languageCode.toLowerCase().startsWith('zh'),
                 ),
               ];
           final List<LibraryEpisodeItem> episodes = course.episodes
@@ -164,7 +176,10 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
                 (LibraryEpisodeItem item) => item.id == episodeId
                     ? item.copyWith(
                         hasEnglishSubtitles: true,
+                        hasChineseSubtitles:
+                            zhSubtitlePath != null && zhSubtitlePath.isNotEmpty,
                         enSubtitleAsset: enSubtitlePath,
+                        cnSubtitleAsset: zhSubtitlePath,
                         subtitleTracks: tracks,
                       )
                     : item,
@@ -323,13 +338,16 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
       return;
     }
 
+    // Paths below the app data directory are persisted in the portable
+    // `{appdata}/...` form so they survive moving the app folder.
+    final String dataRootPath = (await AppPaths.dataDirectory()).path;
     final List<Map<String, Object?>> importedCourses = state
         .where(
           (LibraryCourseData course) => !libraryCourses.any(
             (LibraryCourseData base) => base.id == course.id,
           ),
         )
-        .map(_serializeCourse)
+        .map((LibraryCourseData course) => _serializeCourse(course, dataRootPath))
         .toList(growable: false);
 
     if (importedCourses.isEmpty) {
@@ -342,13 +360,16 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     ).put(_libraryCatalogStorageKey, jsonEncode(importedCourses));
   }
 
-  Map<String, Object?> _serializeCourse(LibraryCourseData course) {
+  Map<String, Object?> _serializeCourse(
+    LibraryCourseData course,
+    String dataRootPath,
+  ) {
     return <String, Object?>{
       'id': course.id,
       'title': course.title,
       'description': course.description,
       'sourceLabel': course.sourceLabel,
-      'coverImage': course.coverImage,
+      'coverImage': _toStoredPath(course.coverImage, dataRootPath) ?? '',
       'level': course.level,
       'category': course.category,
       'progressPercent': course.progressPercent,
@@ -368,19 +389,25 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
               'hasEnglishSubtitles': item.hasEnglishSubtitles,
               'completed': item.completed,
               'progressPercent': item.progressPercent,
-              'coverImage': item.coverImage,
+              'coverImage': _toStoredPath(item.coverImage, dataRootPath) ?? '',
               'lastWatchedStr': item.lastWatchedStr,
               'progressTimeStr': item.progressTimeStr,
               'totalTimeStr': item.totalTimeStr,
-              'videoAsset': item.videoAsset,
-              'enSubtitleAsset': item.enSubtitleAsset,
-              'cnSubtitleAsset': item.cnSubtitleAsset,
+              'videoAsset': _toStoredPath(item.videoAsset, dataRootPath),
+              'enSubtitleAsset': _toStoredPath(
+                item.enSubtitleAsset,
+                dataRootPath,
+              ),
+              'cnSubtitleAsset': _toStoredPath(
+                item.cnSubtitleAsset,
+                dataRootPath,
+              ),
               'subtitleTracks': item.subtitleTracks
                   .map(
                     (LibrarySubtitleTrackItem track) => <String, Object?>{
                       'languageCode': track.languageCode,
                       'languageLabel': track.languageLabel,
-                      'path': track.path,
+                      'path': _toStoredPath(track.path, dataRootPath),
                     },
                   )
                   .toList(growable: false),
@@ -388,6 +415,15 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
           )
           .toList(growable: false),
     };
+  }
+
+  /// Persisted form of a path: portable `{appdata}/...` when the path lives
+  /// under the app data directory, otherwise unchanged.
+  String? _toStoredPath(String? path, String dataRootPath) {
+    if (path == null || path.trim().isEmpty || dataRootPath.isEmpty) {
+      return path;
+    }
+    return AppPaths.toPortablePath(path, dataRootPath) ?? path;
   }
 
   List<LibraryCourseData> _decodeCourses(String raw) {
@@ -406,7 +442,8 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
               title: courseJson['title']! as String,
               description: courseJson['description']! as String,
               sourceLabel: courseJson['sourceLabel'] as String? ?? '本地资源',
-              coverImage: courseJson['coverImage']! as String,
+              coverImage:
+                  _resolveStoredPath(courseJson['coverImage'] as String?) ?? '',
               level: courseJson['level']! as String,
               category: courseJson['category']! as String,
               progressPercent: courseJson['progressPercent']! as int,
@@ -469,13 +506,13 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
       hasEnglishSubtitles: json['hasEnglishSubtitles']! as bool,
       completed: json['completed']! as bool,
       progressPercent: json['progressPercent']! as int,
-      coverImage: json['coverImage'] as String? ?? '',
+      coverImage: _resolveStoredPath(json['coverImage'] as String?) ?? '',
       lastWatchedStr: json['lastWatchedStr'] as String?,
       progressTimeStr: json['progressTimeStr'] as String?,
       totalTimeStr: json['totalTimeStr'] as String?,
-      videoAsset: _sanitizeStoredPath(json['videoAsset'] as String?),
-      enSubtitleAsset: _sanitizeStoredPath(json['enSubtitleAsset'] as String?),
-      cnSubtitleAsset: _sanitizeStoredPath(json['cnSubtitleAsset'] as String?),
+      videoAsset: _resolveStoredPath(json['videoAsset'] as String?),
+      enSubtitleAsset: _resolveStoredPath(json['enSubtitleAsset'] as String?),
+      cnSubtitleAsset: _resolveStoredPath(json['cnSubtitleAsset'] as String?),
       subtitleTracks:
           ((json['subtitleTracks'] as List<Object?>?) ?? const <Object?>[])
               .cast<Map<String, Object?>>()
@@ -488,7 +525,9 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
                 (Map<String, Object?> track) => LibrarySubtitleTrackItem(
                   languageCode: track['languageCode']! as String,
                   languageLabel: track['languageLabel']! as String,
-                  path: track['path']! as String,
+                  path:
+                      _resolveStoredPath(track['path'] as String?) ??
+                      track['path']! as String,
                 ),
               )
               .toList(growable: false),
@@ -558,6 +597,40 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
       return path;
     }
     return ImportMatcher.isImportablePath(path) ? path : null;
+  }
+
+  String? _cachedDataRootPath;
+
+  /// Current portable data root used to resolve stored paths; empty when the
+  /// platform has no portable layout.
+  String get _dataRootPathSync =>
+      _cachedDataRootPath ??= AppPaths.portableDataRootPathSync() ?? '';
+
+  /// Loads a stored path into a usable absolute path:
+  ///  1. portable `{appdata}/...` paths are resolved against the current data
+  ///     root;
+  ///  2. paths that no longer exist are rebased onto the current data root
+  ///     when they point below an app-managed folder (`imported_sources`,
+  ///     `asr_subtitles`) — this recovers videos after the app folder moved
+  ///     (new drive letter / new computer) or after old user-profile data was
+  ///     migrated next to the executable.
+  String? _resolveStoredPath(String? path) {
+    final String? sanitized = _sanitizeStoredPath(path);
+    if (sanitized == null) {
+      return sanitized;
+    }
+    final String dataRootPath = _dataRootPathSync;
+    if (dataRootPath.isEmpty) {
+      return sanitized;
+    }
+    final String resolved = AppPaths.resolvePortablePath(
+      sanitized,
+      dataRootPath,
+    );
+    if (File(resolved).existsSync() || Directory(resolved).existsSync()) {
+      return resolved;
+    }
+    return AppPaths.rebasePathToDataRoot(resolved, dataRootPath) ?? resolved;
   }
 
   String _buildEpisodeId(String courseId, ImportMatchRow row, int index) {

@@ -28,6 +28,12 @@ import 'package:path_provider/path_provider.dart';
 class AppPaths {
   AppPaths._();
 
+  /// Prefix marking a path stored relative to the app data directory, e.g.
+  /// `{appdata}/imported_sources/<course>/video.mp4`. Imported course paths
+  /// are persisted in this form so they keep working when the app folder
+  /// moves (USB drive letter changes, different computers).
+  static const String portablePathPrefix = '{appdata}/';
+
   static Future<Directory?>? _portableDataDirectory;
 
   /// Desktop platforms that support the portable, exe-relative layout.
@@ -37,6 +43,86 @@ class AppPaths {
   /// The directory that contains the running executable.
   static String get executableDirectory =>
       File(Platform.resolvedExecutable).parent.path;
+
+  /// Synchronous variant of the portable data root (`<exe目录>/data`), for
+  /// use in synchronous decode paths. Returns null on platforms without the
+  /// portable layout or when the directory is not writable.
+  static String? portableDataRootPathSync() {
+    if (!supportsPortableLayout) {
+      return null;
+    }
+    final Directory dir = Directory(
+      '$executableDirectory${Platform.pathSeparator}data',
+    );
+    return _isWritableSync(dir) ? dir.path : null;
+  }
+
+  static bool _isWritableSync(Directory dir) {
+    try {
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      File('${dir.path}${Platform.pathSeparator}.cle_write_probe')
+        ..writeAsStringSync('ok', flush: true)
+        ..deleteSync();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Converts an absolute path under [dataRootPath] into the portable
+  /// `{appdata}/...` form; returns null for paths outside the data root.
+  static String? toPortablePath(String absolutePath, String dataRootPath) {
+    final String root = _normalizePath(dataRootPath);
+    final String path = _normalizePath(absolutePath);
+    if (path == root || !path.startsWith('$root/')) {
+      return null;
+    }
+    return '$portablePathPrefix${path.substring(root.length + 1)}';
+  }
+
+  /// Resolves a stored path that may use the portable `{appdata}/...` form
+  /// against [dataRootPath]. Other paths are returned unchanged.
+  static String resolvePortablePath(String storedPath, String dataRootPath) {
+    if (!storedPath.startsWith(portablePathPrefix)) {
+      return storedPath;
+    }
+    final String relative = storedPath
+        .substring(portablePathPrefix.length)
+        .replaceAll('/', Platform.pathSeparator);
+    return '$dataRootPath${Platform.pathSeparator}$relative';
+  }
+
+  /// Tries to rebase an absolute path that no longer exists onto the current
+  /// data root. Paths below a known app-managed folder (`imported_sources`,
+  /// `asr_subtitles`) are matched by their relative suffix, which makes old
+  /// absolute paths (previous drive letter, old user-profile location) work
+  /// again after the app folder moved. Returns null when no existing file can
+  /// be found under the data root.
+  static String? rebasePathToDataRoot(String path, String dataRootPath) {
+    final String normalized = path.replaceAll(String.fromCharCode(92), '/');
+    for (final String marker in <String>[
+      'imported_sources',
+      'asr_subtitles',
+    ]) {
+      final int index = normalized.indexOf('/$marker/');
+      if (index < 0) {
+        continue;
+      }
+      final String suffix = normalized.substring(index + 1);
+      final String candidate =
+          '$dataRootPath${Platform.pathSeparator}${suffix.replaceAll('/', Platform.pathSeparator)}';
+      if (File(candidate).existsSync() || Directory(candidate).existsSync()) {
+        return candidate;
+      }
+    }
+    return null;
+  }
+
+  static String _normalizePath(String path) {
+    return path.replaceAll(String.fromCharCode(92), '/');
+  }
 
   /// `<exe目录>/data` when the portable layout is available and writable;
   /// otherwise null (and platform directories are used).

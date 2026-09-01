@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Widget buildPanel({required int activeIndex, required ValueChanged<int> onTapLine}) {
+  Widget buildPanel({
+    required int activeIndex,
+    required ValueChanged<int> onTapLine,
+    String subtitleMode = '双语',
+  }) {
     const List<PlayerSubtitleLine> lines = <PlayerSubtitleLine>[
       PlayerSubtitleLine(
         startTime: '00:01',
@@ -29,6 +33,7 @@ void main() {
           child: SubtitleNavigatorPanel(
             lines: lines,
             activeIndex: activeIndex,
+            subtitleMode: subtitleMode,
             fontScale: 1,
             onTapLine: onTapLine,
             onCollectWord: (_) {},
@@ -56,6 +61,18 @@ void main() {
     expect(find.text('第二句。'), findsOneWidget);
     // 字幕区没有录音功能。
     expect(find.text('点击录音'), findsNothing);
+  });
+
+  testWidgets('外文模式隐藏中文译文', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      buildPanel(activeIndex: 0, onTapLine: (_) {}, subtitleMode: '外文'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Try'), findsOneWidget);
+    expect(find.text('Second'), findsOneWidget);
+    expect(find.text('今天就试试吧。'), findsNothing);
+    expect(find.text('第二句。'), findsNothing);
   });
 
   testWidgets('单击某句回调导航并高亮当前句', (WidgetTester tester) async {

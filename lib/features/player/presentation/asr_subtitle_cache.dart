@@ -293,14 +293,34 @@ class AsrSubtitleCache {
       settings: settings,
       referenceSignature: referenceSignature,
     );
-    if (validateReferenceSignature &&
-        (decoded['referenceSignature'] as String? ?? '') !=
-            (referenceSignature ?? '')) {
-      return false;
+    if (validateReferenceSignature) {
+      // Only enforce the signature when the cache was generated WITH a
+      // reference subtitle. Caches generated standalone (no reference, e.g.
+      // imported videos without subtitles) have no stored signature and must
+      // stay valid even when a derived `.srt` reference exists on reload —
+      // otherwise the bilingual AI subtitles would be dropped after a
+      // restart. When a signature IS stored, a mismatch means the underlying
+      // reference changed and the cache must be regenerated.
+      final String storedSignature =
+          decoded['referenceSignature'] as String? ?? '';
+      if (storedSignature.isNotEmpty &&
+          storedSignature != (referenceSignature ?? '')) {
+        return false;
+      }
     }
-    return expected.entries.every(
-      (MapEntry<String, Object?> entry) => decoded[entry.key] == entry.value,
-    );
+    // The recorded `videoPath` is informational: the app folder may move
+    // (portable USB drive), so identity is checked via size/modified-time
+    // below instead of the absolute path. `referenceSignature` is compared
+    // explicitly above (only when the cache stored one).
+    return expected.entries
+        .where(
+          (MapEntry<String, Object?> entry) =>
+              entry.key != 'videoPath' && entry.key != 'referenceSignature',
+        )
+        .every(
+          (MapEntry<String, Object?> entry) =>
+              decoded[entry.key] == entry.value,
+        );
   }
 
   Future<Directory> _cacheRoot() async {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -264,9 +265,11 @@ class PadLandscapePlayerScreenState
         (SubtitleTrack track) =>
             track.language == 'eng' || track.language == 'en',
       );
+      // 重新打开节目时也优先读取 AI 字幕缓存（双语、词级同步），而不是只显示
+      // 之前保存的外文 `.srt` 参考字幕；缓存无效时回退到参考字幕。
       if (_referenceSubtitleLines.isEmpty && hasEmbeddedEnglish) {
         unawaited(_loadEmbeddedReferenceAndCachedAiSubtitles(embeddedTracks));
-      } else if (!state.hasLines) {
+      } else {
         await _loadCachedAiSubtitles();
       }
       if (!mounted) return;
@@ -307,7 +310,7 @@ class PadLandscapePlayerScreenState
   ) async {
     try {
       await _loadEmbeddedSubtitleReference(tracks);
-      if (!mounted || state.hasLines || _generatingAiSubtitles) return;
+      if (!mounted || _generatingAiSubtitles) return;
       await _loadCachedAiSubtitles(
         validateReferenceSignature: _referenceSubtitleLines.isNotEmpty,
       );
@@ -831,6 +834,7 @@ class PadLandscapePlayerScreenState
                   child: SubtitleNavigatorPanel(
                     lines: state.lines,
                     activeIndex: state.activeLineIndex,
+                    subtitleMode: state.subtitleMode,
                     fontScale: settings.fontScale,
                     onTapLine: _goToLine,
                     onCollectWord: (String word) =>
@@ -1054,11 +1058,22 @@ class PadLandscapePlayerScreenState
           videoPath: videoPath,
           lines: lines,
         );
+        // 中文翻译存在时把 `.zh.srt` 一并挂到剧集上，重新打开节目时即使
+        // AI 缓存被清除也能继续显示双语字幕。
+        final bool hasChinese = lines.any(
+          (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
+        );
+        final String? zhSrtPath = hasChinese
+            ? '${File(videoPath).parent.path}'
+                  '${Platform.pathSeparator}'
+                  '${generatedSubtitleSrtFileName(videoPath, languageCode: 'zh')}'
+            : null;
         await ref
             .read(libraryCatalogProvider.notifier)
             .attachSubtitleToEpisode(
               episodeId: widget.episodeId,
               enSubtitlePath: srtPath,
+              zhSubtitlePath: zhSrtPath,
             );
         savedSrtFileName = generatedSubtitleSrtFileNames(
           videoPath,
@@ -1208,6 +1223,16 @@ class PadLandscapePlayerScreenState
     }
     if (!mounted) {
       return;
+    }
+    // 删除 AI 字幕缓存，避免下次重新打开时又自动加载双语 AI 字幕，
+    // 之后回退到随视频保存的原始/生成外文字幕。
+    try {
+      await const AsrSubtitleCache().delete(
+        episodeId: widget.episodeId,
+        videoPath: videoPath,
+      );
+    } catch (_) {
+      // Best effort; falling back to the reference subtitles either way.
     }
     await _loadEpisodeResources();
     _showMessage('已切回原始字幕');

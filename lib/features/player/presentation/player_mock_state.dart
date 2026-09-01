@@ -120,24 +120,9 @@ class PlayerMockState {
   bool get hasLines => lines.isNotEmpty;
 
   List<String> get availableSubtitleModes {
-    final bool hasEnglish = lines.any(
-      (PlayerSubtitleLine line) => line.english.trim().isNotEmpty,
-    );
-    final bool hasChinese = lines.any(
-      (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
-    );
-
-    final List<String> modes = <String>[];
-    if (hasEnglish) {
-      modes.add('外文');
-    }
-    if (hasEnglish && hasChinese) {
-      modes.add('双语');
-    }
-    if (modes.isEmpty) {
-      modes.add('外文');
-    }
-    return modes;
+    // 字幕模式固定提供“外文 / 双语”两档供用户切换；当前字幕没有中文数据时，
+    // “双语”与“外文”显示一致。
+    return PlayerMockState.subtitleModes;
   }
 
   bool get canAutoAdvance => hasLines && isPlaying;

@@ -7,11 +7,13 @@ import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
 import '../player_mock_state.dart';
 
-/// 字幕区：直接显示全部双语字幕（带序号）。单击某句快速定位播放。
+/// 字幕区：显示全部字幕（带序号），按 [subtitleMode] 显示“外文”或“双语”。
+/// 单击某句快速定位播放。
 class SubtitleNavigatorPanel extends StatefulWidget {
   const SubtitleNavigatorPanel({
     required this.lines,
     required this.activeIndex,
+    required this.subtitleMode,
     required this.fontScale,
     required this.onTapLine,
     required this.onCollectWord,
@@ -37,6 +39,7 @@ class SubtitleNavigatorPanel extends StatefulWidget {
 
   final List<PlayerSubtitleLine> lines;
   final int activeIndex;
+  final String subtitleMode;
   final double fontScale;
   final ValueChanged<int> onTapLine;
   final ValueChanged<String> onCollectWord;
@@ -329,7 +332,8 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
                       _buildWordLine(line, index, active, textOpacity),
-                      if (line.chinese.trim().isNotEmpty) ...<Widget>[
+                      if (widget.subtitleMode == '双语' &&
+                          line.chinese.trim().isNotEmpty) ...<Widget>[
                         const SizedBox(height: 6),
                         Text(
                           line.chinese,
