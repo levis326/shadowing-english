@@ -89,7 +89,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await tester.pumpAndSettle();
 
@@ -152,7 +152,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
     });
 
     expect(find.textContaining('正在生成封面'), findsNothing);
@@ -228,7 +228,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
     });
     await tester.pumpAndSettle();
 
