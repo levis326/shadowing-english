@@ -944,6 +944,64 @@ void main() {
     expect(lines[2].english, 'Final part.');
   });
 
+  test('splits one long recognized line into separate subtitle cues', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-long-line-split-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+        ],
+      ),
+      // 服务商把多个句子识别成同一行（长字幕）。
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson(
+            'Hello world; This is a test. Final question?',
+            1000,
+          ),
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    // 遇到分号、句号、问号分别生成一行新字幕，避免一句字幕过长。
+    expect(lines, hasLength(3));
+    expect(lines[0].english, 'Hello world;');
+    expect(lines[1].english, 'This is a test.');
+    expect(lines[2].english, 'Final question?');
+    // 每一行都带有对应的词级时间戳。
+    expect(
+      lines[0].words.map((PlayerSubtitleWord w) => w.text).join(' '),
+      'Hello world;',
+    );
+    expect(
+      lines[1].words.map((PlayerSubtitleWord w) => w.text).join(' '),
+      'This is a test.',
+    );
+    expect(
+      lines[2].words.map((PlayerSubtitleWord w) => w.text).join(' '),
+      'Final question?',
+    );
+    // 时间轴连续且不重叠。
+    expect(lines[0].startMs, lessThan(lines[0].endMs));
+    expect(lines[0].endMs, lessThanOrEqualTo(lines[1].startMs));
+    expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',

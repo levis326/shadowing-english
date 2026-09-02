@@ -544,6 +544,9 @@ class AsrSubtitleJobRunner {
         raw = _addTimingWarning(raw);
       }
     }
+    // 按句号、问号、分号等句子标点拆分成独立字幕行，避免一句字幕过长；
+    // 拆分在翻译之前进行，每个句子单独翻译、单独成行。
+    raw = _splitLinesAtSentencePunctuation(raw);
     late final String completedRaw;
     try {
       final String translatedRaw = await _addChineseTranslations(
@@ -1351,6 +1354,90 @@ class AsrSubtitleJobRunner {
         last == '！' ||
         last == '？' ||
         last == '；';
+  }
+
+  /// Splits every subtitle line at sentence punctuation (`.!?;。！？；`) so
+  /// one cue never contains several sentences. The word-level timestamps are
+  /// carried into each resulting line, and each sentence gets its own Chinese
+  /// translation afterwards.
+  String _splitLinesAtSentencePunctuation(String raw) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    final List<dynamic> lines =
+        decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
+    final List<Map<String, Object?>> splitLines = <Map<String, Object?>>[];
+    for (final dynamic line in lines) {
+      if (line is! Map<String, dynamic>) {
+        continue;
+      }
+      splitLines.addAll(_splitLineAtSentencePunctuation(line));
+    }
+    decoded['lines'] = splitLines;
+    return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  List<Map<String, Object?>> _splitLineAtSentencePunctuation(
+    Map<String, dynamic> line,
+  ) {
+    final List<Map<String, dynamic>> words =
+        (line['words'] as List<dynamic>? ?? const <dynamic>[])
+            .whereType<Map<String, dynamic>>()
+            .toList(growable: false);
+    if (words.isEmpty) {
+      // 没有词级时间戳时无法拆分，保留原行。
+      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
+    }
+
+    final List<List<Map<String, dynamic>>> groups =
+        <List<Map<String, dynamic>>>[];
+    List<Map<String, dynamic>> current = <Map<String, dynamic>>[];
+    for (final Map<String, dynamic> word in words) {
+      current.add(word);
+      final String text = (word['text'] as String? ?? '').trim();
+      if (text.isNotEmpty && _endsSentence(text)) {
+        groups.add(current);
+        current = <Map<String, dynamic>>[];
+      }
+    }
+    if (current.isNotEmpty) {
+      groups.add(current);
+    }
+    if (groups.length <= 1) {
+      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
+    }
+
+    final List<Map<String, Object?>> subLines = <Map<String, Object?>>[];
+    int previousEndMs = -1;
+    for (final List<Map<String, dynamic>> group in groups) {
+      int startMs =
+          (group.first['startMs'] as num?)?.round() ??
+          (line['startMs'] as num?)?.round() ??
+          0;
+      int endMs =
+          (group.last['endMs'] as num?)?.round() ??
+          (line['endMs'] as num?)?.round() ??
+          startMs;
+      // 相邻子行不允许时间轴重叠（否则校验失败）。
+      if (previousEndMs > 0 && startMs < previousEndMs) {
+        startMs = previousEndMs;
+      }
+      if (endMs <= startMs) {
+        endMs = startMs + 1;
+      }
+      previousEndMs = endMs;
+      final String english = group
+          .map((Map<String, dynamic> word) => (word['text'] as String? ?? '').trim())
+          .where((String text) => text.isNotEmpty)
+          .join(' ');
+      subLines.add(<String, Object?>{
+        'startMs': startMs,
+        'endMs': endMs,
+        'english': english,
+        'chinese': '', // 拆分后每句单独翻译
+        'words': group,
+      });
+    }
+    return subLines;
   }
 
   Map<String, Object?> _mergeLineBuffer(List<Map<String, Object?>> buffer) {
