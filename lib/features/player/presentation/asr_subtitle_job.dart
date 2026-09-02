@@ -1356,10 +1356,23 @@ class AsrSubtitleJobRunner {
         last == '；';
   }
 
-  /// Splits every subtitle line at sentence punctuation (`.!?;。！？；`) so
-  /// one cue never contains several sentences. The word-level timestamps are
-  /// carried into each resulting line, and each sentence gets its own Chinese
-  /// translation afterwards.
+  /// 分句标点集合：见到这些符号就拆成新的字幕行（含逗号、分号、冒号）。
+  bool _endsClause(String text) {
+    if (text.isEmpty) {
+      return false;
+    }
+    final String last = text.substring(text.length - 1);
+    return _endsSentence(text) ||
+        last == ',' ||
+        last == '，' ||
+        last == ':' ||
+        last == '：';
+  }
+
+  /// Splits every subtitle line at clause punctuation (`, . ! ? ; :` and the
+  /// full-width equivalents) so one cue never contains several sentences.
+  /// Boundaries are derived from the line's own English text — not from the
+  /// word entries — because reference-aligned words carry no punctuation.
   String _splitLinesAtSentencePunctuation(String raw) {
     final Map<String, dynamic> decoded =
         jsonDecode(raw) as Map<String, dynamic>;
@@ -1379,44 +1392,74 @@ class AsrSubtitleJobRunner {
   List<Map<String, Object?>> _splitLineAtSentencePunctuation(
     Map<String, dynamic> line,
   ) {
+    final String english = (line['english'] as String? ?? '').trim();
+    final List<String> tokens = english
+        .split(RegExp(r'\s+'))
+        .where((String token) => token.isNotEmpty)
+        .toList(growable: false);
+    if (tokens.length < 2) {
+      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
+    }
+
+    // 找出所有“断句点”：该 token 以分句标点结尾，其后另起一行。
+    final List<int> boundaries = <int>[];
+    for (int index = 0; index < tokens.length - 1; index += 1) {
+      if (_endsClause(tokens[index])) {
+        boundaries.add(index);
+      }
+    }
+    if (boundaries.isEmpty) {
+      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
+    }
+
+    final List<List<int>> ranges = <List<int>>[];
+    int start = 0;
+    for (final int boundary in boundaries) {
+      ranges.add(List<int>.generate(boundary - start + 1, (int i) => start + i));
+      start = boundary + 1;
+    }
+    ranges.add(List<int>.generate(tokens.length - start, (int i) => start + i));
+
     final List<Map<String, dynamic>> words =
         (line['words'] as List<dynamic>? ?? const <dynamic>[])
             .whereType<Map<String, dynamic>>()
             .toList(growable: false);
-    if (words.isEmpty) {
-      // 没有词级时间戳时无法拆分，保留原行。
-      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
-    }
-
-    final List<List<Map<String, dynamic>>> groups =
-        <List<Map<String, dynamic>>>[];
-    List<Map<String, dynamic>> current = <Map<String, dynamic>>[];
-    for (final Map<String, dynamic> word in words) {
-      current.add(word);
-      final String text = (word['text'] as String? ?? '').trim();
-      if (text.isNotEmpty && _endsSentence(text)) {
-        groups.add(current);
-        current = <Map<String, dynamic>>[];
-      }
-    }
-    if (current.isNotEmpty) {
-      groups.add(current);
-    }
-    if (groups.length <= 1) {
-      return <Map<String, Object?>>[Map<String, Object?>.from(line)];
-    }
+    final int lineStartMs = (line['startMs'] as num?)?.round() ?? 0;
+    final int lineEndMs =
+        (line['endMs'] as num?)?.round() ?? lineStartMs;
 
     final List<Map<String, Object?>> subLines = <Map<String, Object?>>[];
     int previousEndMs = -1;
-    for (final List<Map<String, dynamic>> group in groups) {
-      int startMs =
-          (group.first['startMs'] as num?)?.round() ??
-          (line['startMs'] as num?)?.round() ??
-          0;
-      int endMs =
-          (group.last['endMs'] as num?)?.round() ??
-          (line['endMs'] as num?)?.round() ??
-          startMs;
+    for (final List<int> range in ranges) {
+      final String subEnglish = range
+          .map((int index) => tokens[index])
+          .join(' ');
+      // 词级时间戳按 token 位置对应；参考字幕对齐的词不含标点，
+      // 因此用 token 序号而不是词文本来分组。
+      final List<Map<String, dynamic>> groupWords = words.isEmpty
+          ? const <Map<String, dynamic>>[]
+          : range
+                .map(
+                  (int tokenIndex) => words[tokenIndex < words.length
+                      ? tokenIndex
+                      : words.length - 1],
+                )
+                .toList(growable: false);
+      int startMs;
+      int endMs;
+      if (groupWords.isNotEmpty) {
+        startMs =
+            (groupWords.first['startMs'] as num?)?.round() ?? lineStartMs;
+        endMs =
+            (groupWords.last['endMs'] as num?)?.round() ?? lineEndMs;
+      } else {
+        // 没有词级时间戳时按 token 占比切分整行时间。
+        final double span = (lineEndMs - lineStartMs).toDouble();
+        startMs =
+            lineStartMs + (range.first / tokens.length * span).round();
+        endMs = lineStartMs +
+            ((range.last + 1) / tokens.length * span).round();
+      }
       // 相邻子行不允许时间轴重叠（否则校验失败）。
       if (previousEndMs > 0 && startMs < previousEndMs) {
         startMs = previousEndMs;
@@ -1425,16 +1468,12 @@ class AsrSubtitleJobRunner {
         endMs = startMs + 1;
       }
       previousEndMs = endMs;
-      final String english = group
-          .map((Map<String, dynamic> word) => (word['text'] as String? ?? '').trim())
-          .where((String text) => text.isNotEmpty)
-          .join(' ');
       subLines.add(<String, Object?>{
         'startMs': startMs,
         'endMs': endMs,
-        'english': english,
+        'english': subEnglish,
         'chinese': '', // 拆分后每句单独翻译
-        'words': group,
+        'words': groupWords,
       });
     }
     return subLines;

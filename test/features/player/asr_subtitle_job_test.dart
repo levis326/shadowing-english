@@ -1002,6 +1002,59 @@ void main() {
     expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
   });
 
+  test('splits reference-aligned lines by comma, period, and question mark', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-clause-split-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+        ],
+      ),
+      // 参考字幕对齐后的词不携带标点（与真实流程一致），
+      // 长行必须在逗号、句号、问号处拆开。
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJsonWithStrippedWords(
+            "And I'm Beth. Menstruation, or periods. Final question?",
+            1000,
+          ),
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    expect(lines, hasLength(4));
+    expect(lines[0].english, "And I'm Beth.");
+    expect(lines[1].english, 'Menstruation,');
+    expect(lines[2].english, 'or periods.');
+    expect(lines[3].english, 'Final question?');
+    // 每行携带对应的词级时间戳（词文本无标点，行文本有标点）。
+    expect(
+      lines[0].words.map((PlayerSubtitleWord w) => w.text).join(' '),
+      "And I'm Beth",
+    );
+    expect(
+      lines[1].words.map((PlayerSubtitleWord w) => w.text).join(' '),
+      'Menstruation',
+    );
+    expect(lines[0].endMs, lessThanOrEqualTo(lines[1].startMs));
+    expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',
@@ -1635,6 +1688,41 @@ Map<String, Object?> _chunkJson(String english, int startMs) {
   final List<String> words = english
       .split(RegExp(r'\s+'))
       .where((String word) => word.isNotEmpty)
+      .toList(growable: false);
+  final int wordMs = (1000 / words.length).round();
+  return <String, Object?>{
+    'version': 1,
+    'language': 'en',
+    'lines': <Map<String, Object?>>[
+      <String, Object?>{
+        'startMs': startMs,
+        'endMs': startMs + 1000,
+        'english': english,
+        'chinese': '',
+        'words': words
+            .asMap()
+            .entries
+            .map((MapEntry<int, String> entry) {
+              final int wordStartMs = startMs + entry.key * wordMs;
+              return <String, Object?>{
+                'text': entry.value,
+                'startMs': wordStartMs,
+                'endMs': entry.key == words.length - 1
+                    ? startMs + 1000
+                    : wordStartMs + wordMs,
+              };
+            })
+            .toList(growable: false),
+      },
+    ],
+  };
+}
+
+/// 模拟参考字幕对齐后的词条：词文本不含标点，与 [english] 中的 token 一一对应。
+Map<String, Object?> _chunkJsonWithStrippedWords(String english, int startMs) {
+  final List<String> words = RegExp("[A-Za-z0-9]+(?:[’'-][A-Za-z0-9]+)?")
+      .allMatches(english)
+      .map((Match match) => match.group(0)!)
       .toList(growable: false);
   final int wordMs = (1000 / words.length).round();
   return <String, Object?>{
