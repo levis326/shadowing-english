@@ -1055,6 +1055,77 @@ void main() {
     expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
   });
 
+  test('split cues are contiguous so clicked lines play their full audio', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-contiguous-split-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+        ],
+      ),
+      // 词尾时间戳偏早（真实 ASR/参考估计常见）："Unfortunately" 实际发音
+      // 到 1900ms 左右，但词条 endMs 只到 1400ms，后面词从 1950ms 开始。
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => <String, Object?>{
+            'version': 1,
+            'language': 'en',
+            'lines': <Map<String, Object?>>[
+              <String, Object?>{
+                'startMs': 1000,
+                'endMs': 2400,
+                'english': 'Unfortunately, the news.',
+                'chinese': '',
+                'words': <Map<String, Object?>>[
+                  <String, Object?>{
+                    'text': 'Unfortunately',
+                    'startMs': 1000,
+                    'endMs': 1400,
+                  },
+                  <String, Object?>{
+                    'text': 'the',
+                    'startMs': 1950,
+                    'endMs': 2100,
+                  },
+                  <String, Object?>{
+                    'text': 'news',
+                    'startMs': 2100,
+                    'endMs': 2400,
+                  },
+                ],
+              },
+            ],
+          },
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    expect(lines, hasLength(2));
+    expect(lines[0].english, 'Unfortunately,');
+    expect(lines[1].english, 'the news.');
+    // 首尾相接：点击 "Unfortunately," 会播放到下一行起点（覆盖被低估的
+    // 词尾音节），点击下一行则从它自己的词开始。
+    expect(lines[0].startMs, 1000);
+    expect(lines[0].endMs, lines[1].startMs);
+    expect(lines[1].startMs, 1950);
+    expect(lines[1].endMs, 2400);
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',

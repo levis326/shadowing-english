@@ -1476,6 +1476,24 @@ class AsrSubtitleJobRunner {
         'words': groupWords,
       });
     }
+
+    // 让拆出来的子行时间轴首尾相接：每一行都延伸到下一行的起点，
+    // 第一行从原行起点开始、最后一行覆盖到原行终点。这样点击某行时
+    // 该行的完整发音（包括词尾被低估的音节）不会被切到下一行去播放。
+    if (subLines.isNotEmpty) {
+      subLines.first['startMs'] = lineStartMs;
+      for (int index = 0; index < subLines.length - 1; index += 1) {
+        final int nextStartMs = _timelineMs(subLines[index + 1]['startMs']);
+        final int currentStartMs = _timelineMs(subLines[index]['startMs']);
+        if (nextStartMs > currentStartMs) {
+          subLines[index]['endMs'] = nextStartMs;
+        }
+      }
+      final int lastEndMs = _timelineMs(subLines.last['endMs']);
+      if (lineEndMs > lastEndMs) {
+        subLines.last['endMs'] = lineEndMs;
+      }
+    }
     return subLines;
   }
 
