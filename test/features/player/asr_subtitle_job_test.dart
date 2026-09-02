@@ -899,6 +899,51 @@ void main() {
     expect(lines.single.startMs, 1000);
   });
 
+  test('starts a new subtitle line after semicolons and other punctuation', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-semicolon-split-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final File chunk1 = File('${root.path}/chunk1.m4a')..writeAsStringSync('1');
+    final File chunk2 = File('${root.path}/chunk2.m4a')..writeAsStringSync('2');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+          AsrAudioChunk(file: chunk1, offsetMs: 58000),
+          AsrAudioChunk(file: chunk2, offsetMs: 116000),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => chunk.file.path == chunk0.path
+          ? _chunkJson('First part;', 1000)
+          : chunk.file.path == chunk1.path
+          ? _chunkJson('Second part?', 59000)
+          : _chunkJson('Final part.', 117000),
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    // 分号、问号、句号结尾的片段各自成行，不合并。
+    expect(lines, hasLength(3));
+    expect(lines[0].english, 'First part;');
+    expect(lines[1].english, 'Second part?');
+    expect(lines[2].english, 'Final part.');
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',

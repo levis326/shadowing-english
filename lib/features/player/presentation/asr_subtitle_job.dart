@@ -1317,7 +1317,9 @@ class AsrSubtitleJobRunner {
 
   /// Merges adjacent whisper fragments into whole English sentences, so each
   /// subtitle cue corresponds to one sentence. Fragments that do not end with
-  /// sentence punctuation (`.!?`) are joined with the following fragment.
+  /// sentence punctuation (`.!?;；。！？`) are joined with the following
+  /// fragment; fragments ending with any of those punctuation marks start a
+  /// new subtitle line.
   List<Map<String, Object?>> _mergeIntoEnglishSentences(
     List<Map<String, Object?>> lines,
   ) {
@@ -1344,9 +1346,11 @@ class AsrSubtitleJobRunner {
     return last == '.' ||
         last == '!' ||
         last == '?' ||
+        last == ';' ||
         last == '。' ||
         last == '！' ||
-        last == '？';
+        last == '？' ||
+        last == '；';
   }
 
   Map<String, Object?> _mergeLineBuffer(List<Map<String, Object?>> buffer) {
