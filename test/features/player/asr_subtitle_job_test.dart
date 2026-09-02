@@ -455,6 +455,48 @@ void main() {
     expect(subtitleGenerationWarning(raw), isNull);
   });
 
+  test('translation sanitizes unknown-token placeholders', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-translation-sanitize-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk.m4a')
+      ..writeAsStringSync('audio');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('first line.', 1000),
+      translateSentence:
+          ({
+            required String sentence,
+            required LearningSettingsState settings,
+          }) async => '学会\u2047 ,然后开始做\u2047片\uFFFD。',
+    );
+    final LearningSettingsState settings = _settings().copyWith(
+      generateBilingualAsrSubtitles: true,
+      translationProvider: 'OpenAI',
+    );
+
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: settings,
+    );
+
+    expect(parseSubtitleLines(raw).single.chinese, '学会,然后开始做片。');
+  });
+
   test('resume skips completed chunk files', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-resume-',

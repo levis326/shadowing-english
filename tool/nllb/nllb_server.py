@@ -14,6 +14,7 @@ Endpoints:
 
 import argparse
 import json
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import ctranslate2
@@ -72,7 +73,7 @@ class TranslateHandler(BaseHTTPRequestHandler):
             for i, token in enumerate(out_tokens)
             if not (i == 0 and token == tgt_lang) and token != "</s>"
         ]
-        return self.sp.decode(decode_tokens)
+        return sanitize_translation(self.sp.decode(decode_tokens))
 
     def _write_json(self, status, payload):
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -85,6 +86,17 @@ class TranslateHandler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         # Silence the default per-request logging.
         pass
+
+
+def sanitize_translation(text):
+    """Removes unknown-token placeholders the model emits for words it cannot
+    translate (`⁇` U+2047 is the NLLB tokenizer's unk surface, `�` U+FFFD is
+    the generic replacement char), and tightens the spacing around
+    punctuation they leave behind."""
+    cleaned = text.replace("\u2047", "").replace("\ufffd", "")
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"\s+([,.;:!?，。；：！？、])", r"\1", cleaned)
+    return cleaned.strip()
 
 
 def main():

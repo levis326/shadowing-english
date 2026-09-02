@@ -753,9 +753,16 @@ class AsrSubtitleJobRunner {
         decoded['translationWarning'] = '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置或网络后重新生成。';
         break;
       }
-      line['chinese'] = chinese.trim();
+      final String sanitized = _sanitizeTranslation(chinese);
+      if (sanitized.isEmpty) {
+        // 翻译结果只剩乱码占位符时，该行保留英文（双语模式下不显示中文行）。
+        done += 1;
+        onProgress?.call(done, pendingLines.length);
+        continue;
+      }
+      line['chinese'] = sanitized;
       if (cached == null) {
-        translations[key] = chinese.trim();
+        translations[key] = sanitized;
         await _writeJsonAtomically(checkpoint, <String, Object?>{
           'version': 1,
           'signature': signature,
@@ -838,13 +845,13 @@ class AsrSubtitleJobRunner {
         final String english = englishBatch[i];
         final String key = _translationLineKey(line, english);
         final String? chinese = results.length > i ? results[i] : null;
-        final String trimmed = chinese?.trim() ?? '';
-        if (trimmed.isEmpty) {
+        final String sanitized = _sanitizeTranslation(chinese ?? '');
+        if (sanitized.isEmpty) {
           incomplete = true;
           continue;
         }
-        line['chinese'] = trimmed;
-        translations[key] = trimmed;
+        line['chinese'] = sanitized;
+        translations[key] = sanitized;
         done += 1;
         onProgress?.call(done, pendingLines.length);
       }
@@ -859,6 +866,21 @@ class AsrSubtitleJobRunner {
       }
     }
     return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  /// 清理翻译结果中的乱码占位符：本地模型对无法翻译的词会输出
+  /// `⁇`（U+2047，NLLB 词表的未知词符号）或 `�`（U+FFFD），
+  /// 移除它们并收紧标点前的多余空格。
+  String _sanitizeTranslation(String text) {
+    String cleaned = text
+        .replaceAll('\u2047', '')
+        .replaceAll('\uFFFD', '');
+    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
+    cleaned = cleaned.replaceAllMapped(
+      RegExp(r'\s+([,.;:!?，。；：！？、])'),
+      (Match match) => match.group(1)!,
+    );
+    return cleaned;
   }
 
   String? _bilingualConfigurationError(LearningSettingsState settings) {
