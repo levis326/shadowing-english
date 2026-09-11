@@ -31,7 +31,7 @@ mkdir -p "$OUTPUT_DIR"
   ctranslate2 sentencepiece pyinstaller
 
 "$PYTHON" -m PyInstaller \
-  --onefile \
+  --onedir \
   --name nllb-server \
   --distpath "$OUTPUT_DIR" \
   --workpath "$work_dir/build" \
@@ -39,15 +39,19 @@ mkdir -p "$OUTPUT_DIR"
   --clean \
   "$script_dir/nllb_server.py"
 
+# 用 `--onedir` 而不是 `--onefile`：onefile 每次启动都会把自己解压到宿主机的
+# `%TEMP%\_MEIxxxx`，在 U 盘上换电脑运行时会往别人的电脑里写文件；onedir 的
+# 可执行文件与依赖都在程序目录内，启动也更快。
+# PyInstaller 会把可执行文件放在 `$OUTPUT_DIR/nllb-server/` 里。
 if [[ "$TARGET" == "windows-x64" ]]; then
-  test -f "$OUTPUT_DIR/nllb-server.exe"
+  test -f "$OUTPUT_DIR/nllb-server/nllb-server.exe"
 else
-  test -x "$OUTPUT_DIR/nllb-server"
+  test -x "$OUTPUT_DIR/nllb-server/nllb-server"
 fi
 
 cat > "$OUTPUT_DIR/BUILD-INFO.txt" <<EOF
-nllb-server (PyInstaller)
+nllb-server (PyInstaller, onedir)
 Dependencies: ctranslate2 + sentencepiece (prebuilt wheels)
 Target: ${TARGET}
 EOF
-chmod +x "$OUTPUT_DIR/nllb-server" 2>/dev/null || true
+chmod +x "$OUTPUT_DIR/nllb-server/nllb-server" 2>/dev/null || true

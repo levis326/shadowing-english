@@ -33,7 +33,7 @@ mkdir -p "$OUTPUT_DIR"
   soundfile pyinstaller
 
 "$PYTHON" -m PyInstaller \
-  --onefile \
+  --onedir \
   --name pronunciation-server \
   --distpath "$OUTPUT_DIR" \
   --workpath "$work_dir/build" \
@@ -43,15 +43,19 @@ mkdir -p "$OUTPUT_DIR"
   --collect-all soundfile \
   "$script_dir/pronunciation_server.py"
 
+# 用 `--onedir` 而不是 `--onefile`：onefile 每次启动都会把自己解压到宿主机的
+# `%TEMP%\_MEIxxxx`，在 U 盘上换电脑运行时会往别人的电脑里写文件；onedir 的
+# 可执行文件与依赖都在程序目录内，启动也更快。
+# PyInstaller 会把可执行文件放在 `$OUTPUT_DIR/pronunciation-server/` 里。
 if [[ "$TARGET" == "windows-x64" ]]; then
-  test -f "$OUTPUT_DIR/pronunciation-server.exe"
+  test -f "$OUTPUT_DIR/pronunciation-server/pronunciation-server.exe"
 else
-  test -x "$OUTPUT_DIR/pronunciation-server"
+  test -x "$OUTPUT_DIR/pronunciation-server/pronunciation-server"
 fi
 
 cat > "$OUTPUT_DIR/BUILD-INFO.txt" <<EOF
-pronunciation-server (PyInstaller)
+pronunciation-server (PyInstaller, onedir)
 Dependencies: torch + torchaudio (CPU) + soundfile (prebuilt wheels)
 Target: ${TARGET}
 EOF
-chmod +x "$OUTPUT_DIR/pronunciation-server" 2>/dev/null || true
+chmod +x "$OUTPUT_DIR/pronunciation-server/pronunciation-server" 2>/dev/null || true

@@ -21,6 +21,12 @@ List<String> desktopPronunciationBinaryCandidates({
       ? '$desktopPronunciationBinaryName.exe'
       : desktopPronunciationBinaryName;
   return <String>[
+    // 当前发布包使用 PyInstaller onedir：
+    // <dir>/pronunciation-server/pronunciation-server.exe（依赖都在同目录的
+    // _internal 里，运行时不会向宿主机的 %TEMP% 解压任何文件）。
+    if (dir != null)
+      '$dir$separator$desktopPronunciationBinaryName$separator$binary',
+    // 兼容旧的 PyInstaller onefile 布局：<dir>/pronunciation-server.exe
     if (dir != null) '$dir$separator$binary',
     binary,
   ];

@@ -255,7 +255,9 @@ jobs:
       - name: Smoke test local NLLB translator
         shell: pwsh
         run: |
-          $nllb = "build/nllb-bundle/windows-x64/nllb-server.exe"
+          # PyInstaller --onedir: the executable lives inside its own folder so
+          # nothing is extracted to %TEMP% on the user's machine.
+          $nllb = "build/nllb-bundle/windows-x64/nllb-server/nllb-server.exe"
           if (-not (Test-Path $nllb)) { Write-Host "MISSING: $nllb"; exit 1 }
           & $nllb --help
           $code = $LASTEXITCODE
@@ -274,7 +276,7 @@ jobs:
       - name: Smoke test local pronunciation server
         shell: pwsh
         run: |
-          $pron = "build/pronunciation-bundle/windows-x64/pronunciation-server.exe"
+          $pron = "build/pronunciation-bundle/windows-x64/pronunciation-server/pronunciation-server.exe"
           if (-not (Test-Path $pron)) { Write-Host "MISSING: $pron"; exit 1 }
           & $pron --help
           $code = $LASTEXITCODE
@@ -293,13 +295,19 @@ jobs:
       - name: Bundle local NLLB translator
         shell: pwsh
         run: |
-          Copy-Item build/nllb-bundle/windows-x64 build/windows/x64/runner/Release/nllb -Recurse
+          # Copy the PyInstaller onedir contents (exe + _internal) so the app
+          # still finds nllb/nllb-server.exe next to the app executable.
+          New-Item -ItemType Directory -Force build/windows/x64/runner/Release/nllb | Out-Null
+          Copy-Item "build/nllb-bundle/windows-x64/nllb-server/*" build/windows/x64/runner/Release/nllb -Recurse -Force
           if (-not (Test-Path build/windows/x64/runner/Release/nllb/nllb-server.exe)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/nllb/_internal)) { exit 1 }
       - name: Bundle local pronunciation server
         shell: pwsh
         run: |
-          Copy-Item build/pronunciation-bundle/windows-x64 build/windows/x64/runner/Release/pronunciation -Recurse
+          New-Item -ItemType Directory -Force build/windows/x64/runner/Release/pronunciation | Out-Null
+          Copy-Item "build/pronunciation-bundle/windows-x64/pronunciation-server/*" build/windows/x64/runner/Release/pronunciation -Recurse -Force
           if (-not (Test-Path build/windows/x64/runner/Release/pronunciation/pronunciation-server.exe)) { exit 1 }
+          if (-not (Test-Path build/windows/x64/runner/Release/pronunciation/_internal)) { exit 1 }
       - name: Package Windows bundle
         shell: pwsh
         env:
