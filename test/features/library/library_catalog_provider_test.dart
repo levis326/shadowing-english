@@ -5,6 +5,7 @@ import 'package:common_learn_english/features/import_course/domain/import_match.
 import 'package:common_learn_english/features/import_course/domain/video_cover_extractor.dart';
 import 'package:common_learn_english/features/library/presentation/library_catalog_provider.dart';
 import 'package:common_learn_english/features/library/presentation/library_mock_data.dart';
+import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
 import 'package:common_learn_english/features/shared/presentation/media/cover_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -681,6 +682,72 @@ void main() {
           .first;
       expect(updated.episodes, hasLength(1));
       expect(updated.totalEpisodes, 1);
+    });
+
+    test('deleteAllImportedCourses removes videos, subtitles and AI caches', () async {
+      final Directory sourceDir = Directory.systemTemp.createTempSync(
+        'library-delete-all-source-',
+      );
+      addTearDown(() => sourceDir.deleteSync(recursive: true));
+      final File videoFile = File('${sourceDir.path}/Lesson01.mp4')
+        ..writeAsStringSync('video-bytes');
+      final File englishSubtitle = File('${sourceDir.path}/Lesson01.en.srt')
+        ..writeAsStringSync('hello');
+      final File chineseSubtitle = File('${sourceDir.path}/Lesson01.zh.srt')
+        ..writeAsStringSync('你好');
+
+      final ProviderContainer container = ProviderContainer();
+      addTearDown(container.dispose);
+      final LibraryCatalogNotifier notifier = container.read(
+        libraryCatalogProvider.notifier,
+      );
+      await notifier.importCourseFromMatches(
+        rows: <ImportMatchRow>[
+          _makeRow(
+            videoPath: videoFile.path,
+            videoFile: 'Lesson01.mp4',
+            englishSubtitlePath: englishSubtitle.path,
+            chineseSubtitlePath: chineseSubtitle.path,
+          ),
+        ],
+        videoFolder: sourceDir.path,
+        subtitleFolder: sourceDir.path,
+        courseTitle: '待删除课程',
+      );
+      final LibraryCourseData course = container
+          .read(libraryCatalogProvider)
+          .first;
+      final LibraryEpisodeItem episode = course.episodes.first;
+      final Directory copiedDir = File(episode.videoAsset!).parent;
+      expect(copiedDir.existsSync(), isTrue);
+
+      // 造一份该剧集的 AI 字幕缓存。
+      const AsrSubtitleCache cache = AsrSubtitleCache();
+      final File cacheFile = await cache.cacheFileFor(
+        episodeId: episode.id,
+        videoPath: episode.videoAsset!,
+      );
+      cacheFile.parent.createSync(recursive: true);
+      cacheFile.writeAsStringSync('{"lines":[]}');
+      final Directory cacheDir = cacheFile.parent;
+      expect(cacheDir.existsSync(), isTrue);
+
+      final int removed = await notifier.deleteAllImportedCourses();
+
+      expect(removed, 1);
+      expect(
+        container
+            .read(libraryCatalogProvider)
+            .any((LibraryCourseData item) => item.id == course.id),
+        isFalse,
+      );
+      // 视频/字幕（数据目录副本）与 AI 字幕缓存都被删除。
+      expect(copiedDir.existsSync(), isFalse);
+      expect(cacheDir.existsSync(), isFalse);
+      // 用户原始文件保留。
+      expect(videoFile.existsSync(), isTrue);
+      expect(englishSubtitle.existsSync(), isTrue);
+      expect(chineseSubtitle.existsSync(), isTrue);
     });
 
     test('custom cover image is copied into the app data directory', () async {

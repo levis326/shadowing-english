@@ -23,6 +23,26 @@ Future<List<ImportMatchRow>> _syncParse({
   );
 }
 
+
+/// 轮询等待真实文件复制完成（导入会把媒体复制进应用数据目录），
+/// 避免依赖固定等待时间造成抖动。
+Future<void> _waitForImport(ProviderContainer container) async {
+  for (int attempt = 0; attempt < 100; attempt += 1) {
+    final bool imported = container
+        .read(libraryCatalogProvider)
+        .any(
+          (LibraryCourseData course) => course.episodes.any(
+            (LibraryEpisodeItem episode) =>
+                (episode.videoAsset ?? '').contains('imported_sources'),
+          ),
+        );
+    if (imported) {
+      return;
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  }
+}
+
 void main() {
   testWidgets('import screen follows the redesigned three-step import flow', (
     WidgetTester tester,
@@ -89,7 +109,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await _waitForImport(container);
     });
     await tester.pumpAndSettle();
 
@@ -149,17 +169,17 @@ void main() {
 
     // 导入会把媒体文件真实复制进应用数据目录（真实 IO），
     // 必须在 runAsync 中触发并等待完成。
+    final ProviderContainer usedContainer = ProviderScope.containerOf(
+      tester.element(find.byType(ImportCourseFlow)),
+    );
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await _waitForImport(usedContainer);
     });
 
     expect(find.textContaining('正在生成封面'), findsNothing);
     await tester.pumpAndSettle();
-    final ProviderContainer usedContainer = ProviderScope.containerOf(
-      tester.element(find.byType(ImportCourseFlow)),
-    );
     final LibraryEpisodeItem importedEpisode = usedContainer
         .read(libraryCatalogProvider)
         .first
@@ -228,7 +248,7 @@ void main() {
     await tester.runAsync(() async {
       await tester.tap(find.widgetWithText(FilledButton, '确认导入并建立课程'));
       await tester.pump();
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await _waitForImport(container);
     });
     await tester.pumpAndSettle();
 

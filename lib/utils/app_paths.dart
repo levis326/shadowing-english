@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -62,7 +63,7 @@ class AppPaths {
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
-      File('${dir.path}${Platform.pathSeparator}.cle_write_probe')
+      File('${dir.path}${Platform.pathSeparator}$_writeProbeFileName')
         ..writeAsStringSync('ok', flush: true)
         ..deleteSync();
       return true;
@@ -70,6 +71,11 @@ class AppPaths {
       return false;
     }
   }
+
+  /// 写入探测文件名。必须每个进程唯一：并行测试/多实例同时探测时，
+  /// 共用同一个探测文件会互相删除，导致偶发地误判目录不可写。
+  static final String _writeProbeFileName =
+      '.cle_write_probe_${pid}_${Random().nextInt(1 << 32)}';
 
   /// Converts an absolute path under [dataRootPath] into the portable
   /// `{appdata}/...` form; returns null for paths outside the data root.
@@ -152,7 +158,7 @@ class AppPaths {
     try {
       await dir.create(recursive: true);
       final File probe = File(
-        '${dir.path}${Platform.pathSeparator}.cle_write_probe',
+        '${dir.path}${Platform.pathSeparator}$_writeProbeFileName',
       );
       await probe.writeAsString('ok', flush: true);
       await probe.delete();

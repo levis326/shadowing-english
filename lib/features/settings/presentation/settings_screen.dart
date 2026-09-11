@@ -686,6 +686,13 @@ class SettingsScreen extends ConsumerWidget {
                 danger: true,
                 onTap: () => _confirmReset(context, ref),
               ),
+              _ActionRow(
+                title: '删除所有课程（含视频和字幕）',
+                description: '删除全部已导入课程，以及复制到程序数据目录的视频、字幕文件和 AI 字幕缓存。内置课程与生词本不受影响，你导入时选择的原始视频文件也不会被删除。',
+                icon: Icons.delete_forever_rounded,
+                danger: true,
+                onTap: () => _confirmDeleteAllCourses(context, ref),
+              ),
             ],
           ),
           SizedBox(height: compact ? 20 : 24),
@@ -721,6 +728,58 @@ class SettingsScreen extends ConsumerWidget {
         return;
       }
       _showMessage(context, '备份失败，请稍后重试。');
+    }
+  }
+
+  Future<void> _confirmDeleteAllCourses(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('删除所有课程'),
+          content: const Text(
+            '将删除全部已导入课程，包括复制到程序数据目录的视频、字幕文件与 AI 字幕缓存。\n\n'
+            '内置课程、生词本、短语本和学习记录不受影响；'
+            '你导入时选择的原始视频文件不会被删除。',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('全部删除'),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+    try {
+      final int removed = await ref
+          .read(libraryCatalogProvider.notifier)
+          .deleteAllImportedCourses();
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(
+        context,
+        removed == 0
+            ? '没有已导入的课程。'
+            : '已删除 $removed 门课程及其视频、字幕文件与 AI 字幕缓存。',
+        duration: const Duration(seconds: 6),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, '删除失败，请稍后重试。');
     }
   }
 

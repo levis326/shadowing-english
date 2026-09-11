@@ -6,6 +6,7 @@ import 'package:hive_ce/hive.dart';
 
 import '../../../utils/app_paths.dart';
 import '../../import_course/domain/import_match.dart';
+import '../../player/presentation/asr_subtitle_cache.dart';
 import 'library_mock_data.dart';
 
 const String _libraryCatalogStorageKey = 'imported_library_courses_v1';
@@ -284,6 +285,48 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
         .toList(growable: false);
     await _deleteManagedImportDirectories(removedCourses);
     await _persistImportedCourses();
+  }
+
+  /// 删除全部已导入课程，包括它们复制到程序数据目录的视频、字幕文件，
+  /// 以及对应的 AI 字幕缓存。内置课程不在此列，用户自己的原始视频文件
+  /// （导入时的来源）也不会被删除。返回删除的课程数量。
+  Future<int> deleteAllImportedCourses() async {
+    final Set<String> baseCourseIds = libraryCourses
+        .map((LibraryCourseData course) => course.id)
+        .toSet();
+    final List<LibraryCourseData> importedCourses = state
+        .where(
+          (LibraryCourseData course) => !baseCourseIds.contains(course.id),
+        )
+        .toList(growable: false);
+    if (importedCourses.isEmpty) {
+      return 0;
+    }
+    // 先清理 AI 字幕缓存（含该剧集的生成任务目录）。
+    for (final LibraryCourseData course in importedCourses) {
+      for (final LibraryEpisodeItem episode in course.episodes) {
+        final String? videoPath = episode.videoAsset;
+        if (videoPath == null || videoPath.isEmpty) {
+          continue;
+        }
+        try {
+          final File cacheFile = await const AsrSubtitleCache().cacheFileFor(
+            episodeId: episode.id,
+            videoPath: videoPath,
+          );
+          final Directory episodeCacheDir = cacheFile.parent;
+          if (episodeCacheDir.existsSync()) {
+            await episodeCacheDir.delete(recursive: true);
+          }
+        } catch (_) {
+          // 单个缓存清理失败不影响课程删除。
+        }
+      }
+    }
+    await deleteCourses(
+      importedCourses.map((LibraryCourseData course) => course.id).toSet(),
+    );
+    return importedCourses.length;
   }
 
   Future<bool> importCourseFromMatches({
