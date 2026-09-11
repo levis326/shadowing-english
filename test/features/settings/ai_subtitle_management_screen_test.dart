@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
@@ -77,6 +78,58 @@ void main() {
 
     expect(await tester.runAsync(fixture.cache.listEntries), isEmpty);
     expect(find.text('还没有生成过 AI 字幕'), findsOneWidget);
+  });
+
+  testWidgets('management explains why a cache has no chinese translation', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final _CacheFixture fixture = (await tester.runAsync(
+      _createEnglishOnlyFixture,
+    ))!;
+    addTearDown(fixture.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: AiSubtitleManagementScreen(cache: fixture.cache),
+        ),
+      ),
+    );
+    await _pumpFrames(tester);
+
+    // 只有外文字幕时，把原因直接显示在条目上（不再让人以为“翻译丢了”）。
+    expect(find.text('lesson.mp4'), findsOneWidget);
+    expect(find.textContaining('这次生成只有外文字幕'), findsOneWidget);
+    expect(find.textContaining('还没有下载本地翻译模型'), findsOneWidget);
+  });
+
+  testWidgets('empty state shows the scanned cache directory', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final Directory root = Directory.systemTemp.createTempSync(
+      'ai-subtitle-management-empty-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+      downloadsDirectory: () async => root,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(home: AiSubtitleManagementScreen(cache: cache)),
+      ),
+    );
+    await _pumpFrames(tester);
+
+    expect(find.text('还没有生成过 AI 字幕'), findsOneWidget);
+    expect(find.textContaining('asr_subtitles'), findsOneWidget);
   });
 
   testWidgets('word editing changes text without changing word timestamps', (
@@ -174,6 +227,45 @@ Future<_CacheFixture> _createFixture({int count = 2}) async {
 ''',
     );
   }
+  return _CacheFixture(
+    root: root,
+    downloads: downloads,
+    cache: cache,
+    entries: await cache.listEntries(),
+  );
+}
+
+Future<_CacheFixture> _createEnglishOnlyFixture() async {
+  final Directory root = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-english-only-',
+  );
+  final Directory downloads = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-english-only-downloads-',
+  );
+  final AsrSubtitleCache cache = AsrSubtitleCache(
+    appSupportDirectory: () async => root,
+    downloadsDirectory: () async => downloads,
+  );
+  final File video = File('${root.path}/lesson.mp4')
+    ..writeAsStringSync('video');
+  await cache.write(
+    episodeId: 'episode-0',
+    videoPath: video.path,
+    settings: LearningSettingsState.defaults(),
+    content: jsonEncode(<String, Object?>{
+      'version': 1,
+      'translationWarning': '外文字幕已生成，但本地中文翻译失败：还没有下载本地翻译模型。',
+      'lines': <Map<String, Object?>>[
+        <String, Object?>{
+          'startMs': 1000,
+          'endMs': 2000,
+          'english': 'hello world',
+          'chinese': '',
+          'words': <Object?>[],
+        },
+      ],
+    }),
+  );
   return _CacheFixture(
     root: root,
     downloads: downloads,

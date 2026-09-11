@@ -14,6 +14,8 @@ class AiSubtitleCacheEntry {
     required this.model,
     required this.generatedAt,
     required this.sizeBytes,
+    this.chineseLineCount = 0,
+    this.translationWarning,
     this.referenceSignature,
   });
 
@@ -25,6 +27,13 @@ class AiSubtitleCacheEntry {
   final String model;
   final DateTime generatedAt;
   final int sizeBytes;
+
+  /// 已带中文翻译的行数（0 表示这次生成没有翻译成功）。
+  final int chineseLineCount;
+
+  /// 生成时记录下来的翻译/时间轴警告，例如
+  /// “英文词级字幕已生成，但中文翻译失败：…”。
+  final String? translationWarning;
   final String? referenceSignature;
 }
 
@@ -57,12 +66,21 @@ class AsrSubtitleCache {
     required String videoPath,
   }) async => await read(episodeId: episodeId, videoPath: videoPath) != null;
 
+  /// Reads a cached AI subtitle.
+  ///
+  /// [referenceSignature] 传 null（或空串）表示“当前拿不到参考字幕”，
+  /// 此时不做参考比对；只有拿到了参考且与生成时记录的原参考、生成结果签名
+  /// 都不一致时，才判定这份缓存不再适用。
+  ///
+  /// 只有在缓存文件本身损坏（无法解析 / 版本过期）时才会删除它：
+  /// 设置变化、参考字幕变化、视频暂时不可访问都只让本次读取返回 null
+  /// （播放页会重新生成），缓存文件会保留下来，这样「设置 → 管理 AI 字幕」
+  /// 里始终能看到、导出、编辑已生成的字幕，不会出现“生成完却找不到”的空列表。
   Future<String?> read({
     required String episodeId,
     required String videoPath,
     LearningSettingsState? settings,
     String? referenceSignature,
-    bool validateReferenceSignature = true,
   }) async {
     final File file = await cacheFileFor(
       episodeId: episodeId,
@@ -71,31 +89,45 @@ class AsrSubtitleCache {
     if (!file.existsSync()) {
       return null;
     }
+    final String content;
     try {
-      final String content = await file.readAsString();
-      final Object? decoded = jsonDecode(content);
-      if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
-        throw const FormatException('invalid-asr-subtitle-cache');
-      }
-      if (settings != null && decoded['version'] != 1) {
-        throw const FormatException('obsolete-asr-subtitle-cache');
-      }
-      if (settings != null &&
-          !await _metadataMatches(
-            file: file,
-            videoPath: videoPath,
-            settings: settings,
-            referenceSignature: referenceSignature,
-            validateReferenceSignature: validateReferenceSignature,
-          )) {
-        _deleteFiles(file);
-        return null;
-      }
-      return content;
+      content = await file.readAsString();
+    } catch (_) {
+      // 读不到（文件被占用等）时按“没有缓存”处理，绝不删除用户的字幕。
+      return null;
+    }
+    Object? decoded;
+    try {
+      decoded = jsonDecode(content);
     } catch (_) {
       _deleteFiles(file);
       return null;
     }
+    if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
+      _deleteFiles(file);
+      return null;
+    }
+    if (settings != null && decoded['version'] != 1) {
+      _deleteFiles(file);
+      return null;
+    }
+    if (settings != null) {
+      bool matches;
+      try {
+        matches = _metadataMatches(
+          file: file,
+          videoPath: videoPath,
+          settings: settings,
+          referenceSignature: referenceSignature,
+        );
+      } catch (_) {
+        matches = false;
+      }
+      if (!matches) {
+        return null;
+      }
+    }
+    return content;
   }
 
   Future<File> write({
@@ -104,6 +136,7 @@ class AsrSubtitleCache {
     required String content,
     LearningSettingsState? settings,
     String? referenceSignature,
+    String? generatedSignature,
   }) async {
     final File file = await cacheFileFor(
       episodeId: episodeId,
@@ -123,6 +156,7 @@ class AsrSubtitleCache {
             videoPath: videoPath,
             settings: settings,
             referenceSignature: referenceSignature,
+            generatedSignature: generatedSignature,
           ),
           'episodeId': episodeId,
           'generatedAtMs': DateTime.now().millisecondsSinceEpoch,
@@ -160,6 +194,7 @@ class AsrSubtitleCache {
         }
         final FileStat stat = entity.statSync();
         final int? generatedAtMs = metadata['generatedAtMs'] as int?;
+        final List<dynamic> lines = raw['lines'] as List<dynamic>;
         entries.add(
           AiSubtitleCacheEntry(
             episodeId:
@@ -167,7 +202,15 @@ class AsrSubtitleCache {
                 entity.parent.path.split(Platform.pathSeparator).last,
             videoPath: metadata['videoPath'] as String? ?? entity.path,
             cacheFile: entity,
-            lineCount: (raw['lines'] as List<dynamic>).length,
+            lineCount: lines.length,
+            chineseLineCount: lines
+                .whereType<Map<String, dynamic>>()
+                .where(
+                  (Map<String, dynamic> line) =>
+                      (line['chinese'] as String? ?? '').trim().isNotEmpty,
+                )
+                .length,
+            translationWarning: _entryWarning(raw),
             provider: metadata['asrProvider'] as String? ?? '未知服务',
             model: metadata['asrModel'] as String? ?? '未知模型',
             generatedAt: generatedAtMs == null
@@ -277,34 +320,50 @@ class AsrSubtitleCache {
     return targetDir;
   }
 
-  Future<bool> _metadataMatches({
+  /// 判断一份缓存是否仍然符合当前设置与视频（管理页用来提示“设置已变更”）。
+  /// 同步实现（只做文件读取与比较），便于界面在测试/启动时立即拿到结果。
+  bool isUpToDate({
+    required AiSubtitleCacheEntry entry,
+    required LearningSettingsState settings,
+    String? referenceSignature,
+  }) {
+    try {
+      return _metadataMatches(
+        file: entry.cacheFile,
+        videoPath: entry.videoPath,
+        settings: settings,
+        referenceSignature: referenceSignature,
+      );
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _metadataMatches({
     required File file,
     required String videoPath,
     required LearningSettingsState settings,
     String? referenceSignature,
-    bool validateReferenceSignature = true,
-  }) async {
+  }) {
     final File metadataFile = _metadataFile(file);
     if (!metadataFile.existsSync()) return false;
-    final Object? decoded = jsonDecode(await metadataFile.readAsString());
+    final Object? decoded = jsonDecode(metadataFile.readAsStringSync());
     if (decoded is! Map<String, dynamic>) return false;
-    final Map<String, Object?> expected = _metadata(
-      videoPath: videoPath,
-      settings: settings,
-      referenceSignature: referenceSignature,
-    );
-    if (validateReferenceSignature) {
-      // Only enforce the signature when the cache was generated WITH a
-      // reference subtitle. Caches generated standalone (no reference, e.g.
-      // imported videos without subtitles) have no stored signature and must
-      // stay valid even when a derived `.srt` reference exists on reload —
-      // otherwise the bilingual AI subtitles would be dropped after a
-      // restart. When a signature IS stored, a mismatch means the underlying
-      // reference changed and the cache must be regenerated.
-      final String storedSignature =
-          decoded['referenceSignature'] as String? ?? '';
-      if (storedSignature.isNotEmpty &&
-          storedSignature != (referenceSignature ?? '')) {
+    // 参考字幕签名只是“软”信号：
+    // 生成完成后程序会把结果保存成 `.en.srt` / `.zh.srt` 并挂到剧集上，
+    // 重新打开时参考字幕就变成了生成结果本身（签名必然与原参考不同）；
+    // 若据此判定缓存失效，双语 AI 字幕（以及管理页里的条目）会在重启后消失。
+    // 因此这里接受“原参考”或“生成结果”任一签名。
+    final String storedSignature =
+        decoded['referenceSignature'] as String? ?? '';
+    final String current = (referenceSignature ?? '').trim();
+    if (storedSignature.isNotEmpty && current.isNotEmpty) {
+      final String storedGenerated =
+          decoded['generatedSignature'] as String? ?? '';
+      final bool matchesOriginal = current == storedSignature;
+      final bool matchesGenerated =
+          storedGenerated.isNotEmpty && current == storedGenerated;
+      if (!matchesOriginal && !matchesGenerated) {
         return false;
       }
     }
@@ -312,15 +371,27 @@ class AsrSubtitleCache {
     // (portable USB drive), so identity is checked via size/modified-time
     // below instead of the absolute path. `referenceSignature` is compared
     // explicitly above (only when the cache stored one).
-    return expected.entries
+    return _expectedMetadataEntries(
+      videoPath: videoPath,
+      settings: settings,
+    ).every(
+      (MapEntry<String, Object?> entry) => decoded[entry.key] == entry.value,
+    );
+  }
+
+  /// 需要与缓存元数据逐项比对的字段（忽略仅作参考的路径与签名）。
+  static List<MapEntry<String, Object?>> _expectedMetadataEntries({
+    required String videoPath,
+    required LearningSettingsState settings,
+  }) {
+    return _metadata(videoPath: videoPath, settings: settings).entries
         .where(
           (MapEntry<String, Object?> entry) =>
-              entry.key != 'videoPath' && entry.key != 'referenceSignature',
+              entry.key != 'videoPath' &&
+              entry.key != 'referenceSignature' &&
+              entry.key != 'generatedSignature',
         )
-        .every(
-          (MapEntry<String, Object?> entry) =>
-              decoded[entry.key] == entry.value,
-        );
+        .toList(growable: false);
   }
 
   Future<Directory> _cacheRoot() async {
@@ -328,30 +399,52 @@ class AsrSubtitleCache {
     return Directory('${root.path}${Platform.pathSeparator}asr_subtitles');
   }
 
-  Map<String, Object?> _metadata({
+  static Map<String, Object?> _metadata({
     required String videoPath,
     required LearningSettingsState settings,
     String? referenceSignature,
+    String? generatedSignature,
   }) {
     final File video = File(videoPath);
-    final FileStat stat = video.statSync();
+    int? size;
+    int? modifiedMs;
+    try {
+      final FileStat stat = video.statSync();
+      size = stat.size;
+      modifiedMs = stat.modified.millisecondsSinceEpoch;
+    } catch (_) {
+      // 视频暂时不可访问（U 盘未就绪、文件被移动）时不要抛异常：
+      // 调用方据此判定为“不匹配”，但缓存文件会保留下来。
+    }
     return <String, Object?>{
       'version': 1,
       'videoPath': video.absolute.path,
-      'videoSize': stat.size,
-      'videoModifiedMs': stat.modified.millisecondsSinceEpoch,
+      'videoSize': size,
+      'videoModifiedMs': modifiedMs,
       'asrProvider': settings.asrProvider,
       'asrBaseUrl': settings.asrBaseUrl,
       'asrModel': settings.asrModel,
       'bilingual': settings.generateBilingualAsrSubtitles,
       if (referenceSignature?.isNotEmpty ?? false)
         'referenceSignature': referenceSignature,
+      if (generatedSignature?.isNotEmpty ?? false)
+        'generatedSignature': generatedSignature,
       if (settings.generateBilingualAsrSubtitles) ...<String, Object?>{
         'translationProvider': settings.translationProvider,
         'translationBaseUrl': settings.translationBaseUrl,
         'translationModel': settings.translationModel,
       },
     };
+  }
+
+  /// 从缓存 JSON 中取出生成时记录的警告（翻译未完成 / 时间轴估算）。
+  static String? _entryWarning(Map<String, dynamic> raw) {
+    final List<String> warnings = <String>[
+      for (final String key in <String>['translationWarning', 'timingWarning'])
+        if ((raw[key] as String? ?? '').trim().isNotEmpty)
+          (raw[key] as String).trim(),
+    ];
+    return warnings.isEmpty ? null : warnings.join('；');
   }
 
   File _metadataFile(File file) => File('${file.path}.meta.json');

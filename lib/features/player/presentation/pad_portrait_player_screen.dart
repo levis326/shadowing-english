@@ -309,17 +309,13 @@ class _PadPortraitPlayerScreenState
     try {
       await _loadEmbeddedSubtitleReference(tracks);
       if (!mounted || _generatingAiSubtitles) return;
-      await _loadCachedAiSubtitles(
-        validateReferenceSignature: _referenceSubtitleLines.isNotEmpty,
-      );
+      await _loadCachedAiSubtitles();
     } catch (_) {
       // Reference subtitles are optional and must not block video playback.
     }
   }
 
-  Future<void> _loadCachedAiSubtitles({
-    bool validateReferenceSignature = true,
-  }) async {
+  Future<void> _loadCachedAiSubtitles() async {
     final String? videoPath = _videoAsset;
     if (videoPath == null || !mounted) return;
     final LearningSettingsState settings = ref.read(learningSettingsProvider);
@@ -330,7 +326,6 @@ class _PadPortraitPlayerScreenState
       referenceSignature: _referenceSubtitleLines.isEmpty
           ? null
           : subtitleReferenceSignature(_referenceSubtitleLines),
-      validateReferenceSignature: validateReferenceSignature,
     );
     if (cached == null || !mounted) return;
     final List<PlayerSubtitleLine> lines = parseSubtitleLines(cached);

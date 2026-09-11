@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import '../../../utils/app_paths.dart';
+import '../../models/data/local_model_resolver.dart';
 import '../../settings/presentation/settings_provider.dart';
+import '../../shared/data/desktop_nllb.dart';
 import '../../shared/data/local_nllb_translation.dart';
 import '../../shared/data/word_lookup_service.dart';
 import 'asr_subtitle_cache.dart';
@@ -608,6 +610,12 @@ class AsrSubtitleJobRunner {
       referenceSignature: referenceSignature.isEmpty
           ? null
           : referenceSignature,
+      // 生成完成后程序会把结果保存成 `.en.srt` / `.zh.srt` 并挂到剧集上，
+      // 重新打开时参考字幕就变成了这份生成结果；记下它的签名，
+      // 这样重启后缓存不会被当成“参考已变更”而失效（否则双语字幕会消失）。
+      generatedSignature: subtitleReferenceSignature(
+        parseSubtitleLines(completedRaw),
+      ),
     );
     await _writeJob(
       jobDir: jobDir,
@@ -680,17 +688,17 @@ class AsrSubtitleJobRunner {
         jsonDecode(raw) as Map<String, dynamic>;
     final List<dynamic> lines =
         decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
+    // “需要翻译”= 中文为空，或中文与英文完全相同（部分多模态 ASR 会把英文
+    // 原样填进 chinese 字段，那种情况下必须真正翻译一次）。
     final List<Map<String, dynamic>> pendingLines = lines
         .whereType<Map<String, dynamic>>()
-        .where(
-          (Map<String, dynamic> line) =>
-              (line['chinese'] as String? ?? '').trim().isEmpty &&
-              (line['english'] as String? ?? '').trim().isNotEmpty,
-        )
+        .where(_lineNeedsTranslation)
         .toList(growable: false);
     final bool needsTranslation = pendingLines.isNotEmpty;
     if (!needsTranslation) return raw;
-    final String? configurationError = _bilingualConfigurationError(settings);
+    final String? configurationError = await _bilingualConfigurationError(
+      settings,
+    );
     if (configurationError != null) {
       decoded['translationWarning'] = configurationError;
       return const JsonEncoder.withIndent('  ').convert(decoded);
@@ -718,13 +726,10 @@ class AsrSubtitleJobRunner {
       if (line is! Map<String, dynamic>) {
         continue;
       }
-      if ((line['chinese'] as String? ?? '').trim().isNotEmpty) {
+      if (!_lineNeedsTranslation(line)) {
         continue;
       }
       final String english = (line['english'] as String? ?? '').trim();
-      if (english.isEmpty) {
-        continue;
-      }
       cancellationToken?.throwIfCancelled();
       final String key = _translationLineKey(line, english);
       final String? cached = translations[key];
@@ -742,15 +747,17 @@ class AsrSubtitleJobRunner {
                     onTimeout: () =>
                         throw TimeoutException('双语字幕翻译超时，请检查网络后重试；已完成的翻译会保留。'),
                   );
-        } catch (_) {
+        } catch (error) {
           cancellationToken?.throwIfCancelled();
           decoded['translationWarning'] =
-              '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置或网络后重新生成。';
+              '外文字幕已生成，但中文翻译失败：${_translationErrorReason(error)}'
+              '；可在“设置 → 翻译”中检查后重新生成。';
           break;
         }
       }
       if (chinese == null || chinese.trim().isEmpty) {
-        decoded['translationWarning'] = '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置或网络后重新生成。';
+        decoded['translationWarning'] =
+            '外文字幕已生成，但中文翻译返回了空结果；请在“设置 → 翻译”中检查服务后重新生成。';
         break;
       }
       final String sanitized = _sanitizeTranslation(chinese);
@@ -787,10 +794,11 @@ class AsrSubtitleJobRunner {
     final File checkpoint = File(
       '${jobDir.path}${Platform.pathSeparator}translations.json',
     );
-    final String whisperLanguage =
-        (decoded['language'] as String? ?? '').trim();
+    final String whisperLanguage = (decoded['language'] as String? ?? '')
+        .trim();
     final String sourceLanguage = nllbSourceLanguageForWhisper(whisperLanguage);
-    final String signature = '${_translationSignature(settings)}|$sourceLanguage';
+    final String signature =
+        '${_translationSignature(settings)}|$sourceLanguage';
     final Map<String, String> translations = await _loadTranslations(
       checkpoint,
       signature,
@@ -817,24 +825,26 @@ class AsrSubtitleJobRunner {
       cancellationToken?.throwIfCancelled();
       final List<String?> results;
       try {
-        results = await (translateBatch != null
-                ? translateBatch!(
-                    sentences: englishBatch,
-                    settings: settings,
-                    sourceLanguage: sourceLanguage,
-                  )
-                : localNllbTranslationService.translateBatch(
-                    englishBatch,
-                    sourceLanguage: sourceLanguage,
-                  ))
-            .timeout(
-          const Duration(minutes: 6),
-          onTimeout: () => throw TimeoutException('本地 NLLB 翻译超时，请重试。'),
-        );
-      } catch (_) {
+        results =
+            await (translateBatch != null
+                    ? translateBatch!(
+                        sentences: englishBatch,
+                        settings: settings,
+                        sourceLanguage: sourceLanguage,
+                      )
+                    : localNllbTranslationService.translateBatch(
+                        englishBatch,
+                        sourceLanguage: sourceLanguage,
+                      ))
+                .timeout(
+                  const Duration(minutes: 6),
+                  onTimeout: () => throw TimeoutException('本地 NLLB 翻译超时，请重试。'),
+                );
+      } catch (error) {
         cancellationToken?.throwIfCancelled();
         decoded['translationWarning'] =
-            '英文词级字幕已生成，但本地中文翻译失败；请检查后重新生成。';
+            '外文字幕已生成，但本地中文翻译失败：'
+            '${_translationErrorReason(error)}';
         return const JsonEncoder.withIndent('  ').convert(decoded);
       }
 
@@ -862,19 +872,36 @@ class AsrSubtitleJobRunner {
       });
       if (incomplete) {
         decoded['translationWarning'] =
-            '英文词级字幕已生成，但中文翻译未全部完成；请检查翻译设置后重新生成。';
+            '外文字幕已生成，但部分句子的中文翻译为空；请检查“设置 → 翻译”后重新生成。';
       }
     }
     return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  /// 把翻译异常转换成能直接展示给用户的原因说明。
+  String _translationErrorReason(Object error) {
+    String message = error.toString();
+    for (final String prefix in <String>[
+      'Bad state: ',
+      'Exception: ',
+      'DioException [unknown]: ',
+    ]) {
+      if (message.startsWith(prefix)) {
+        message = message.substring(prefix.length);
+      }
+    }
+    message = message.trim();
+    if (message.isEmpty) {
+      return '未知原因';
+    }
+    return message;
   }
 
   /// 清理翻译结果中的乱码占位符：本地模型对无法翻译的词会输出
   /// `⁇`（U+2047，NLLB 词表的未知词符号）或 `�`（U+FFFD），
   /// 移除它们并收紧标点前的多余空格。
   String _sanitizeTranslation(String text) {
-    String cleaned = text
-        .replaceAll('\u2047', '')
-        .replaceAll('\uFFFD', '');
+    String cleaned = text.replaceAll('\u2047', '').replaceAll('\uFFFD', '');
     cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ').trim();
     cleaned = cleaned.replaceAllMapped(
       RegExp(r'\s+([,.;:!?，。；：！？、])'),
@@ -883,11 +910,35 @@ class AsrSubtitleJobRunner {
     return cleaned;
   }
 
-  String? _bilingualConfigurationError(LearningSettingsState settings) {
-    if (!settings.generateBilingualAsrSubtitles || translateSentence != null) {
+  bool _lineNeedsTranslation(Map<String, dynamic> line) {
+    final String english = (line['english'] as String? ?? '').trim();
+    if (english.isEmpty) {
+      return false;
+    }
+    final String chinese = (line['chinese'] as String? ?? '').trim();
+    return chinese.isEmpty || chinese == english;
+  }
+
+  Future<String?> _bilingualConfigurationError(
+    LearningSettingsState settings,
+  ) async {
+    if (!settings.generateBilingualAsrSubtitles ||
+        translateSentence != null ||
+        translateBatch != null) {
       return null;
     }
     if (settings.translationProvider == localNllbTranslationProviderName) {
+      // 本地 NLLB 需要用户先在“设置 → 本地模型”里下载翻译模型，
+      // 提前给出可操作的提示，避免生成完外文字幕才发现没有中文。
+      final String? modelDir =
+          LocalModelResolver.translationModelDir() ??
+          await findDesktopNllbModelDir();
+      final String? tokenizer =
+          LocalModelResolver.translationTokenizerPath() ??
+          await findDesktopNllbTokenizer();
+      if (modelDir == null || tokenizer == null) {
+        return '中文翻译未生成：没有找到本地翻译模型。请到“设置 → 本地模型（在线下载）”下载 NLLB 翻译模型；如果已经下载过，请在同一个页面确认模型是否完整，然后重新生成 AI 字幕。';
+      }
       return null;
     }
     if (settings.translationApiKey.trim().isEmpty) {
@@ -1033,7 +1084,9 @@ class AsrSubtitleJobRunner {
     required LearningSettingsState settings,
   }) async {
     if (!settings.generateBilingualAsrSubtitles) return '';
-    final String? configurationError = _bilingualConfigurationError(settings);
+    final String? configurationError = await _bilingualConfigurationError(
+      settings,
+    );
     if (configurationError != null) {
       throw AsrSubtitleGenerationException('$configurationError 原句已保留。');
     }
@@ -1134,7 +1187,9 @@ class AsrSubtitleJobRunner {
             report
               ..repairCount += 1
               ..anomalies.add(<String, Object?>{
-                'kind': allowReferenceFallback ? 'referenceFallback' : 'localSkip',
+                'kind': allowReferenceFallback
+                    ? 'referenceFallback'
+                    : 'localSkip',
                 'sourceChunk': sourceChunk,
                 'errorType': error.runtimeType.toString(),
               });
@@ -1286,8 +1341,8 @@ class AsrSubtitleJobRunner {
       if (decoded is! Map<String, dynamic>) {
         throw StateError('invalid-asr-chunk');
       }
-      final String chunkLanguage =
-          (decoded['language'] as String? ?? '').trim();
+      final String chunkLanguage = (decoded['language'] as String? ?? '')
+          .trim();
       if (chunkLanguage.isNotEmpty && detectedLanguage.isEmpty) {
         detectedLanguage = chunkLanguage;
       }
@@ -1326,9 +1381,7 @@ class AsrSubtitleJobRunner {
     return const JsonEncoder.withIndent('  ').convert(<String, Object?>{
       'version': 1,
       'language': detectedLanguage,
-      'lines': sentenceLines
-          .map(_withoutSourceChunk)
-          .toList(growable: false),
+      'lines': sentenceLines.map(_withoutSourceChunk).toList(growable: false),
       'glossary': glossary.entries
           .map(
             (MapEntry<String, String> entry) => <String, String>{
@@ -1467,7 +1520,9 @@ class AsrSubtitleJobRunner {
     final List<List<int>> ranges = <List<int>>[];
     int start = 0;
     for (final int boundary in boundaries) {
-      ranges.add(List<int>.generate(boundary - start + 1, (int i) => start + i));
+      ranges.add(
+        List<int>.generate(boundary - start + 1, (int i) => start + i),
+      );
       start = boundary + 1;
     }
     ranges.add(List<int>.generate(tokens.length - start, (int i) => start + i));
@@ -1495,8 +1550,7 @@ class AsrSubtitleJobRunner {
       }
     }
     final int lineStartMs = (line['startMs'] as num?)?.round() ?? 0;
-    final int lineEndMs =
-        (line['endMs'] as num?)?.round() ?? lineStartMs;
+    final int lineEndMs = (line['endMs'] as num?)?.round() ?? lineStartMs;
 
     final List<Map<String, Object?>> subLines = <Map<String, Object?>>[];
     int previousEndMs = -1;
@@ -1517,17 +1571,13 @@ class AsrSubtitleJobRunner {
       int startMs;
       int endMs;
       if (groupWords.isNotEmpty) {
-        startMs =
-            (groupWords.first['startMs'] as num?)?.round() ?? lineStartMs;
-        endMs =
-            (groupWords.last['endMs'] as num?)?.round() ?? lineEndMs;
+        startMs = (groupWords.first['startMs'] as num?)?.round() ?? lineStartMs;
+        endMs = (groupWords.last['endMs'] as num?)?.round() ?? lineEndMs;
       } else {
         // 没有词级时间戳时按 token 占比切分整行时间。
         final double span = (lineEndMs - lineStartMs).toDouble();
-        startMs =
-            lineStartMs + (range.first / tokens.length * span).round();
-        endMs = lineStartMs +
-            ((range.last + 1) / tokens.length * span).round();
+        startMs = lineStartMs + (range.first / tokens.length * span).round();
+        endMs = lineStartMs + ((range.last + 1) / tokens.length * span).round();
       }
       // 相邻子行不允许时间轴重叠（否则校验失败）。
       if (previousEndMs > 0 && startMs < previousEndMs) {

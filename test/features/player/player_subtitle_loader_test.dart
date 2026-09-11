@@ -116,6 +116,43 @@ Welcome to study
     expect(lines[1].chinese, '欢迎来学习');
   });
 
+  test('partially translated chinese track does not shift later lines', () {
+    const String english = '''
+1
+00:00:01,000 --> 00:00:03,000
+Hello there
+
+2
+00:00:03,500 --> 00:00:06,000
+How are you
+
+3
+00:00:06,500 --> 00:00:09,000
+See you tomorrow
+''';
+
+    // AI 只翻译了第 1、3 句：第 2 句在 .zh.srt 里没有对应条目。
+    const String chinese = '''
+1
+00:00:01,000 --> 00:00:03,000
+你好
+
+2
+00:00:06,500 --> 00:00:09,000
+明天见
+''';
+
+    final List<PlayerSubtitleLine> lines = mergeSubtitleLines(
+      englishLines: parseSubtitleLines(english),
+      chineseLines: parseSubtitleLines(chinese),
+    );
+
+    expect(lines, hasLength(3));
+    expect(lines[0].chinese, '你好');
+    expect(lines[1].chinese, isEmpty);
+    expect(lines[2].chinese, '明天见');
+  });
+
   test('keeps english subtitles when chinese track is missing', () {
     const String english = '''
 1

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
@@ -219,7 +220,6 @@ void main() {
           episodeId: 'ep01',
           videoPath: video.path,
           settings: settings,
-          validateReferenceSignature: false,
         ),
         isNotNull,
       );
@@ -228,7 +228,6 @@ void main() {
           episodeId: 'ep01',
           videoPath: video.path,
           settings: settings.copyWith(asrModel: 'changed-model'),
-          validateReferenceSignature: false,
         ),
         isNull,
       );
@@ -399,6 +398,144 @@ void main() {
 
     await cache.deleteEntry(entry);
     expect(await cache.listEntries(), isEmpty);
+  });
+
+  test(
+    'stale cache is kept on disk (settings change / missing video / changed '
+    'reference) so the management list never goes blank',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-cache-keep-stale-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('video');
+      final AsrSubtitleCache cache = AsrSubtitleCache(
+        appSupportDirectory: () async => root,
+      );
+      final LearningSettingsState settings = LearningSettingsState.defaults();
+      await cache.write(
+        episodeId: 'ep01',
+        videoPath: video.path,
+        content:
+            '{"version":1,"lines":[{"english":"hello","chinese":"你好","words":[]}]}',
+        settings: settings,
+        referenceSignature: 'original-reference',
+        generatedSignature: 'generated-srt',
+      );
+
+      // 1) 设置变了：读取返回 null，但文件必须留在磁盘上。
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings.copyWith(asrModel: 'changed-model'),
+        ),
+        isNull,
+      );
+      // 2) 参考字幕变成程序自己保存的 .en.srt/.zh.srt：仍然有效（重启后双语字幕不丢）。
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings,
+          referenceSignature: 'generated-srt',
+        ),
+        isNotNull,
+      );
+      // 3) 参考字幕被换成别的：读取返回 null，但仍不删除文件。
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: video.path,
+          settings: settings,
+          referenceSignature: 'another-reference',
+        ),
+        isNull,
+      );
+      // 4) 视频暂时不可访问：不抛异常、不删缓存。
+      expect(
+        await cache.read(
+          episodeId: 'ep01',
+          videoPath: '${root.path}/missing.mp4',
+          settings: settings,
+        ),
+        isNull,
+      );
+
+      final List<AiSubtitleCacheEntry> entries = await cache.listEntries();
+      expect(entries, hasLength(1));
+      expect(entries.single.cacheFile.existsSync(), isTrue);
+    },
+  );
+
+  test('management entry exposes chinese coverage and translation warning', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-chinese-status-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    const String warning = '外文字幕已生成，但本地中文翻译失败：还没有下载本地翻译模型。';
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: jsonEncode(<String, Object?>{
+        'version': 1,
+        'translationWarning': warning,
+        'lines': <Map<String, Object?>>[
+          <String, Object?>{
+            'english': 'hello there',
+            'chinese': '',
+            'words': <Object?>[],
+          },
+          <String, Object?>{
+            'english': 'bye',
+            'chinese': '再见',
+            'words': <Object?>[],
+          },
+        ],
+      }),
+      settings: LearningSettingsState.defaults(),
+    );
+
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+    expect(entry.lineCount, 2);
+    expect(entry.chineseLineCount, 1);
+    expect(entry.translationWarning, warning);
+  });
+
+  test('isUpToDate ignores the reference signature (management view)', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-uptodate-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final LearningSettingsState settings = LearningSettingsState.defaults();
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"version":1,"lines":[]}',
+      settings: settings,
+      referenceSignature: 'original-reference',
+    );
+
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+    expect(cache.isUpToDate(entry: entry, settings: settings), isTrue);
+    expect(
+      cache.isUpToDate(
+        entry: entry,
+        settings: settings.copyWith(asrModel: 'changed-model'),
+      ),
+      isFalse,
+    );
   });
 
   test('management can delete all subtitle caches and checkpoints', () async {

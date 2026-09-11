@@ -18,6 +18,11 @@ Future<List<PlayerSubtitleLine>> loadSubtitleLines(String source) async {
   return parseSubtitleLines(raw);
 }
 
+/// 把外文字幕与中文字幕合成为双语字幕。
+///
+/// 配对优先按时间重叠（相同时长/相同起点直接命中），行号只作为最后的兜底：
+/// AI 生成的部分句子可能没有中文，`.zh.srt` 里就会缺少对应的条目，
+/// 这时按行号配对会把后面的中文整体错位到别的英文行上。
 List<PlayerSubtitleLine> mergeSubtitleLines({
   required List<PlayerSubtitleLine> englishLines,
   required List<PlayerSubtitleLine> chineseLines,
@@ -26,23 +31,84 @@ List<PlayerSubtitleLine> mergeSubtitleLines({
     return const <PlayerSubtitleLine>[];
   }
 
-  return List<PlayerSubtitleLine>.generate(englishLines.length, (int index) {
+  final List<PlayerSubtitleLine> result = <PlayerSubtitleLine>[];
+  final Set<int> used = <int>{};
+  for (int index = 0; index < englishLines.length; index += 1) {
     final PlayerSubtitleLine englishLine = englishLines[index];
-    final String chinese = index < chineseLines.length
-        ? (chineseLines[index].chinese.isNotEmpty
-              ? chineseLines[index].chinese
-              : chineseLines[index].english)
-        : '';
-
-    return PlayerSubtitleLine(
-      startTime: englishLine.startTime,
-      english: englishLine.english,
-      chinese: chinese,
-      startMs: englishLine.startMs,
-      endMs: englishLine.endMs,
-      words: englishLine.words,
+    final int? matchIndex = _matchChineseLine(
+      englishLine: englishLine,
+      chineseLines: chineseLines,
+      fallbackIndex: index,
+      englishLineCount: englishLines.length,
+      used: used,
     );
-  });
+    if (matchIndex != null) {
+      used.add(matchIndex);
+    }
+    final PlayerSubtitleLine? match = matchIndex == null
+        ? null
+        : chineseLines[matchIndex];
+    final String chinese = match == null
+        ? ''
+        : (match.chinese.isNotEmpty ? match.chinese : match.english);
+    result.add(
+      PlayerSubtitleLine(
+        startTime: englishLine.startTime,
+        english: englishLine.english,
+        chinese: chinese,
+        startMs: englishLine.startMs,
+        endMs: englishLine.endMs,
+        words: englishLine.words,
+      ),
+    );
+  }
+  return result;
+}
+
+int? _matchChineseLine({
+  required PlayerSubtitleLine englishLine,
+  required List<PlayerSubtitleLine> chineseLines,
+  required int fallbackIndex,
+  required int englishLineCount,
+  required Set<int> used,
+}) {
+  if (chineseLines.isEmpty) {
+    return null;
+  }
+  int? bestIndex;
+  int bestOverlap = 0;
+  for (int index = 0; index < chineseLines.length; index += 1) {
+    if (used.contains(index)) {
+      continue;
+    }
+    final PlayerSubtitleLine line = chineseLines[index];
+    if (line.startMs == englishLine.startMs &&
+        line.endMs == englishLine.endMs) {
+      return index;
+    }
+    final int overlapStart = line.startMs > englishLine.startMs
+        ? line.startMs
+        : englishLine.startMs;
+    final int overlapEnd = line.endMs < englishLine.endMs
+        ? line.endMs
+        : englishLine.endMs;
+    final int overlap = overlapEnd - overlapStart;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      bestIndex = index;
+    }
+  }
+  if (bestIndex != null) {
+    return bestIndex;
+  }
+  // 时间完全不重叠时：只有两侧行数一致才按行号兜底（保持旧行为），
+  // 否则视为该行缺少中文。
+  if (chineseLines.length == englishLineCount &&
+      fallbackIndex < chineseLines.length &&
+      !used.contains(fallbackIndex)) {
+    return fallbackIndex;
+  }
+  return null;
 }
 
 List<PlayerSubtitleLine> parseSubtitleLines(String rawSubtitle) {
@@ -244,7 +310,10 @@ String _formatTimestamp(int milliseconds) {
 }
 
 /// Converts word-level subtitle lines into a standard `.srt` document.
-String subtitleLinesToSrt(List<PlayerSubtitleLine> lines, {bool chinese = false}) {
+String subtitleLinesToSrt(
+  List<PlayerSubtitleLine> lines, {
+  bool chinese = false,
+}) {
   final StringBuffer buffer = StringBuffer();
   int cueIndex = 0;
   for (final PlayerSubtitleLine line in lines) {
@@ -309,7 +378,8 @@ Future<String> saveGeneratedSubtitleSrt({
   required String videoPath,
   required List<PlayerSubtitleLine> lines,
 }) async {
-  final String enPath = '${File(videoPath).parent.path}'
+  final String enPath =
+      '${File(videoPath).parent.path}'
       '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath)}';
   await File(enPath).writeAsString(subtitleLinesToSrt(lines), flush: true);
 
@@ -317,12 +387,12 @@ Future<String> saveGeneratedSubtitleSrt({
     (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
   );
   if (hasChinese) {
-    final String zhPath = '${File(videoPath).parent.path}'
+    final String zhPath =
+        '${File(videoPath).parent.path}'
         '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath, languageCode: 'zh')}';
-    await File(zhPath).writeAsString(
-      subtitleLinesToSrt(lines, chinese: true),
-      flush: true,
-    );
+    await File(
+      zhPath,
+    ).writeAsString(subtitleLinesToSrt(lines, chinese: true), flush: true);
   }
   return enPath;
 }

@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../utils/app_paths.dart';
 import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../player/presentation/asr_subtitle_job.dart';
 import '../../player/presentation/player_mock_state.dart';
@@ -31,21 +33,42 @@ class _AiSubtitleManagementScreenState
   String? _regeneratingPath;
   final Set<String> _selectedPaths = <String>{};
   bool _selectionMode = false;
+  Set<String> _upToDate = <String>{};
 
   AsrSubtitleCache get _cache => widget.cache;
 
   @override
   void initState() {
     super.initState();
-    _entries = _cache.listEntries();
+    _entries = _loadEntries();
   }
 
   void _reload() {
     setState(() {
       _selectedPaths.clear();
       _selectionMode = false;
-      _entries = _cache.listEntries();
+      _upToDate = <String>{};
+      _entries = _loadEntries();
     });
+  }
+
+  Future<List<AiSubtitleCacheEntry>> _loadEntries() async {
+    final List<AiSubtitleCacheEntry> entries = await _cache.listEntries();
+    _refreshUpToDate(entries);
+    return entries;
+  }
+
+  /// 标记哪些缓存与当前 ASR/翻译设置一致（不一致的提示重新生成）。
+  void _refreshUpToDate(List<AiSubtitleCacheEntry> entries) {
+    final LearningSettingsState settings = ref.read(learningSettingsProvider);
+    final Set<String> upToDate = <String>{};
+    for (final AiSubtitleCacheEntry entry in entries) {
+      if (_cache.isUpToDate(entry: entry, settings: settings)) {
+        upToDate.add(entry.cacheFile.path);
+      }
+    }
+    if (!mounted || setEquals(_upToDate, upToDate)) return;
+    setState(() => _upToDate = upToDate);
   }
 
   @override
@@ -94,10 +117,13 @@ class _AiSubtitleManagementScreenState
                     final List<AiSubtitleCacheEntry> entries =
                         snapshot.data ?? const <AiSubtitleCacheEntry>[];
                     if (entries.isEmpty) {
-                      return const _EmptyState(
+                      return _EmptyState(
                         icon: Icons.subtitles_off_outlined,
                         title: '还没有生成过 AI 字幕',
-                        description: '在视频播放页生成后，会显示在这里。',
+                        description:
+                            '在视频播放页生成后，会显示在这里。\n'
+                            '缓存目录：${AppPaths.dataDirectoryPathSync() ?? '（启动后可用）'}'
+                            '${Platform.pathSeparator}asr_subtitles',
                       );
                     }
                     return Align(
@@ -140,6 +166,9 @@ class _AiSubtitleManagementScreenState
                                       entry.cacheFile.path,
                                     ),
                                     selectionMode: _selectionMode,
+                                    settingsChanged: !_upToDate.contains(
+                                      entry.cacheFile.path,
+                                    ),
                                     regenerating:
                                         _regeneratingPath ==
                                         entry.cacheFile.path,
@@ -367,6 +396,7 @@ class _SubtitleCard extends StatelessWidget {
     required this.entry,
     required this.selected,
     required this.selectionMode,
+    required this.settingsChanged,
     required this.regenerating,
     required this.onToggleSelection,
     required this.onEdit,
@@ -378,12 +408,44 @@ class _SubtitleCard extends StatelessWidget {
   final AiSubtitleCacheEntry entry;
   final bool selected;
   final bool selectionMode;
+  final bool settingsChanged;
   final bool regenerating;
   final VoidCallback onToggleSelection;
   final VoidCallback onEdit;
   final VoidCallback onExport;
   final VoidCallback onRegenerate;
   final VoidCallback onDelete;
+
+  /// 生成结果的状态说明：没有中文翻译时把原因直接显示出来，
+  /// 设置变化时提示重新生成。
+  List<({IconData icon, String text, bool warning})> get _statusMessages {
+    final List<({IconData icon, String text, bool warning})> messages =
+        <({IconData icon, String text, bool warning})>[];
+    final String? warning = entry.translationWarning;
+    if (entry.lineCount > 0 && entry.chineseLineCount == 0) {
+      messages.add((
+        icon: Icons.translate_rounded,
+        text: warning == null || warning.isEmpty
+            ? '这次生成只有外文字幕，没有中文翻译；请检查“设置 → 翻译”后重新生成。'
+            : '这次生成只有外文字幕。$warning',
+        warning: true,
+      ));
+    } else if (warning != null && warning.isNotEmpty) {
+      messages.add((
+        icon: Icons.info_outline_rounded,
+        text: '中文翻译 $entry.chineseLineCount/${entry.lineCount} 句。$warning',
+        warning: true,
+      ));
+    }
+    if (settingsChanged) {
+      messages.add((
+        icon: Icons.settings_backup_restore_rounded,
+        text: '当前的 ASR / 翻译设置与生成这份字幕时不同，建议重新生成。',
+        warning: false,
+      ));
+    }
+    return messages;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -473,6 +535,40 @@ class _SubtitleCard extends StatelessWidget {
                       ),
                   ],
                 ),
+                if (_statusMessages.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 14),
+                  for (final ({IconData icon, String text, bool warning}) status
+                      in _statusMessages)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Icon(
+                            status.icon,
+                            size: 18,
+                            color: status.warning
+                                ? const Color(0xFFB45309)
+                                : AppDesignTokens.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              status.text,
+                              style: TextStyle(
+                                fontSize: 13,
+                                height: 1.45,
+                                fontWeight: FontWeight.w600,
+                                color: status.warning
+                                    ? const Color(0xFFB45309)
+                                    : AppDesignTokens.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
                 if (!selectionMode) ...<Widget>[
                   const SizedBox(height: 18),
                   const Divider(height: 2, color: AppDesignTokens.borderGray),

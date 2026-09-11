@@ -497,6 +497,211 @@ void main() {
     expect(parseSubtitleLines(raw).single.chinese, '学会,然后开始做片。');
   });
 
+  test(
+    'missing local NLLB model explains why no chinese subtitles were produced '
+    'and keeps the english cache',
+    () async {
+      final Directory root = Directory.systemTemp.createTempSync(
+        'asr-job-missing-nllb-',
+      );
+      addTearDown(() => root.deleteSync(recursive: true));
+      final File video = File('${root.path}/lesson.mp4')
+        ..writeAsStringSync('v');
+      final File chunk = File('${root.path}/chunk.m4a')..writeAsStringSync('a');
+      final AsrSubtitleCache cache = AsrSubtitleCache(
+        appSupportDirectory: () async => root,
+      );
+      final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+        supportDirectory: () async => root,
+        cache: cache,
+        service: AsrSubtitleService(
+          prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+            AsrAudioChunk(file: chunk, offsetMs: 0),
+          ],
+        ),
+        cloudTranscribeChunk:
+            ({
+              required AsrAudioChunk chunk,
+              required LearningSettingsState settings,
+            }) async => _chunkJson('Hello there', 1000),
+      );
+
+      final String raw = await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: LearningSettingsState.defaults().copyWith(
+          generateBilingualAsrSubtitles: true,
+          translationProvider: localNllbTranslationProviderName,
+        ),
+      );
+
+      // 外文字幕照常生成，同时给出可操作的原因（而不是含糊的“翻译失败”）。
+      expect(parseSubtitleLines(raw).single.english, 'Hello there');
+      expect(parseSubtitleLines(raw).single.chinese, isEmpty);
+      final String? warning = subtitleGenerationWarning(raw);
+      expect(warning, isNotNull);
+      expect(warning, contains('本地翻译模型'));
+      // 生成结果仍然写进缓存，管理页能看到条目。
+      expect(
+        await cache.read(episodeId: 'episode-1', videoPath: video.path),
+        isNotNull,
+      );
+    },
+  );
+
+  test('a chinese field equal to the english text is translated again', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-echo-chinese-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk.m4a')..writeAsStringSync('a');
+    final List<String> translated = <String>[];
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('Hello there', 1000, chinese: 'Hello there'),
+      translateSentence:
+          ({
+            required String sentence,
+            required LearningSettingsState settings,
+          }) async {
+            translated.add(sentence);
+            return '你好。';
+          },
+    );
+
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: _settings().copyWith(
+        generateBilingualAsrSubtitles: true,
+        translationProvider: 'OpenAI',
+      ),
+    );
+
+    expect(translated, <String>['Hello there']);
+    expect(parseSubtitleLines(raw).single.chinese, '你好。');
+  });
+
+  test('translation failure keeps the real reason in the warning', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-translation-reason-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk.m4a')..writeAsStringSync('a');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('Hello there', 1000),
+      translateBatch:
+          ({
+            required List<String> sentences,
+            required LearningSettingsState settings,
+            required String sourceLanguage,
+          }) async => throw StateError('本地翻译服务启动超时，请重试。'),
+    );
+
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: LearningSettingsState.defaults().copyWith(
+        generateBilingualAsrSubtitles: true,
+        translationProvider: localNllbTranslationProviderName,
+      ),
+    );
+
+    expect(subtitleGenerationWarning(raw), contains('本地翻译服务启动超时'));
+  });
+
+  test('generated signature is stored so a restart keeps the cache', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-generated-signature-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File chunk = File('${root.path}/chunk.m4a')..writeAsStringSync('a');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: cache,
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk, offsetMs: 0),
+        ],
+      ),
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => _chunkJson('Hello there', 1000),
+      translateSentence:
+          ({
+            required String sentence,
+            required LearningSettingsState settings,
+          }) async => '你好。',
+    );
+    final LearningSettingsState settings = _settings().copyWith(
+      generateBilingualAsrSubtitles: true,
+      translationProvider: 'OpenAI',
+    );
+
+    final String raw = await runner.run(
+      episodeId: 'episode-1',
+      videoPath: video.path,
+      settings: settings,
+      referenceSubtitleLines: const <PlayerSubtitleLine>[
+        PlayerSubtitleLine(
+          startTime: '00:01',
+          english: 'Hello there.',
+          chinese: '你好。',
+          startMs: 1000,
+          endMs: 4000,
+        ),
+      ],
+    );
+
+    // 重新打开节目时参考字幕会变成程序保存的生成结果：
+    // 用生成结果的签名读取仍然有效，双语字幕不会因为“参考变了”被丢弃。
+    final String generatedSignature = subtitleReferenceSignature(
+      parseSubtitleLines(raw),
+    );
+    expect(generatedSignature, isNotEmpty);
+    expect(
+      await cache.read(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: settings,
+        referenceSignature: generatedSignature,
+      ),
+      isNotNull,
+    );
+  });
+
   test('resume skips completed chunk files', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-resume-',
@@ -1865,7 +2070,11 @@ LearningSettingsState _settings() {
   );
 }
 
-Map<String, Object?> _chunkJson(String english, int startMs) {
+Map<String, Object?> _chunkJson(
+  String english,
+  int startMs, {
+  String chinese = '',
+}) {
   final List<String> words = english
       .split(RegExp(r'\s+'))
       .where((String word) => word.isNotEmpty)
@@ -1879,7 +2088,7 @@ Map<String, Object?> _chunkJson(String english, int startMs) {
         'startMs': startMs,
         'endMs': startMs + 1000,
         'english': english,
-        'chinese': '',
+        'chinese': chinese,
         'words': words
             .asMap()
             .entries
