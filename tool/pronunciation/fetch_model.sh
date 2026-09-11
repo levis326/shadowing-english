@@ -20,7 +20,9 @@ sha256_hash() {
 }
 
 mkdir -p "$OUTPUT_DIR/hub/checkpoints"
-curl --fail --location --retry 3 \
+# 断点续传 + 出错重试：1.26GB 的模型文件在网络抖动时不必从头下载。
+curl --fail --location --continue-at - \
+  --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 \
   "$MODEL_URL" --output "$OUTPUT_DIR/hub/checkpoints/$MODEL_NAME"
 
 actual="$(sha256_hash "$OUTPUT_DIR/hub/checkpoints/$MODEL_NAME")"

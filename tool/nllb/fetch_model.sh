@@ -17,10 +17,12 @@ set -euo pipefail
 # (the bundled package grows by roughly 0.75 GB).
 
 readonly MODEL_REPO="Code-Dev/nllb-200-distilled-1.3B-ct2-int8"
-readonly MODEL_BASE="https://huggingface.co/${MODEL_REPO}/resolve/main"
+readonly MODEL_REPO_PATH="${MODEL_REPO}/resolve/main"
+readonly MODEL_BASE="https://huggingface.co/${MODEL_REPO_PATH}"
 # The SentencePiece tokenizer is identical across NLLB-200 releases; take it
 # from the official Facebook repository.
-readonly TOKENIZER_BASE="https://huggingface.co/facebook/nllb-200-distilled-1.3B/resolve/main"
+readonly TOKENIZER_REPO_PATH="facebook/nllb-200-distilled-1.3B/resolve/main"
+readonly TOKENIZER_BASE="https://huggingface.co/${TOKENIZER_REPO_PATH}"
 readonly OUTPUT_DIR="${1:?output directory is required}"
 
 readonly FILES=(
@@ -30,13 +32,14 @@ readonly FILES=(
   config.json
 )
 
-url_of() {
+# 供共享下载器使用的仓库相对路径。
+repo_path_of() {
   case "$1" in
     sentencepiece.bpe.model)
-      echo "${TOKENIZER_BASE}/$1"
+      echo "${TOKENIZER_REPO_PATH}/$1"
       ;;
     *)
-      echo "${MODEL_BASE}/$1"
+      echo "${MODEL_REPO_PATH}/$1"
       ;;
   esac
 }
@@ -70,9 +73,14 @@ sha256_hash() {
   fi
 }
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/hf_download.sh
+source "${script_dir}/../common/hf_download.sh"
+
 mkdir -p "$OUTPUT_DIR"
 for file in "${FILES[@]}"; do
-  curl --fail --location --retry 3 "$(url_of "$file")" --output "$OUTPUT_DIR/$file"
+  # 通过共享下载器处理 Hugging Face 的 429 限流（重试 + 断点续传 + 镜像回退）。
+  hf_download "$(repo_path_of "$file")" "$OUTPUT_DIR/$file"
 done
 
 for file in "${FILES[@]}"; do

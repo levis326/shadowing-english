@@ -4,14 +4,22 @@ set -euo pipefail
 # Downloads the bundled Whisper model (multilingual small, ggml format).
 #
 # Usage: tool/whisper/fetch_model.sh <output-dir>
+#
+# The download goes through tool/common/hf_download.sh so Hugging Face rate
+# limiting (HTTP 429) on shared CI runners is retried and can use HF_TOKEN.
 
 readonly MODEL_NAME="ggml-small.bin"
-readonly MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}"
+readonly MODEL_REPO_PATH="ggerganov/whisper.cpp/resolve/main/${MODEL_NAME}"
+readonly MODEL_URL="https://huggingface.co/${MODEL_REPO_PATH}"
 readonly MODEL_SHA256="1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b"
 readonly OUTPUT_DIR="${1:?output directory is required}"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common/hf_download.sh
+source "${script_dir}/../common/hf_download.sh"
+
 mkdir -p "$OUTPUT_DIR"
-curl --fail --location --retry 3 "$MODEL_URL" --output "$OUTPUT_DIR/$MODEL_NAME"
+hf_download "$MODEL_REPO_PATH" "$OUTPUT_DIR/$MODEL_NAME"
 
 if command -v sha256sum >/dev/null 2>&1; then
   actual_sha="$(sha256sum "$OUTPUT_DIR/$MODEL_NAME" | awk '{print $1}')"

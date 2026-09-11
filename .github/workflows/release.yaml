@@ -99,10 +99,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh', 'tool/common/hf_download.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/fetch_model.sh build/whisper-model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Bundle subtitle Whisper
         run: |
           mkdir -p build/linux/x64/release/bundle/lib/whisper
@@ -169,10 +171,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh', 'tool/common/hf_download.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         run: bash tool/whisper/fetch_model.sh build/whisper-model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Package macOS app
         env:
           TAG: ${{ github.ref_name }}
@@ -266,11 +270,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/whisper-model
-          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh') }}
+          key: whisper-model-ggml-small-${{ hashFiles('tool/whisper/fetch_model.sh', 'tool/common/hf_download.sh') }}
       - name: Fetch subtitle Whisper model
         if: steps.whisper-model-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash tool/whisper/fetch_model.sh build/whisper-model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -298,11 +304,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/nllb-model
-          key: nllb-model-1.3B-int8-${{ hashFiles('tool/nllb/fetch_model.sh') }}
+          key: nllb-model-1.3B-int8-${{ hashFiles('tool/nllb/fetch_model.sh', 'tool/common/hf_download.sh') }}
       - name: Fetch local NLLB model
         if: steps.nllb-model-cache.outputs.cache-hit != 'true'
         shell: bash
         run: bash tool/nllb/fetch_model.sh build/nllb-model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Cache local pronunciation server
         id: pronunciation-cache
         uses: actions/cache@v4
