@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Downloads the bundled NLLB-200-distilled-600M CTranslate2 int8 model.
+# Downloads the bundled NLLB-200-distilled-1.3B CTranslate2 int8 model.
 #
 # Usage: tool/nllb/fetch_model.sh <output-dir>
 #
@@ -12,9 +12,15 @@ set -euo pipefail
 #   shared_vocabulary.json  token <-> id vocabulary
 #   sentencepiece.bpe.model SentencePiece tokenizer (used by nllb-translate)
 #   config.json             auxiliary config (optional but kept for completeness)
+#
+# The 1.3B model translates noticeably better than the previous 600M one
+# (the bundled package grows by roughly 0.75 GB).
 
-readonly REPO="mijuanlo/nllb-200-distilled-600M-ct2-int8"
-readonly BASE="https://huggingface.co/${REPO}/resolve/main"
+readonly MODEL_REPO="Code-Dev/nllb-200-distilled-1.3B-ct2-int8"
+readonly MODEL_BASE="https://huggingface.co/${MODEL_REPO}/resolve/main"
+# The SentencePiece tokenizer is identical across NLLB-200 releases; take it
+# from the official Facebook repository.
+readonly TOKENIZER_BASE="https://huggingface.co/facebook/nllb-200-distilled-1.3B/resolve/main"
 readonly OUTPUT_DIR="${1:?output directory is required}"
 
 readonly FILES=(
@@ -24,11 +30,22 @@ readonly FILES=(
   config.json
 )
 
+url_of() {
+  case "$1" in
+    sentencepiece.bpe.model)
+      echo "${TOKENIZER_BASE}/$1"
+      ;;
+    *)
+      echo "${MODEL_BASE}/$1"
+      ;;
+  esac
+}
+
 # SHA-256 of each file (the LFS oid exposed by the Hugging Face `x-linked-etag`).
 sha256_of() {
   case "$1" in
     model.bin)
-      echo "398726640cc2a02cc6a35277fa3cf2159ce8a1a66b48aa1b6c8837a47e3dd00c"
+      echo "645d63967bee99a99dfffe78bd4ee1be80bd8adbe64624549774a81ccbad9ec2"
       ;;
     shared_vocabulary.json)
       echo "af53bfd0e6f726209e7325e45b87ab3b14e5856f7d42d7b9be91de3287c45267"
@@ -37,7 +54,7 @@ sha256_of() {
       echo "14bb8dfb35c0ffdea7bc01e56cea38b9e3d5efcdcb9c251d6b40538e1aab555a"
       ;;
     config.json)
-      echo "bf8ade7c3f1683e5f13001bab18b04a1ccd1a6801208efd227ed13b2ff6f15e7"
+      echo "8f6496adfc930cbfecbe8281112197705c488fab47d34b4829b06d7f478909af"
       ;;
     *)
       echo "" && return 1
@@ -55,7 +72,7 @@ sha256_hash() {
 
 mkdir -p "$OUTPUT_DIR"
 for file in "${FILES[@]}"; do
-  curl --fail --location --retry 3 "$BASE/$file" --output "$OUTPUT_DIR/$file"
+  curl --fail --location --retry 3 "$(url_of "$file")" --output "$OUTPUT_DIR/$file"
 done
 
 for file in "${FILES[@]}"; do
@@ -70,8 +87,9 @@ for file in "${FILES[@]}"; do
 done
 
 cat > "$OUTPUT_DIR/MODEL-INFO.txt" <<EOF
-Model: nllb-200-distilled-600M (CTranslate2 int8)
-Source: https://huggingface.co/${REPO}
-Original model: facebook/nllb-200-distilled-600M
+Model: nllb-200-distilled-1.3B (CTranslate2 int8)
+Source: https://huggingface.co/${MODEL_REPO}
+Tokenizer: ${TOKENIZER_BASE}/sentencepiece.bpe.model
+Original model: facebook/nllb-200-distilled-1.3B
 License: CC-BY-NC 4.0 (non-commercial)
 EOF

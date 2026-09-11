@@ -682,6 +682,56 @@ void main() {
       expect(updated.episodes, hasLength(1));
       expect(updated.totalEpisodes, 1);
     });
+
+    test('custom cover image is copied into the app data directory', () async {
+      final Directory tempDir = Directory.systemTemp.createTempSync(
+        'library-cover-copy-',
+      );
+      addTearDown(() => tempDir.deleteSync(recursive: true));
+      final File cover = File('${tempDir.path}/cover.jpg')
+        ..writeAsBytesSync(<int>[1, 2, 3]);
+
+      final ProviderContainer container = ProviderContainer();
+      addTearDown(container.dispose);
+      final LibraryCatalogNotifier notifier = container.read(
+        libraryCatalogProvider.notifier,
+      );
+      await notifier.importCourseFromMatches(
+        rows: <ImportMatchRow>[
+          _makeRow(videoPath: '/tmp/cover-course/01.mp4', videoFile: '01.mp4'),
+        ],
+        videoFolder: '/tmp/cover-course',
+        subtitleFolder: '/tmp/subtitles',
+        courseTitle: '封面课程',
+      );
+      final String courseId = container.read(libraryCatalogProvider).first.id;
+
+      await notifier.updateCoursesMetadata(
+        courseIds: <String>{courseId},
+        coverImage: cover.path,
+      );
+
+      final String storedCover = container
+          .read(libraryCatalogProvider)
+          .first
+          .coverImage;
+      expect(storedCover, contains('covers'));
+      expect(File(storedCover).existsSync(), isTrue);
+      expect(File(storedCover).readAsBytesSync(), <int>[1, 2, 3]);
+      final Directory copiedDir = File(storedCover).parent;
+      addTearDown(() {
+        if (copiedDir.existsSync()) {
+          copiedDir.deleteSync(recursive: true);
+        }
+      });
+
+      // 持久化的是可随程序文件夹移动的相对路径。
+      final String? persisted = Hive.box<String>(
+        'prefs',
+      ).get('imported_library_courses_v1');
+      expect(persisted, isNotNull);
+      expect(persisted, contains('{appdata}/covers/cover.jpg'));
+    });
   });
 
   testWidgets('cover image renders a local file path without crashing', (

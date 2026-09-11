@@ -56,6 +56,12 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
     if (courseIds.isEmpty) {
       return;
     }
+    // 便携化：自定义封面复制进应用数据目录（`<数据目录>/covers/`），
+    // 随程序文件夹一起移动，换电脑后封面不会失效。封面文件很小，
+    // 这里用同步复制，避免在只驱动帧的测试环境里等待真实异步 IO。
+    final String? storedCover = coverImage == null || coverImage.trim().isEmpty
+        ? null
+        : (_copyCoverIntoDataDirectory(coverImage.trim()) ?? coverImage.trim());
     state = state
         .map((LibraryCourseData course) {
           if (!courseIds.contains(course.id)) {
@@ -66,13 +72,52 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
             sourceLabel: sourceLabel == null || sourceLabel.trim().isEmpty
                 ? null
                 : sourceLabel.trim(),
-            coverImage: coverImage == null || coverImage.trim().isEmpty
-                ? null
-                : coverImage.trim(),
+            coverImage: storedCover,
           );
         })
         .toList(growable: false);
     await _persistImportedCourses();
+  }
+
+  /// 把封面文件同步复制到 `<数据目录>/covers/`；已在数据目录内则原样返回，
+  /// 复制失败（或数据目录未解析）返回 null，调用方回退到原始路径。
+  String? _copyCoverIntoDataDirectory(String sourcePath) {
+    final String dataRootPath = AppPaths.dataDirectoryPathSync() ?? '';
+    if (dataRootPath.isEmpty) {
+      return null;
+    }
+    try {
+      final File source = File(sourcePath);
+      if (!source.existsSync()) {
+        return null;
+      }
+      final String normalizedSource = source.path.replaceAll(
+        String.fromCharCode(92),
+        '/',
+      );
+      final String normalizedRoot = dataRootPath.replaceAll(
+        String.fromCharCode(92),
+        '/',
+      );
+      if (normalizedSource.startsWith('$normalizedRoot/')) {
+        return source.path;
+      }
+      final String fileName = source.path.split(Platform.pathSeparator).last;
+      final File target = File(
+        '$dataRootPath${Platform.pathSeparator}covers'
+        '${Platform.pathSeparator}$fileName',
+      );
+      if (target.path == source.path) {
+        return source.path;
+      }
+      if (!target.existsSync() || target.lengthSync() != source.lengthSync()) {
+        target.parent.createSync(recursive: true);
+        source.copySync(target.path);
+      }
+      return target.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> updateEpisodeProgress({

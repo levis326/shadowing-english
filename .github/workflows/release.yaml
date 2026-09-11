@@ -298,7 +298,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/nllb-model
-          key: nllb-model-600M-int8-${{ hashFiles('tool/nllb/fetch_model.sh') }}
+          key: nllb-model-1.3B-int8-${{ hashFiles('tool/nllb/fetch_model.sh') }}
       - name: Fetch local NLLB model
         if: steps.nllb-model-cache.outputs.cache-hit != 'true'
         shell: bash

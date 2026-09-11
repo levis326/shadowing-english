@@ -124,6 +124,14 @@ class AppPaths {
     return path.replaceAll(String.fromCharCode(92), '/');
   }
 
+  /// 已解析过的数据目录路径（同步返回）。应用启动时 [dataDirectory] 会写入缓存，
+  /// 因此常规运行时这里总有值；桌面端回退到便携目录探测，
+  /// 其他平台在缓存前返回 null（调用方应跳过需要数据目录的优化）。
+  static String? dataDirectoryPathSync() =>
+      _cachedDataDirectoryPath ?? portableDataRootPathSync();
+
+  static String? _cachedDataDirectoryPath;
+
   /// `<exe目录>/data` when the portable layout is available and writable;
   /// otherwise null (and platform directories are used).
   static Future<Directory?> portableDataDirectory() {
@@ -155,8 +163,13 @@ class AppPaths {
   }
 
   /// Root directory for persistent app data (Hive boxes and caches).
-  static Future<Directory> dataDirectory() async =>
-      await portableDataDirectory() ?? await getApplicationSupportDirectory();
+  /// 解析结果会缓存，供 [dataDirectoryPathSync] 同步读取。
+  static Future<Directory> dataDirectory() async {
+    final Directory dir =
+        await portableDataDirectory() ?? await getApplicationSupportDirectory();
+    _cachedDataDirectoryPath = dir.path;
+    return dir;
+  }
 
   /// Directory for transient files (recordings, audio chunks).
   static Future<Directory> tempDirectory() async {

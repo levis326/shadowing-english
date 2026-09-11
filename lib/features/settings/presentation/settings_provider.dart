@@ -68,7 +68,7 @@ const Map<String, TranslationProviderPreset> translationProviderPresets =
       localNllbTranslationProviderName: TranslationProviderPreset(
         name: localNllbTranslationProviderName,
         baseUrl: '',
-        model: 'nllb-200-distilled-600M',
+        model: 'nllb-200-distilled-1.3B',
       ),
       'OpenAI': TranslationProviderPreset(
         name: 'OpenAI',
@@ -415,7 +415,9 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
         translationApiKey: _stringOrNull(json['translationApiKey']),
         translationApiSecret: _stringOrNull(json['translationApiSecret']),
         translationBaseUrl: _stringOrNull(json['translationBaseUrl']),
-        translationModel: _stringOrNull(json['translationModel']),
+        translationModel: _migratedTranslationModel(
+          _stringOrNull(json['translationModel']),
+        ),
         useCustomTranslationEndpoint: _boolOrNull(
           json['useCustomTranslationEndpoint'],
         ),
@@ -727,6 +729,18 @@ class LearningSettingsNotifier extends Notifier<LearningSettingsState> {
       return null;
     }
     return raw.trim();
+  }
+
+  /// 内置本地翻译模型已从 600M 升级到 1.3B：把旧存档里的默认模型名迁移到新名字，
+  /// 避免设置页仍显示旧模型。
+  String? _migratedTranslationModel(String? value) {
+    if (value == null) {
+      return null;
+    }
+    if (value == 'nllb-200-distilled-600M') {
+      return translationProviderPresets[localNllbTranslationProviderName]!.model;
+    }
+    return value;
   }
 
   String? _subtitleModeOrNull(Object? value) {

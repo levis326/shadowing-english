@@ -35,7 +35,24 @@ void main() {
     expect(state.translationProvider, localNllbTranslationProviderName);
     expect(state.translationApiKey, isEmpty);
     expect(state.translationBaseUrl, isEmpty);
-    expect(state.translationModel, 'nllb-200-distilled-600M');
+    expect(state.translationModel, 'nllb-200-distilled-1.3B');
+  });
+
+  test('legacy 600M local model name is migrated to the bundled 1.3B model', () {
+    Hive.box<String>('prefs').put(
+      'learning_settings_v1',
+      jsonEncode(<String, Object?>{
+        'translationProvider': localNllbTranslationProviderName,
+        'translationModel': 'nllb-200-distilled-600M',
+      }),
+    );
+    final ProviderContainer container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    final LearningSettingsState state = container.read(
+      learningSettingsProvider,
+    );
+    expect(state.translationModel, 'nllb-200-distilled-1.3B');
   });
 
   test('translation provider presets fill default base url and model', () {
