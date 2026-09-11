@@ -175,6 +175,7 @@ Read [RESOURCE_SETUP.md](RESOURCE_SETUP.md) for more detail. This repository doe
 ## Privacy
 
 - Videos, subtitles, and learning records are stored and managed around your local device.
+- On desktop, every file lives in the `data` folder next to the executable (word book, learning records, settings, caches, backups, downloaded models), so the whole folder can be moved to a USB drive; the app **never writes to or reads from** your Windows user directory (`%APPDATA%`, Documents), and a freshly unzipped copy always starts from the initial state. The UI language is stored in `data/prefs.hive`, and the Nunito font is bundled inside the app rather than cached in the user directory.
 - The project does not host or distribute your course materials.
 - If you enable AI subtitles or translation, requests are sent to the third-party provider you configure.
 

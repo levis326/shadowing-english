@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'config/theme/theme_logic.dart';
 import 'config/theme/theme_ui_model.dart';
@@ -83,10 +82,16 @@ ThemeData _buildTheme(Brightness brightness) {
     onSurface: isDark ? Colors.white : const Color(0xFF050505),
   );
 
-  final TextTheme textTheme = GoogleFonts.nunitoTextTheme().apply(
-    bodyColor: colorScheme.onSurface,
-    displayColor: colorScheme.onSurface,
-  );
+  /// Nunito 字体已通过 pubspec 的 `fonts:` 直接打包，这里只用字体族名。
+  /// 不再走 google_fonts：它会把字体缓存到
+  /// `getApplicationSupportDirectory()`（Windows 上是 `%APPDATA%`），
+  /// 还会在缺字体时联网下载，都不符合"全部数据放在程序目录"的要求。
+  final TextTheme textTheme = ThemeData.light().textTheme
+      .apply(fontFamily: 'Nunito')
+      .apply(
+        bodyColor: colorScheme.onSurface,
+        displayColor: colorScheme.onSurface,
+      );
 
   return ThemeData(
     useMaterial3: true,

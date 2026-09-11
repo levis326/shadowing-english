@@ -67,8 +67,9 @@ class LocalDataBackupService {
   /// Deletes generated caches:
   ///  - the AI subtitle cache directory (`<数据目录>/asr_subtitles`);
   ///  - leftover app temp files (`pron_reading*.wav`, `shadowing_reading*.wav`,
-  ///    `cle_asr_*` chunks).
+  ///    `cle_asr_*` chunks) in `<数据目录>/temp`.
   ///
+  /// 桌面端只清理程序数据目录，不触碰系统临时目录/用户目录。
   /// Returns the number of removed files.
   Future<int> clearCachedFiles() async {
     int removed = 0;
@@ -86,10 +87,7 @@ class LocalDataBackupService {
       }
     }
 
-    final List<Directory> tempRoots = <Directory>[
-      Directory.systemTemp,
-      await temporaryDirectory(),
-    ];
+    final List<Directory> tempRoots = <Directory>[await temporaryDirectory()];
     for (final Directory tempRoot in tempRoots) {
       if (!tempRoot.existsSync()) {
         continue;

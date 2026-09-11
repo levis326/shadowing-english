@@ -34,6 +34,10 @@ docs/
 /build/
 **/build/
 
+# Local build scratch space (temporary Flutter SDK copy / HOME for CI-less builds)
+.tmp_flutter_sdk/
+.tmp_home/
+
 # Android related
 **/gradle-wrapper.jar
 **/android/.gradle

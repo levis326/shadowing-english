@@ -1,8 +1,10 @@
 import 'dart:io';
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../utils/app_locale.dart';
 import '../../../utils/app_paths.dart';
 import '../../../utils/url_utils.dart';
 import '../../home/presentation/learning_dashboard_provider.dart';
@@ -634,6 +636,22 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
           SizedBox(height: compact ? 20 : 24),
+          if (!AppPaths.isDataDirectoryWritableSync()) ...<Widget>[
+            SettingsGroupCard(
+              title: '存储位置异常',
+              icon: Icons.warning_amber_rounded,
+              children: <Widget>[
+                _ActionRow(
+                  title: '数据目录不可写',
+                  description: _dataDirectoryWarningText(),
+                  icon: Icons.error_outline_rounded,
+                  danger: true,
+                  onTap: () => _handleOpenDataDirectory(context),
+                ),
+              ],
+            ),
+            SizedBox(height: compact ? 20 : 24),
+          ],
           SettingsGroupCard(
             title: '系统',
             icon: Icons.settings_system_daydream_rounded,
@@ -727,6 +745,12 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 数据目录不可写时的提示文案。
+  static String _dataDirectoryWarningText() {
+    final String path = AppPaths.dataDirectoryPathSync() ?? '程序目录';
+    return '程序无法把数据保存到「$path」。请把整个程序文件夹放到可写的位置（例如 U 盘或自己的文件夹），不要放在 Program Files 等受保护目录，否则课程、字幕和设置都无法保存。';
   }
 
   /// 在系统文件管理器中打开程序数据目录（视频/字幕/缓存/备份/模型都在这里）。
@@ -869,6 +893,10 @@ class SettingsScreen extends ConsumerWidget {
       await ref.read(learningActivityProvider.notifier).clearAll();
       await ref.read(libraryCatalogProvider.notifier).resetEpisodeProgress();
       ref.read(learningSettingsProvider.notifier).resetToDefaults();
+      await clearSavedAppLocale();
+      if (context.mounted) {
+        await context.setLocale(fallbackAppLocale);
+      }
       if (!context.mounted) {
         return;
       }
@@ -958,6 +986,10 @@ class SettingsScreen extends ConsumerWidget {
       await ref.read(learningActivityProvider.notifier).clearAll();
       await ref.read(libraryCatalogProvider.notifier).resetEpisodeProgress();
       ref.read(learningSettingsProvider.notifier).resetToDefaults();
+      await clearSavedAppLocale();
+      if (context.mounted) {
+        await context.setLocale(fallbackAppLocale);
+      }
       int removedModels = 0;
       if (deleteModels) {
         for (final LocalModelInfo model in localModels) {

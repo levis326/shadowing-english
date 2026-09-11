@@ -21,6 +21,8 @@ import 'features/shared/data/local_pronunciation_service.dart';
 import 'flavors/app_flavor.dart';
 import 'hive/hive.dart';
 import 'my_app.dart';
+import 'utils/app_locale.dart';
+import 'utils/portable_preferences.dart';
 
 /// Try using const constructors as much as possible!
 
@@ -47,6 +49,10 @@ void _registerLifecycleCleanup() {
 Future<void> bootstrap({List<String> args = const <String>[]}) async {
   /// Initialize packages
   WidgetsFlutterBinding.ensureInitialized();
+
+  /// 必须在 easy_localization 初始化之前：它内部会读 shared_preferences，
+  /// 而 Windows 上那会在 `%APPDATA%` 里创建文件/目录。
+  installPortablePreferenceStore();
   _registerLifecycleCleanup();
   if (await maybeRunTranscriptReaderWindow()) {
     return;
@@ -73,13 +79,13 @@ Future<void> bootstrap({List<String> args = const <String>[]}) async {
   runApp(
     ProviderScope(
       child: EasyLocalization(
-        supportedLocales: const <Locale>[
-          /// Add your supported locales here
-          Locale('en'),
-          Locale('tr'),
-        ],
+        supportedLocales: supportedAppLocales,
+
+        /// 界面语言由 `<数据目录>/prefs.hive` 保存，不用 shared_preferences。
+        saveLocale: false,
+        startLocale: readSavedAppLocale(),
         path: Strings.localizationsPath,
-        fallbackLocale: const Locale('en'),
+        fallbackLocale: fallbackAppLocale,
         child: const MyApp(),
       ),
     ),
