@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../utils/app_paths.dart';
 import '../../../utils/url_utils.dart';
 import '../../home/presentation/learning_dashboard_provider.dart';
 import '../../library/presentation/library_catalog_provider.dart';
@@ -678,6 +679,13 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               _ActionRow(
+                title: '打开数据目录',
+                description: '视频、字幕、缓存、备份与已下载模型都在程序目录下：'
+                    '${AppPaths.dataDirectoryPathSync() ?? '（启动后可用）'}',
+                icon: Icons.folder_open_rounded,
+                onTap: () => _handleOpenDataDirectory(context),
+              ),
+              _ActionRow(
                 title: '备份数据到本地',
                 description: '将生词本、短语本、学习记录与设置备份到应用数据目录下的 backup 子文件夹，无需联网。',
                 icon: Icons.backup_rounded,
@@ -719,6 +727,33 @@ class SettingsScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// 在系统文件管理器中打开程序数据目录（视频/字幕/缓存/备份/模型都在这里）。
+  Future<void> _handleOpenDataDirectory(BuildContext context) async {
+    try {
+      final Directory dir = await AppPaths.dataDirectory();
+      await dir.create(recursive: true);
+      if (Platform.isWindows) {
+        await Process.start('explorer', <String>[dir.path]);
+      } else if (Platform.isMacOS) {
+        await Process.start('open', <String>[dir.path]);
+      } else if (Platform.isLinux) {
+        await Process.start('xdg-open', <String>[dir.path]);
+      } else {
+        throw UnsupportedError('unsupported-platform');
+      }
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      final String? path = AppPaths.dataDirectoryPathSync();
+      _showMessage(
+        context,
+        path == null ? '无法打开数据目录。' : '数据目录：$path',
+        duration: const Duration(seconds: 8),
+      );
+    }
   }
 
   Future<void> _handleBackupToLocal(BuildContext context) async {
