@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../utils/url_utils.dart';
 import '../../home/presentation/learning_dashboard_provider.dart';
 import '../../library/presentation/library_catalog_provider.dart';
+import '../../models/data/local_model_downloader.dart';
+import '../../models/data/local_model_store.dart';
+import '../../models/domain/local_model.dart';
 import '../../models/presentation/local_models_screen.dart';
 import '../../navigation/presentation/navigation_destination.dart';
 import '../../phrases/presentation/phrase_book_provider.dart';
@@ -693,6 +696,13 @@ class SettingsScreen extends ConsumerWidget {
                 danger: true,
                 onTap: () => _confirmDeleteAllCourses(context, ref),
               ),
+              _ActionRow(
+                title: '恢复初始状态（重置应用）',
+                description: '恢复到刚安装的状态：删除全部课程及其视频、字幕与缓存，清空生词本、短语本、学习记录，设置恢复默认。可选是否同时删除已下载的本地模型。',
+                icon: Icons.restart_alt_rounded,
+                danger: true,
+                onTap: () => _confirmFactoryReset(context, ref),
+              ),
             ],
           ),
           SizedBox(height: compact ? 20 : 24),
@@ -837,6 +847,108 @@ class SettingsScreen extends ConsumerWidget {
         return;
       }
       _showMessage(context, '清除失败，请稍后重试。');
+    }
+  }
+
+  /// 恢复初始状态：课程（含视频/字幕）、学习记录、缓存与设置全部回到刚安装的样子。
+  Future<void> _confirmFactoryReset(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    bool deleteModels = false;
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            return AlertDialog(
+              title: const Text('恢复初始状态'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      '将应用恢复到刚安装的状态：\n\n'
+                      '• 删除全部已导入课程，以及复制到程序数据目录的视频、字幕文件与 AI 字幕缓存\n'
+                      '• 清空生词本、短语本、学习记录与播放进度\n'
+                      '• 设置恢复默认\n\n'
+                      '不会删除：你导入时选择的原始视频文件和已有的本地备份。',
+                    ),
+                    CheckboxListTile(
+                      value: deleteModels,
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      dense: true,
+                      title: const Text(
+                        '同时删除已下载的本地模型（释放磁盘空间，下次使用需重新下载）',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      onChanged: (bool? value) =>
+                          setDialogState(() => deleteModels = value ?? false),
+                    ),
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('恢复初始状态'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    final int wordCount = ref.read(wordBookProvider).length;
+    final int phraseCount = ref.read(phraseBookProvider).length;
+    try {
+      final int removedCourses = await ref
+          .read(libraryCatalogProvider.notifier)
+          .deleteAllImportedCourses();
+      final int removedFiles = await const LocalDataBackupService()
+          .clearCachedFiles();
+      await ref.read(dailyEnglishServiceProvider).clearCache();
+      await ref.read(wordBookProvider.notifier).clearAll();
+      await ref.read(phraseBookProvider.notifier).clearAll();
+      await ref.read(learningActivityProvider.notifier).clearAll();
+      await ref.read(libraryCatalogProvider.notifier).resetEpisodeProgress();
+      ref.read(learningSettingsProvider.notifier).resetToDefaults();
+      int removedModels = 0;
+      if (deleteModels) {
+        for (final LocalModelInfo model in localModels) {
+          if (!LocalModelStore.isInstalled(model)) {
+            continue;
+          }
+          await LocalModelStore.deleteModel(model);
+          ref.read(localModelDownloadsProvider.notifier).clear(model.id);
+          removedModels += 1;
+        }
+      }
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(
+        context,
+        '已恢复初始状态：删除 $removedCourses 门课程、$wordCount 个生词、'
+        '$phraseCount 条短语、$removedFiles 个缓存文件'
+        '${removedModels > 0 ? '、$removedModels 个本地模型' : ''}，设置已恢复默认。',
+        duration: const Duration(seconds: 8),
+      );
+    } catch (_) {
+      if (!context.mounted) {
+        return;
+      }
+      _showMessage(context, '恢复失败，请稍后重试。');
     }
   }
 

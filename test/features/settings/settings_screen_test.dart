@@ -205,6 +205,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('全部删除'), findsNothing);
   });
+
+  testWidgets('settings offers restoring the initial state', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+    for (
+      int index = 0;
+      index < 12 && find.text('恢复初始状态（重置应用）').evaluate().isEmpty;
+      index++
+    ) {
+      await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+
+    expect(find.text('恢复初始状态（重置应用）'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('恢复初始状态（重置应用）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('恢复初始状态（重置应用）'));
+    await tester.pumpAndSettle();
+
+    // 弹窗列出会删除的内容，并提供「同时删除本地模型」选项。
+    expect(find.textContaining('将应用恢复到刚安装的状态'), findsOneWidget);
+    expect(find.textContaining('同时删除已下载的本地模型'), findsWidgets);
+    expect(find.textContaining('原始视频文件和已有的本地备份'), findsOneWidget);
+    expect(find.byType(Checkbox), findsOneWidget);
+
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+    expect(tester.widget<Checkbox>(find.byType(Checkbox)).value, isTrue);
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.byType(Checkbox), findsNothing);
+  });
 }
 
 Future<void> _scrollToTranslationSettings(WidgetTester tester) async {
