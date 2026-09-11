@@ -161,6 +161,50 @@ void main() {
     expect(find.text('管理 AI 字幕'), findsOneWidget);
     expect(find.text('导出 AI 字幕'), findsNothing);
   });
+
+  testWidgets('settings offers deleting all imported courses', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1366, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      const ProviderScope(child: MaterialApp(home: SettingsScreen())),
+    );
+    await tester.pumpAndSettle();
+    for (
+      int index = 0;
+      index < 10 && find.text('删除所有课程（含视频和字幕）').evaluate().isEmpty;
+      index++
+    ) {
+      await tester.drag(find.byType(ListView).last, const Offset(0, -500));
+      await tester.pumpAndSettle();
+    }
+
+    // 入口存在，并且说明里写清了会删除视频/字幕、保留原始文件。
+    expect(find.text('删除所有课程（含视频和字幕）'), findsOneWidget);
+    expect(
+      find.textContaining('复制到程序数据目录的视频、字幕文件'),
+      findsOneWidget,
+    );
+
+    await tester.ensureVisible(find.text('删除所有课程（含视频和字幕）'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('删除所有课程（含视频和字幕）'));
+    await tester.pumpAndSettle();
+
+    // 确认弹窗给出影响范围，可取消。
+    expect(find.text('删除所有课程'), findsOneWidget);
+    expect(
+      find.textContaining('原始视频文件不会被删除'),
+      findsOneWidget,
+    );
+    expect(find.text('全部删除'), findsOneWidget);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('全部删除'), findsNothing);
+  });
 }
 
 Future<void> _scrollToTranslationSettings(WidgetTester tester) async {
