@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../../models/data/local_model_resolver.dart';
 import 'desktop_pronunciation.dart';
 
 /// A per-syllable pronunciation score returned by the local server.
@@ -119,11 +120,14 @@ class LocalPronunciationService {
     final String? binary = binaryPathResolver != null
         ? await binaryPathResolver!()
         : await findDesktopPronunciationBinary();
+    // 优先使用用户下载到数据目录的发音模型（设置 → 本地模型），
+    // 没有时回退到随程序打包的旧位置。
     final String? modelDir = modelDirResolver != null
         ? await modelDirResolver!()
-        : await findDesktopPronunciationModelDir();
+        : (LocalModelResolver.pronunciationModelDir() ??
+              await findDesktopPronunciationModelDir());
     if (binary == null || modelDir == null) {
-      throw StateError('本地发音评测组件缺失，请重新安装最新版本。');
+      throw StateError('本地发音评测模型未下载，请在“设置 → 本地模型”中下载后重试。');
     }
     final Process process = await Process.start(binary, <String>[
       '--model-dir',

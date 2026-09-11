@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../../models/data/local_model_resolver.dart';
 import 'desktop_whisper.dart';
 
 typedef LocalWhisperInferenceOverride =
@@ -55,11 +56,14 @@ class LocalWhisperService {
     final String? serverPath = serverPathResolver != null
         ? await serverPathResolver!()
         : await findDesktopWhisperServer();
+    // 优先使用用户下载到数据目录的模型（设置 → 本地模型），
+    // 没有时回退到随程序打包的旧位置。
     final String? modelPath = modelPathResolver != null
         ? await modelPathResolver!()
-        : await findDesktopWhisperModel();
+        : (LocalModelResolver.whisperModelPath() ??
+              await findDesktopWhisperModel());
     if (serverPath == null || modelPath == null) {
-      throw StateError('本地语音识别组件缺失，请重新安装最新版本。');
+      throw StateError('本地语音识别模型未下载，请在“设置 → 本地模型”中下载后重试。');
     }
     final Process process = await Process.start(serverPath, <String>[
       '-m',

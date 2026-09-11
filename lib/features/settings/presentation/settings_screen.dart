@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../utils/url_utils.dart';
 import '../../home/presentation/learning_dashboard_provider.dart';
 import '../../library/presentation/library_catalog_provider.dart';
+import '../../models/presentation/local_models_screen.dart';
 import '../../navigation/presentation/navigation_destination.dart';
 import '../../phrases/presentation/phrase_book_provider.dart';
 import '../../shared/data/daily_english_service.dart';
@@ -652,6 +653,16 @@ class SettingsScreen extends ConsumerWidget {
                     : '已找到适用于当前平台的安装包。',
                 icon: Icons.system_update_rounded,
                 onTap: () => _handleUpdateAction(ref, updateState),
+              ),
+              _ActionRow(
+                title: '本地模型（在线下载）',
+                description: '语音识别、中文翻译、发音评测模型按需下载到程序数据目录，不随安装包分发。',
+                icon: Icons.download_for_offline_rounded,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const LocalModelsScreen(),
+                  ),
+                ),
               ),
               _ActionRow(
                 title: '管理 AI 字幕',

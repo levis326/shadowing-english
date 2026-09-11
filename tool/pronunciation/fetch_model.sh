@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# 注意：应用已改为在「设置 → 本地模型」中在线下载模型，CI 不再调用本脚本。
+# 这里保留给需要离线打包（把模型放在 exe 旁的 pronunciation/ 目录）的场景。
+
 # Downloads the wav2vec2-large-960h checkpoint (torchaudio's cached .pth) and
 # places it where pronunciation_server.py expects it (hub/checkpoints/...).
 #

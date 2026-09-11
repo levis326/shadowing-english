@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+import '../../models/data/local_model_resolver.dart';
 import 'desktop_nllb.dart';
 
 typedef NllbTranslateBatchOverride = Future<List<String?>> Function({
@@ -145,14 +146,18 @@ class LocalNllbTranslationService {
     final String? binary = binaryPathResolver != null
         ? await binaryPathResolver!()
         : await findDesktopNllbBinary();
+    // 优先使用用户下载到数据目录的翻译模型（设置 → 本地模型），
+    // 没有时回退到随程序打包的旧位置。
     final String? modelDir = modelDirResolver != null
         ? await modelDirResolver!()
-        : await findDesktopNllbModelDir();
+        : (LocalModelResolver.translationModelDir() ??
+              await findDesktopNllbModelDir());
     final String? tokenizer = tokenizerPathResolver != null
         ? await tokenizerPathResolver!()
-        : await findDesktopNllbTokenizer();
+        : (LocalModelResolver.translationTokenizerPath() ??
+              await findDesktopNllbTokenizer());
     if (binary == null || modelDir == null || tokenizer == null) {
-      throw StateError('本地翻译组件缺失，请重新安装最新版本。');
+      throw StateError('本地翻译模型未下载，请在“设置 → 本地模型”中下载后重试。');
     }
     final Process process = await Process.start(binary, <String>[
       '--model',
