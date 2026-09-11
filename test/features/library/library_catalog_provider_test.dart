@@ -625,6 +625,63 @@ void main() {
       // 原始文件保留不动。
       expect(videoFile.existsSync(), isTrue);
     });
+
+    test('re-importing the same files into a course does not duplicate episodes', () async {
+      final Directory sourceDir = Directory.systemTemp.createTempSync(
+        'library-reimport-dedupe-',
+      );
+      addTearDown(() => sourceDir.deleteSync(recursive: true));
+      final File videoFile = File('${sourceDir.path}/Lesson01.mp4')
+        ..writeAsStringSync('video-bytes');
+
+      final ProviderContainer container = ProviderContainer();
+      addTearDown(container.dispose);
+      final LibraryCatalogNotifier notifier = container.read(
+        libraryCatalogProvider.notifier,
+      );
+      final List<ImportMatchRow> rows = <ImportMatchRow>[
+        _makeRow(
+          videoPath: videoFile.path,
+          videoFile: 'Lesson01.mp4',
+          englishSubtitlePath: '',
+          chineseSubtitlePath: '',
+        ),
+      ];
+
+      final bool firstImport = await notifier.importCourseFromMatches(
+        rows: rows,
+        videoFolder: sourceDir.path,
+        subtitleFolder: '',
+        courseTitle: '便携课程',
+      );
+      expect(firstImport, isTrue);
+      final LibraryCourseData course = container
+          .read(libraryCatalogProvider)
+          .first;
+      final Directory copiedDir = File(
+        course.episodes.first.videoAsset!,
+      ).parent;
+      addTearDown(() {
+        if (copiedDir.existsSync()) {
+          copiedDir.deleteSync(recursive: true);
+        }
+      });
+
+      // 同一批文件再次导入到同一课程：媒体复制后路径一致，判定为已存在。
+      final bool secondImport = await notifier.importCourseFromMatches(
+        rows: rows,
+        videoFolder: sourceDir.path,
+        subtitleFolder: '',
+        targetCourseId: course.id,
+      );
+
+      expect(secondImport, isFalse);
+      final LibraryCourseData updated = container
+          .read(libraryCatalogProvider)
+          .first;
+      expect(updated.episodes, hasLength(1));
+      expect(updated.totalEpisodes, 1);
+    });
   });
 
   testWidgets('cover image renders a local file path without crashing', (

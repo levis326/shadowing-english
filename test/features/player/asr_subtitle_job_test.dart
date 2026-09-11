@@ -1168,6 +1168,74 @@ void main() {
     expect(lines[1].endMs, 2400);
   });
 
+  test('split stays aligned when punctuation is a separate word entry', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-job-punct-word-split-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')..writeAsStringSync('v');
+    final File chunk0 = File('${root.path}/chunk0.m4a')..writeAsStringSync('0');
+    final AsrSubtitleJobRunner runner = AsrSubtitleJobRunner(
+      supportDirectory: () async => root,
+      cache: AsrSubtitleCache(appSupportDirectory: () async => root),
+      service: AsrSubtitleService(
+        prepareAudioChunksOverride: (_) async => <AsrAudioChunk>[
+          AsrAudioChunk(file: chunk0, offsetMs: 0),
+        ],
+      ),
+      // 词条数量(4) 比 token 数量(3) 多：标点单独占一个词条。
+      cloudTranscribeChunk:
+          ({
+            required AsrAudioChunk chunk,
+            required LearningSettingsState settings,
+          }) async => <String, Object?>{
+            'version': 1,
+            'language': 'en',
+            'lines': <Map<String, Object?>>[
+              <String, Object?>{
+                'startMs': 1000,
+                'endMs': 2400,
+                'english': 'Unfortunately, the news.',
+                'chinese': '',
+                'words': <Map<String, Object?>>[
+                  <String, Object?>{
+                    'text': 'Unfortunately',
+                    'startMs': 1000,
+                    'endMs': 1400,
+                  },
+                  <String, Object?>{'text': ',', 'startMs': 1400, 'endMs': 1450},
+                  <String, Object?>{
+                    'text': 'the',
+                    'startMs': 1950,
+                    'endMs': 2100,
+                  },
+                  <String, Object?>{
+                    'text': 'news',
+                    'startMs': 2100,
+                    'endMs': 2400,
+                  },
+                ],
+              },
+            ],
+          },
+    );
+
+    final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+      await runner.run(
+        episodeId: 'episode-1',
+        videoPath: video.path,
+        settings: _settings(),
+      ),
+    );
+
+    expect(lines, hasLength(2));
+    expect(lines[0].english, 'Unfortunately,');
+    expect(lines[1].english, 'the news.');
+    // 时间戳按文本匹配对齐，没有被标点词条挤偏。
+    expect(lines[1].words.map((PlayerSubtitleWord w) => w.text).join(' '), 'the news');
+    expect(lines[1].startMs, 1950);
+  });
+
   test('invalid chunk is retried once before finishing the job', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-job-retry-invalid-',

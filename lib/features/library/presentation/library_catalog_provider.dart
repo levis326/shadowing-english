@@ -264,9 +264,20 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
 
     final String courseId =
         targetCourse?.id ?? _buildCourseId(videoFolder, rows);
+
+    // 便携化：本地导入的视频/字幕先复制进应用数据目录
+    // （`<数据目录>/imported_sources/<courseId>/`），课程媒体随程序文件夹移动，
+    // 换电脑/换盘符后依然能播放；已在数据目录内的文件不重复复制。
+    final List<ImportMatchRow> storedRows = await _copyRowsIntoDataDirectory(
+      rows,
+      courseId: courseId,
+    );
+
+    // 复制之后再按“存储后的路径”过滤已存在的剧集：重复导入同一批文件不会
+    // 产生重复剧集（存储路径由源文件名决定，因此可稳定比较）。
     final List<ImportMatchRow> newRows = targetCourse == null
-        ? rows
-        : rows
+        ? storedRows
+        : storedRows
               .where(
                 (ImportMatchRow row) => !targetCourse.episodes.any(
                   (LibraryEpisodeItem episode) =>
@@ -278,13 +289,6 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
       return false;
     }
 
-    // 便携化：本地导入的视频/字幕复制进应用数据目录
-    // （`<数据目录>/imported_sources/<courseId>/`），课程媒体随程序文件夹移动，
-    // 换电脑/换盘符后依然能播放；已在数据目录内的文件不重复复制。
-    final List<ImportMatchRow> storedRows = await _copyRowsIntoDataDirectory(
-      newRows,
-      courseId: courseId,
-    );
     final List<LibraryEpisodeItem> episodes = <LibraryEpisodeItem>[
       for (int index = 0; index < storedRows.length; index++)
         _buildEpisodeItem(

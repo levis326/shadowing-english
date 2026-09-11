@@ -1391,6 +1391,36 @@ class AsrSubtitleJobRunner {
         last == '：';
   }
 
+  /// 在 [words] 中从 [fromIndex] 起查找与 [token] 对应的词条下标，
+  /// 用于词条数量与 token 数量不一致时的对齐（按可比较文本匹配，
+  /// 允许“词条是 token 的前缀/子串”这类拆分差异）。
+  int _wordIndexForToken(
+    String token,
+    List<Map<String, dynamic>> words,
+    int fromIndex,
+  ) {
+    final int safeFrom = fromIndex.clamp(0, words.length - 1);
+    final String target = _comparableText(token);
+    if (target.isEmpty) {
+      return safeFrom;
+    }
+    for (int index = safeFrom; index < words.length; index += 1) {
+      final String candidate = _comparableText(
+        words[index]['text'] as String? ?? '',
+      );
+      if (candidate.isEmpty) {
+        // 标点等不含字母数字的词条不参与匹配（否则空前缀会匹配任何 token）。
+        continue;
+      }
+      if (candidate == target ||
+          candidate.startsWith(target) ||
+          target.startsWith(candidate)) {
+        return index;
+      }
+    }
+    return safeFrom;
+  }
+
   /// Splits every subtitle line at clause punctuation (`, . ! ? ; :` and the
   /// full-width equivalents) so one cue never contains several sentences.
   /// Boundaries are derived from the line's own English text — not from the
@@ -1446,6 +1476,24 @@ class AsrSubtitleJobRunner {
         (line['words'] as List<dynamic>? ?? const <dynamic>[])
             .whereType<Map<String, dynamic>>()
             .toList(growable: false);
+    // token 序号 -> 词条下标。数量一致时按位置一一对应（常见情况，
+    // 参考字幕对齐的词不含标点也能正确分组）；数量不一致时（例如服务商
+    // 把标点单独算一个词）按文本匹配推进游标，避免时间戳整体错位。
+    final List<int> tokenToWord = <int>[];
+    if (words.length == tokens.length) {
+      for (int index = 0; index < tokens.length; index += 1) {
+        tokenToWord.add(index);
+      }
+    } else if (words.isNotEmpty) {
+      int cursor = 0;
+      for (final String token in tokens) {
+        final int match = _wordIndexForToken(token, words, cursor);
+        tokenToWord.add(match);
+        if (match + 1 < words.length) {
+          cursor = match + 1;
+        }
+      }
+    }
     final int lineStartMs = (line['startMs'] as num?)?.round() ?? 0;
     final int lineEndMs =
         (line['endMs'] as num?)?.round() ?? lineStartMs;
@@ -1456,17 +1504,16 @@ class AsrSubtitleJobRunner {
       final String subEnglish = range
           .map((int index) => tokens[index])
           .join(' ');
-      // 词级时间戳按 token 位置对应；参考字幕对齐的词不含标点，
-      // 因此用 token 序号而不是词文本来分组。
-      final List<Map<String, dynamic>> groupWords = words.isEmpty
-          ? const <Map<String, dynamic>>[]
-          : range
-                .map(
-                  (int tokenIndex) => words[tokenIndex < words.length
-                      ? tokenIndex
-                      : words.length - 1],
-                )
-                .toList(growable: false);
+      final List<Map<String, dynamic>> groupWords = <Map<String, dynamic>>[];
+      if (tokenToWord.isNotEmpty) {
+        final Set<int> usedWordIndexes = <int>{};
+        for (final int tokenIndex in range) {
+          final int wordIndex = tokenToWord[tokenIndex];
+          if (usedWordIndexes.add(wordIndex)) {
+            groupWords.add(words[wordIndex]);
+          }
+        }
+      }
       int startMs;
       int endMs;
       if (groupWords.isNotEmpty) {

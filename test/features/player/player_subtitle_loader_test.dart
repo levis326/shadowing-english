@@ -265,6 +265,40 @@ Hello from file
     expect(state.positionMs, 1000);
   });
 
+  test('single-play boundary pauses at the sentence end without advancing', () {
+    final PlayerMockState state = PlayerMockState()
+      ..loadLines(const <PlayerSubtitleLine>[
+        PlayerSubtitleLine(
+          startTime: '00:01',
+          english: 'First line',
+          chinese: '第一句',
+          startMs: 1000,
+          endMs: 2000,
+        ),
+        PlayerSubtitleLine(
+          startTime: '00:03',
+          english: 'Second line',
+          chinese: '第二句',
+          startMs: 3000,
+          endMs: 4000,
+        ),
+      ]);
+    state
+      ..selectLine(0)
+      ..singlePlayEndMs = state.videoEndMsForLine(0)
+      ..isPlaying = true;
+
+    for (int i = 0; i < 60 && state.isPlaying; i += 1) {
+      state.tick();
+    }
+
+    // 播完本句即暂停，不进入下一句。
+    expect(state.isPlaying, isFalse);
+    expect(state.activeLineIndex, 0);
+    expect(state.positionMs, 2000);
+    expect(state.singlePlayEndMs, isNull);
+  });
+
   test('sentence loop button starts, switches, and stops line playback', () {
     final PlayerMockState state = PlayerMockState()
       ..loadLines(const <PlayerSubtitleLine>[

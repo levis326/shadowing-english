@@ -552,17 +552,43 @@ class _PadPortraitPlayerScreenState
       return;
     }
     // 点击某句：视频跳到这句开头播放，播完这句就暂停，不继续往下播。
+    final int startMs = state.videoStartMsForLine(index);
+    final int endMs = state.videoEndMsForLine(index);
     setState(() {
-      state
-        ..selectLine(index)
-        ..singlePlayEndMs = state.videoEndMsForLine(index)
-        ..isPlaying = true;
+      state.selectLine(index);
     });
     _syncTranscriptReader();
-    _seekToActiveLine();
     _recordCurrentSentenceStudy();
-    _lastTrackedVideoPosition = _currentVideoPosition();
-    _applyPlaybackMode();
+    final Player? player = _videoPlayer;
+    if (player == null || !_videoReady) {
+      // 没有可用播放器时（无视频资源）直接按状态中的单句边界播放，
+      // 由 tick 在句尾暂停。
+      setState(() {
+        state
+          ..singlePlayEndMs = endMs
+          ..isPlaying = true;
+      });
+      _lastTrackedVideoPosition = _currentVideoPosition();
+      _applyPlaybackMode();
+      return;
+    }
+    // 先 seek 到句首再设置单句结束点：避免 seek 完成前的旧进度事件
+    // 提前触发“播完暂停”，导致点击较早的字幕句时视频停在原地不播放。
+    unawaited(() async {
+      await player.pause();
+      await player.seek(Duration(milliseconds: startMs));
+      await player.setRate(state.playbackRate);
+      _lastTrackedVideoPosition = Duration(milliseconds: startMs);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        state
+          ..singlePlayEndMs = endMs
+          ..isPlaying = true;
+      });
+      _applyPlaybackMode();
+    }());
   }
 
   void _handleSeek(double progress) {
