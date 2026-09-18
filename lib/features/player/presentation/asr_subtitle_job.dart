@@ -267,6 +267,10 @@ class _SubtitleQualityReport {
   }
 }
 
+/// 一句话最短的可播放时长：识别结果偶尔会把某句压成几毫秒，
+/// 点击这条字幕时声音刚响就停了。低于这个时长会向后补足。
+const int _minPlayableLineMs = 400;
+
 class AsrSubtitleJobRunner {
   const AsrSubtitleJobRunner({
     this.supportDirectory,
@@ -788,12 +792,7 @@ class AsrSubtitleJobRunner {
     );
     await part.writeAsString(completedRaw);
     try {
-      _validateFinalResult(
-        completedRaw,
-        allowLineOverlap:
-            referenceSubtitleLines.isNotEmpty ||
-            (untimedTextLines?.isNotEmpty ?? false),
-      );
+      _validateFinalResult(completedRaw);
     } catch (error) {
       await report.write(jobDir, 'FAILED');
       await chunksDir.delete(recursive: true);
@@ -1444,13 +1443,12 @@ class AsrSubtitleJobRunner {
     }
   }
 
-  void _validateFinalResult(String raw, {bool allowLineOverlap = false}) {
+  void _validateFinalResult(String raw) {
     final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
     if (lines.isEmpty) {
       throw StateError('字幕检查失败：没有识别到有效字幕。');
     }
 
-    int previousEndMs = -1;
     for (int index = 0; index < lines.length; index += 1) {
       final PlayerSubtitleLine line = lines[index];
       final String location = '第 ${index + 1} 句';
@@ -1491,12 +1489,6 @@ class AsrSubtitleJobRunner {
         }
         previousWordEndMs = word.endMs;
       }
-      if (!allowLineOverlap &&
-          previousEndMs >= 0 &&
-          line.startMs < previousEndMs - 250) {
-        throw StateError('字幕检查失败：$location 时间轴乱序或重叠过多。');
-      }
-      previousEndMs = line.endMs;
     }
   }
 
@@ -1515,28 +1507,19 @@ class AsrSubtitleJobRunner {
     final List<dynamic> lines =
         decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
     final List<Map<String, Object?>> normalized = <Map<String, Object?>>[];
-    int previousEndMs = -1;
     for (final Object? item in lines) {
       if (item is! Map<String, dynamic>) {
         continue;
       }
       final String english = (item['english'] as String? ?? '').trim();
-      int startMs = _timelineMs(item['startMs']);
-      int endMs = _timelineMs(item['endMs']);
+      final int startMs = _timelineMs(item['startMs']);
+      final int endMs = _timelineMs(item['endMs']);
       // 没有可跟读文字的（纯标点）和无效时间轴的行直接丢掉。
       if (english.isEmpty || _wordCount(english) == 0) {
         continue;
       }
       if (endMs <= startMs) {
         continue;
-      }
-      if (!allowLineOverlap &&
-          previousEndMs >= 0 &&
-          startMs < previousEndMs - 250) {
-        startMs = previousEndMs;
-        if (endMs <= startMs) {
-          endMs = startMs + 1;
-        }
       }
       List<Map<String, Object?>> words = _sanitizedWords(
         item: item,
@@ -1556,10 +1539,20 @@ class AsrSubtitleJobRunner {
         'endMs': endMs,
         'words': words,
       });
-      previousEndMs = endMs;
     }
     if (normalized.isEmpty && requireNonEmpty) {
       throw StateError('字幕检查失败：没有识别到有效字幕。');
+    }
+    // 识别结果偶尔会把某一句压成几毫秒（重复段、嵌套段），点击字幕就会
+    // “响一下就停”。这里给过短的句子补足可播放时长，允许与下一句重叠
+    // （播放器只按句子结束点暂停，行间重叠不影响跟读）。
+    for (int index = 0; index < normalized.length; index += 1) {
+      final int startMs = _timelineMs(normalized[index]['startMs']);
+      final int endMs = _timelineMs(normalized[index]['endMs']);
+      if (endMs - startMs >= _minPlayableLineMs) {
+        continue;
+      }
+      normalized[index]['endMs'] = startMs + _minPlayableLineMs;
     }
     decoded['lines'] = normalized;
     return const JsonEncoder.withIndent('  ').convert(decoded);
@@ -1745,8 +1738,12 @@ class AsrSubtitleJobRunner {
         }
       }
     }
+    final List<Map<String, Object?>> recognizable = _filterHallucinations(
+      lines,
+      report: report,
+    );
     final List<Map<String, Object?>> boundaryNormalized =
-        _normalizeChunkBoundaries(lines, report: report);
+        _normalizeChunkBoundaries(recognizable, report: report);
     final List<Map<String, Object?>> timelineNormalized = _normalizeTimeline(
       boundaryNormalized,
       report: report,
@@ -1767,6 +1764,118 @@ class AsrSubtitleJobRunner {
           )
           .toList(growable: false),
     });
+  }
+
+  /// 丢掉本地/云端 Whisper 常见的“幻觉”行：
+  ///
+  ///  - 同一句连续重复 3 次以上（whisper 在音乐/静音上会陷入循环）；
+  ///  - 一句拖了 10 秒以上却只有一两个单词（基本是静音/音乐段凭空生成）；
+  ///  - 短小的片尾/字幕组套话（订阅、感谢观看、字幕来源等）。
+  ///
+  /// 这些行本身没有内容，却会占住时间轴、把后面的字幕整体挤偏。
+  List<Map<String, Object?>> _filterHallucinations(
+    List<Map<String, Object?>> lines, {
+    required _SubtitleQualityReport report,
+  }) {
+    final List<Map<String, Object?>> kept = <Map<String, Object?>>[];
+    final List<Map<String, Object?>> run = <Map<String, Object?>>[];
+    String runText = '';
+
+    void flushRun() {
+      if (run.isEmpty) {
+        return;
+      }
+      // 连续重复的同一句只保留第一条：whisper 在音乐/静音上会陷入
+      // “同一句反复出现”的循环，这些行没有信息量，却会占住时间轴。
+      const int keepCount = 1;
+      for (int index = 0; index < run.length; index += 1) {
+        if (index < keepCount) {
+          kept.add(run[index]);
+        } else {
+          report
+            ..repairCount += 1
+            ..anomalies.add(<String, Object?>{
+              'kind': 'hallucination',
+              'reason': 'repeat',
+              'english': run[index]['english'],
+              'startMs': _timelineMs(run[index]['startMs']),
+              'endMs': _timelineMs(run[index]['endMs']),
+            });
+        }
+      }
+      run.clear();
+    }
+
+    for (final Map<String, Object?> line in lines) {
+      final String english = (line['english'] as String? ?? '').trim();
+      final String normalized = _comparableText(english);
+      if (normalized == runText) {
+        run.add(line);
+        continue;
+      }
+      flushRun();
+      runText = normalized;
+      run.add(line);
+    }
+    flushRun();
+
+    final List<Map<String, Object?>> result = <Map<String, Object?>>[];
+    for (final Map<String, Object?> line in kept) {
+      final String english = (line['english'] as String? ?? '').trim();
+      final int wordCount = _wordCount(english);
+      final bool creditLine =
+          wordCount > 0 &&
+          wordCount <= 8 &&
+          _isCreditHallucination(_comparableText(english));
+      if (creditLine) {
+        report
+          ..repairCount += 1
+          ..anomalies.add(<String, Object?>{
+            'kind': 'hallucination',
+            'reason': 'credit',
+            'english': english,
+            'startMs': _timelineMs(line['startMs']),
+            'endMs': _timelineMs(line['endMs']),
+          });
+        continue;
+      }
+      result.add(line);
+    }
+    return result;
+  }
+
+  /// 只保留“明显是字幕组/片尾套话”的短语，避免误伤正常台词
+  /// （例如课堂里真的会出现的 "subtitle" 这个词）。
+  static const List<String> _creditHallucinationPhrases = <String>[
+    'amaraorg',
+    'subtitlesby',
+    'subtitledby',
+    'subtitlesprovidedby',
+    'transcriptionby',
+    'transcribedby',
+    'transcriptionprovidedby',
+    'thanksforwatching',
+    'thankyouforwatching',
+    'pleasesubscribe',
+    'likeandsubscribe',
+    'subscribetothechannel',
+    'mingpaocanada',
+    '明镜与点点',
+    '字幕志愿者',
+    '字幕组提供',
+    '字幕由',
+  ];
+
+  bool _isCreditHallucination(String normalized) {
+    if (normalized.isEmpty) {
+      return false;
+    }
+    for (final String phrase in _creditHallucinationPhrases) {
+      if (normalized.contains(phrase)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Merges adjacent whisper fragments into whole English sentences, so each

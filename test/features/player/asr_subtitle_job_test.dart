@@ -1243,10 +1243,21 @@ void main() {
       lines[2].words.map((PlayerSubtitleWord w) => w.text).join(' '),
       'Final question?',
     );
-    // 时间轴连续且不重叠。
-    expect(lines[0].startMs, lessThan(lines[0].endMs));
-    expect(lines[0].endMs, lessThanOrEqualTo(lines[1].startMs));
-    expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
+    // 时间轴递增；过短的句子会被补足到至少 400ms（点击时能听到声音），
+    // 允许与下一句有少量重叠。
+    for (int index = 0; index < lines.length; index += 1) {
+      expect(lines[index].startMs, lessThan(lines[index].endMs));
+      expect(
+        lines[index].endMs - lines[index].startMs,
+        greaterThanOrEqualTo(400),
+      );
+      if (index > 0) {
+        expect(
+          lines[index].startMs,
+          greaterThanOrEqualTo(lines[index - 1].startMs),
+        );
+      }
+    }
   });
 
   test('splits reference-aligned lines by comma, period, and question mark', () async {
@@ -1298,8 +1309,19 @@ void main() {
       lines[1].words.map((PlayerSubtitleWord w) => w.text).join(' '),
       'Menstruation',
     );
-    expect(lines[0].endMs, lessThanOrEqualTo(lines[1].startMs));
-    expect(lines[1].endMs, lessThanOrEqualTo(lines[2].startMs));
+    // 每句至少 400ms（过短的句子会被补足，允许与下一句重叠）。
+    for (int index = 0; index < lines.length; index += 1) {
+      expect(
+        lines[index].endMs - lines[index].startMs,
+        greaterThanOrEqualTo(400),
+      );
+      if (index > 0) {
+        expect(
+          lines[index].startMs,
+          greaterThanOrEqualTo(lines[index - 1].startMs),
+        );
+      }
+    }
   });
 
   test('split cues are contiguous so clicked lines play their full audio', () async {

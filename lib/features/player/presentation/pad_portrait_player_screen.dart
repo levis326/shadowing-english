@@ -550,7 +550,9 @@ class _PadPortraitPlayerScreenState
     }
     // 点击某句：视频跳到这句开头播放，播完这句就暂停，不继续往下播。
     final int startMs = state.videoStartMsForLine(index);
-    final int endMs = state.videoEndMsForLine(index);
+    final int rawEndMs = state.videoEndMsForLine(index);
+    // 脏数据可能把某句压得极短（重复段、嵌套段），这里保证至少能听到一小段。
+    final int endMs = rawEndMs - startMs >= 250 ? rawEndMs : startMs + 600;
     setState(() {
       state.selectLine(index);
     });

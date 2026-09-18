@@ -39,7 +39,7 @@ void main() {
       expect(result[1].endMs, 6000);
     });
 
-    test('skips sentences whisper merged or repeated', () {
+    test('splits a whisper segment that merged several sentences', () {
       final List<PlayerSubtitleLine> result = assignTimingsFromRecognition(
         reference: <PlayerSubtitleLine>[
           _line('First sentence here.', 0, 0),
@@ -53,16 +53,43 @@ void main() {
         ],
       );
 
+      // 识别把前两句合成了一段：两句话按字数平分 1000-5000，
+      // 而不是只有第一句拿到整段、另外一句被推到后面。
       expect(result[0].startMs, 1000);
-      expect(result[0].endMs, 5000);
-      // 与识别合并句配对的第二句落在锚点之间的空隙里。
-      expect(result[1].startMs, 5000);
-      expect(result[1].endMs, 5500);
+      expect(result[0].endMs, 3000);
+      expect(result[1].startMs, 3000);
+      expect(result[1].endMs, 5000);
       expect(result[2].startMs, 5500);
       // 时间严格递增，不会互相交叉。
       for (int i = 1; i < result.length; i += 1) {
         expect(result[i].startMs >= result[i - 1].endMs, isTrue);
       }
+    });
+
+    test('splits one merged whisper segment across its sentences', () {
+      final List<PlayerSubtitleLine> result = assignTimingsFromRecognition(
+        reference: <PlayerSubtitleLine>[
+          _line('Alpha beta.', 0, 0),
+          _line('Gamma delta.', 0, 0),
+          _line('Epsilon zeta.', 0, 0),
+        ],
+        // whisper 把三句合成了一段：三句应当按顺序平分这一段的 0-9000ms。
+        recognition: <PlayerSubtitleLine>[
+          _line('alpha beta gamma delta epsilon zeta', 0, 9000),
+        ],
+      );
+
+      expect(result, hasLength(3));
+      expect(<int>[for (final PlayerSubtitleLine l in result) l.startMs], <int>[
+        0,
+        3000,
+        6000,
+      ]);
+      expect(<int>[for (final PlayerSubtitleLine l in result) l.endMs], <int>[
+        3000,
+        6000,
+        9000,
+      ]);
     });
 
     test('interpolates a reference sentence whisper missed', () {

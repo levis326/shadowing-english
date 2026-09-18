@@ -6,8 +6,10 @@ const int _minLineDurationMs = 120;
 /// 用本地 Whisper 的识别结果，给「只有文本、没有时间轴」的字幕行套上时间轴。
 ///
 /// 文本以 [reference] 为准（来自用户的字幕文本文件），时间来自 [recognition]：
-/// 先按词相似度做单调对齐（同一段音频的两份文本顺序一致），识别里多出来的行
-/// 会被跳过，参考里没能配上的行则在相邻锚点之间按字数比例插值。
+/// 先按词相似度做单调对齐（同一段音频的两份文本顺序一致，且**允许多句共用
+/// 一句识别结果**——Whisper 常把好几句话合成一段），同一段识别结果覆盖的
+/// 若干句话按字数比例平分它的时间；识别里多出来的行会被跳过；参考里没能
+/// 配上的行则在相邻锚点之间按字数比例插值。
 List<PlayerSubtitleLine> assignTimingsFromRecognition({
   required List<PlayerSubtitleLine> reference,
   required List<PlayerSubtitleLine> recognition,
@@ -37,7 +39,7 @@ List<PlayerSubtitleLine> assignTimingsFromRecognition({
       .map((PlayerSubtitleLine line) => _tokens(line.english))
       .toList(growable: false);
 
-  final Map<int, int> matches = _alignSequences(
+  final List<int> assignment = _alignSequences(
     referenceTokens: referenceTokens,
     recognitionTokens: recognitionTokens,
   );
@@ -47,13 +49,37 @@ List<PlayerSubtitleLine> assignTimingsFromRecognition({
       : fallbackEndMs;
   final List<int> starts = List<int>.filled(reference.length, -1);
   final List<int> ends = List<int>.filled(reference.length, -1);
-  matches.forEach((int referenceIndex, int recognitionIndex) {
-    starts[referenceIndex] = timedRecognition[recognitionIndex].startMs;
-    ends[referenceIndex] = timedRecognition[recognitionIndex].endMs;
-  });
+
+  // 连续若干句落在同一段识别结果上时，按字数比例平分这一段的时间。
+  int index = 0;
+  while (index < reference.length) {
+    final int recognitionIndex = assignment[index];
+    if (recognitionIndex < 0) {
+      index += 1;
+      continue;
+    }
+    int runEnd = index;
+    while (runEnd < reference.length &&
+        assignment[runEnd] == recognitionIndex) {
+      runEnd += 1;
+    }
+    _distributeTimings(
+      starts: starts,
+      ends: ends,
+      from: index,
+      to: runEnd,
+      startMs: timedRecognition[recognitionIndex].startMs,
+      endMs: timedRecognition[recognitionIndex].endMs,
+      weights: <int>[
+        for (int i = index; i < runEnd; i += 1)
+          referenceTokens[i].isEmpty ? 1 : referenceTokens[i].length,
+      ],
+    );
+    index = runEnd;
+  }
 
   // 相邻锚点之间的连续未匹配行按字数比例分配时间。
-  int index = 0;
+  index = 0;
   int? previousEndMs;
   while (index < reference.length) {
     if (starts[index] >= 0) {
@@ -69,18 +95,19 @@ List<PlayerSubtitleLine> assignTimingsFromRecognition({
     final int nextStartMs = runEnd < reference.length
         ? starts[runEnd]
         : totalEndMs;
-    final List<int> weights = <int>[
-      for (int i = index; i < runEnd; i += 1)
-        referenceTokens[i].isEmpty ? 1 : referenceTokens[i].length,
-    ];
     _distributeTimings(
       starts: starts,
       ends: ends,
       from: index,
       to: runEnd,
       startMs: runStartMs,
-      endMs: nextStartMs > runStartMs ? nextStartMs : runStartMs + _minLineDurationMs,
-      weights: weights,
+      endMs: nextStartMs > runStartMs
+          ? nextStartMs
+          : runStartMs + _minLineDurationMs,
+      weights: <int>[
+        for (int i = index; i < runEnd; i += 1)
+          referenceTokens[i].isEmpty ? 1 : referenceTokens[i].length,
+      ],
     );
     previousEndMs = ends[runEnd - 1];
     index = runEnd;
@@ -129,70 +156,93 @@ void _distributeTimings({
   }
 }
 
-/// 单调序列对齐（类似 Needleman–Wunsch）：返回 参考下标 -> 识别下标。
-Map<int, int> _alignSequences({
+/// 单调对齐：返回每句参考文本对应的识别结果下标（-1 表示识别里没有对应内容）。
+///
+/// 与“每句只能配一段”的普通序列对齐不同，这里允许**多句共用同一段识别
+/// 结果**（Whisper 常把多句合成一段），也允许参考句没有对应内容、识别段
+/// 多出来（音乐、噪声）。相似度太低的配对会被判为“配不上”，交给插值处理。
+List<int> _alignSequences({
   required List<List<String>> referenceTokens,
   required List<List<String>> recognitionTokens,
 }) {
-  const double gapPenalty = -0.6;
+  const double minSimilarity = 0.34;
+  const double stayPenalty = 0.1;
+  const double skipRecognitionPenalty = 0.6;
   final int n = referenceTokens.length;
   final int m = recognitionTokens.length;
   final List<List<double>> score = List<List<double>>.generate(
     n + 1,
-    (int i) => List<double>.filled(m + 1, 0),
+    (int i) => List<double>.filled(m + 1, double.negativeInfinity),
   );
+  // choice: 0=配到上一段、1=配到当前段（与上一句共用）、2=这句没配上、3=跳过这段识别
   final List<List<int>> choice = List<List<int>>.generate(
     n + 1,
-    (int i) => List<int>.filled(m + 1, 0),
+    (int i) => List<int>.filled(m + 1, 2),
   );
+  score[0][0] = 0;
   for (int i = 1; i <= n; i += 1) {
-    score[i][0] = score[i - 1][0] + gapPenalty;
-    choice[i][0] = 1;
+    // 还没有识别结果可用：这些参考句暂时没配上。
+    score[i][0] = 0;
+    choice[i][0] = 2;
   }
   for (int j = 1; j <= m; j += 1) {
-    score[0][j] = score[0][j - 1] + gapPenalty;
-    choice[0][j] = 2;
+    score[0][j] = score[0][j - 1] - skipRecognitionPenalty;
+    choice[0][j] = 3;
   }
   for (int i = 1; i <= n; i += 1) {
     for (int j = 1; j <= m; j += 1) {
-      final double similarity = _similarity(
-        referenceTokens[i - 1],
-        recognitionTokens[j - 1],
-      );
-      final double match = score[i - 1][j - 1] + similarity;
-      final double skipReference = score[i - 1][j] + gapPenalty;
-      final double skipRecognition = score[i][j - 1] + gapPenalty;
-      // 得分相同时优先“先消耗前面的参考句/识别句”，这样同一段语音里
-      // 连续多句只匹配上第一句时，后面的句子会落在锚点之间的空隙里，
-      // 而不是把后面的句子提前配到更早的识别句上。
-      if (skipReference >= match && skipReference >= skipRecognition) {
-        score[i][j] = skipReference;
-        choice[i][j] = 1;
-      } else if (skipRecognition >= match) {
-        score[i][j] = skipRecognition;
-        choice[i][j] = 2;
-      } else {
-        score[i][j] = match;
-        choice[i][j] = 0;
+      final double gain = _similarity(
+            referenceTokens[i - 1],
+            recognitionTokens[j - 1],
+          ) -
+          minSimilarity;
+      double best = score[i - 1][j];
+      int bestChoice = 2;
+      final double match = score[i - 1][j - 1] + gain;
+      if (match > best) {
+        best = match;
+        bestChoice = 0;
       }
+      final double stay = score[i - 1][j] + gain - stayPenalty;
+      if (stay > best) {
+        best = stay;
+        bestChoice = 1;
+      }
+      final double skip = score[i][j - 1] - skipRecognitionPenalty;
+      if (skip > best) {
+        best = skip;
+        bestChoice = 3;
+      }
+      score[i][j] = best;
+      choice[i][j] = bestChoice;
     }
   }
-  final Map<int, int> matches = <int, int>{};
+  int bestJ = 0;
+  double bestScore = double.negativeInfinity;
+  for (int j = 0; j <= m; j += 1) {
+    if (score[n][j] > bestScore) {
+      bestScore = score[n][j];
+      bestJ = j;
+    }
+  }
+  final List<int> assignment = List<int>.filled(n, -1);
   int i = n;
-  int j = m;
-  while (i > 0 && j > 0) {
-    switch (choice[i][j]) {
-      case 0:
-        matches[i - 1] = j - 1;
-        i -= 1;
+  int j = bestJ;
+  while (i > 0) {
+    final int selected = choice[i][j];
+    if (selected == 0 || selected == 1) {
+      assignment[i - 1] = j - 1;
+      i -= 1;
+      if (selected == 0) {
         j -= 1;
-      case 1:
-        i -= 1;
-      default:
-        j -= 1;
+      }
+    } else if (selected == 3) {
+      j -= 1;
+    } else {
+      i -= 1;
     }
   }
-  return matches;
+  return assignment;
 }
 
 /// 相似度 = 参考句的词有多少按顺序出现在识别句里（0~1）。
