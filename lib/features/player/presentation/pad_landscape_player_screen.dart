@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +36,7 @@ import 'player_subtitle_loader.dart';
 import 'player_system_media_controls.dart';
 import 'player_video_init.dart';
 import 'subtitle_reference_review.dart';
+import 'subtitle_text_source.dart';
 import 'transcript_reader_session.dart';
 import 'widgets/ai_subtitle_generation_progress_dialog.dart';
 import 'widgets/player_top_bar.dart';
@@ -894,6 +896,9 @@ class PadLandscapePlayerScreenState
                     onGenerateAiSubtitles: _generatingAiSubtitles
                         ? null
                         : _handleGenerateAiSubtitles,
+                    onGenerateFromSubtitleText: _generatingAiSubtitles
+                        ? null
+                        : _handleGenerateFromSubtitleText,
                   ),
                 ),
               ),
@@ -992,8 +997,11 @@ class PadLandscapePlayerScreenState
     _showMessage(_isMuted ? '已静音' : '已恢复声音');
   }
 
+  /// [fromTextSource] 不为空时走「用字幕文本生成」：文字以用户的文件为准，
+  /// 时间轴来自文件本身或本地 Whisper（不发音频到云端、不跑 AI 识别文字）。
   Future<void> _handleGenerateAiSubtitles({
     bool forceRegenerate = false,
+    SubtitleTextSource? fromTextSource,
   }) async {
     if (_generatingAiSubtitles) {
       return;
@@ -1008,7 +1016,9 @@ class PadLandscapePlayerScreenState
     setState(() {
       _generatingAiSubtitles = true;
       _aiSubtitleProgressValue = null;
-      _aiSubtitleProgressText = '正在准备音频...';
+      _aiSubtitleProgressText = fromTextSource == null
+          ? '正在准备音频...'
+          : '正在读取字幕文本...';
       _aiSubtitlePreviewText = null;
       _aiSubtitleErrorText = null;
     });
@@ -1026,7 +1036,7 @@ class PadLandscapePlayerScreenState
         AsrSubtitleCancellationToken();
     _aiSubtitleCancellationToken = cancellationToken;
     try {
-      if (!forceRegenerate && !_usingAiSubtitles) {
+      if (fromTextSource == null && !forceRegenerate && !_usingAiSubtitles) {
         final String? cached = await const AsrSubtitleCache().read(
           episodeId: widget.episodeId,
           videoPath: videoPath,
@@ -1051,25 +1061,45 @@ class PadLandscapePlayerScreenState
         }
       }
       const AsrSubtitleJobRunner runner = AsrSubtitleJobRunner();
-      final String raw = await runner.run(
-        episodeId: widget.episodeId,
-        videoPath: videoPath,
-        settings: settings,
-        referenceSubtitleLines: _referenceSubtitleLines,
-        forceRegenerate: forceRegenerate,
-        cancellationToken: cancellationToken,
-        onProgress: (AsrSubtitleProgress progress) {
-          dialogProgress.value = progress;
-          if (!mounted) {
-            return;
-          }
-          setState(() {
-            _aiSubtitleProgressValue = progress.value;
-            _aiSubtitleProgressText = progress.label;
-            _aiSubtitlePreviewText = progress.previewText;
-          });
-        },
-      );
+      final String raw = fromTextSource == null
+          ? await runner.run(
+              episodeId: widget.episodeId,
+              videoPath: videoPath,
+              settings: settings,
+              referenceSubtitleLines: _referenceSubtitleLines,
+              forceRegenerate: forceRegenerate,
+              cancellationToken: cancellationToken,
+              onProgress: (AsrSubtitleProgress progress) {
+                dialogProgress.value = progress;
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _aiSubtitleProgressValue = progress.value;
+                  _aiSubtitleProgressText = progress.label;
+                  _aiSubtitlePreviewText = progress.previewText;
+                });
+              },
+            )
+          : await runner.runFromSubtitleText(
+              episodeId: widget.episodeId,
+              videoPath: videoPath,
+              settings: settings,
+              textSource: fromTextSource,
+              forceRegenerate: forceRegenerate,
+              cancellationToken: cancellationToken,
+              onProgress: (AsrSubtitleProgress progress) {
+                dialogProgress.value = progress;
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _aiSubtitleProgressValue = progress.value;
+                  _aiSubtitleProgressText = progress.label;
+                  _aiSubtitlePreviewText = progress.previewText;
+                });
+              },
+            );
       final List<PlayerSubtitleLine> lines = parseSubtitleLines(raw);
       if (!mounted) {
         return;
@@ -1117,18 +1147,26 @@ class PadLandscapePlayerScreenState
         generated: lines,
         reference: _referenceSubtitleLines,
       );
-      final AsrSubtitleRepairSummary repairSummary = await runner
-          .readRepairSummary(
-            episodeId: widget.episodeId,
-            videoPath: videoPath,
-            settings: settings,
-          );
+      final AsrSubtitleRepairSummary repairSummary = fromTextSource == null
+          ? await runner.readRepairSummary(
+              episodeId: widget.episodeId,
+              videoPath: videoPath,
+              settings: settings,
+            )
+          : const AsrSubtitleRepairSummary(0);
       final String savedSuffix = savedSrtFileName == null
           ? ''
           : '，已保存为 $savedSrtFileName';
       final String? warning = subtitleGenerationWarning(raw);
+      final String generatedLabel = fromTextSource == null
+          ? 'AI 字幕已生成'
+          : fromTextSource.hasTimings
+          ? '已用字幕文本生成 AI 字幕（时间轴用文件自带的）'
+          : '已用字幕文本生成 AI 字幕（时间轴由本地 Whisper 对齐）';
       if (warning != null) {
-        _showMessage(repairSummary.appendTo('AI 字幕已生成；$warning$savedSuffix'));
+        _showMessage(repairSummary.appendTo('$generatedLabel；$warning$savedSuffix'));
+      } else if (fromTextSource != null) {
+        _showMessage(repairSummary.appendTo('$generatedLabel$savedSuffix'));
       } else if (subtitleReferenceSignature(
         _referenceSubtitleLines,
       ).isNotEmpty) {
@@ -1154,7 +1192,9 @@ class PadLandscapePlayerScreenState
         setState(() {
           _aiSubtitleErrorText = message;
         });
-        _showMessage('AI 字幕生成失败：$message');
+        _showMessage(
+          fromTextSource == null ? 'AI 字幕生成失败：$message' : '生成失败：$message',
+        );
       }
     } finally {
       if (identical(_aiSubtitleCancellationToken, cancellationToken)) {
@@ -1174,6 +1214,62 @@ class PadLandscapePlayerScreenState
         });
       }
     }
+  }
+
+
+  /// 选择「字幕文本文件」并用它生成 AI 字幕（不跑 AI 语音转文字）。
+  Future<void> _handleGenerateFromSubtitleText() async {
+    if (_generatingAiSubtitles) {
+      _showMessage('AI 字幕正在处理中，请稍后再试');
+      return;
+    }
+    final String? videoPath = _videoAsset;
+    if (videoPath == null || videoPath.isEmpty) {
+      _showMessage('当前视频不可用');
+      return;
+    }
+    final XFile? file = await openFile(
+      acceptedTypeGroups: const <XTypeGroup>[
+        XTypeGroup(
+          label: 'subtitles',
+          extensions: <String>['srt', 'vtt', 'txt', 'json'],
+        ),
+      ],
+      confirmButtonText: '使用这份字幕文本',
+    );
+    if (file == null || !mounted) {
+      return;
+    }
+    SubtitleTextSource source;
+    try {
+      source = await loadSubtitleTextFile(file.path);
+    } catch (error) {
+      _showMessage('字幕文件读取失败：$error');
+      return;
+    }
+    if (source.lines.isEmpty) {
+      _showMessage('这份字幕文件里没有可用的字幕文本。');
+      return;
+    }
+    if (!source.hasTimings) {
+      final String? unavailable = await localWhisperTimingUnavailableReason();
+      if (!mounted) {
+        return;
+      }
+      if (unavailable != null) {
+        _showMessage(unavailable);
+        return;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    _showMessage(
+      source.hasTimings
+          ? '正在用字幕文本生成 AI 字幕（${source.sentenceCount} 句，时间轴用文件自带的）…'
+          : '正在用字幕文本生成 AI 字幕（${source.sentenceCount} 句，时间轴由本地 Whisper 对齐，识别出的文字会被你的文本替换）…',
+    );
+    await _handleGenerateAiSubtitles(fromTextSource: source);
   }
 
   Future<void> _handleRegenerateAiSubtitles() async {
@@ -1199,6 +1295,31 @@ class PadLandscapePlayerScreenState
         ) ??
         false;
     if (!confirmed || !mounted) return;
+    // 用字幕文本生成的字幕：重新生成仍走「字幕文本」路径，
+    // 复用上次的时间轴（不重新跑识别，也不会把音频发到云端）。
+    final String? videoPath = _videoAsset;
+    if (videoPath != null && videoPath.isNotEmpty) {
+      final String? cachedRaw = await const AsrSubtitleCache().read(
+        episodeId: widget.episodeId,
+        videoPath: videoPath,
+      );
+      if (!mounted) return;
+      final List<PlayerSubtitleLine> textLines =
+          subtitleReferenceLinesFromCache(cachedRaw);
+      if (subtitleGenerationSource(cachedRaw) == subtitleTextSourceLabel &&
+          textLines.isNotEmpty) {
+        _showMessage('正在用原字幕文本重新生成 AI 字幕…');
+        await _handleGenerateAiSubtitles(
+          forceRegenerate: true,
+          fromTextSource: SubtitleTextSource(
+            lines: textLines,
+            hasTimings: true,
+            fileName: '原字幕文本',
+          ),
+        );
+        return;
+      }
+    }
     _showMessage('正在重新生成 AI 字幕，当前字幕会保留到生成成功。');
     await _handleGenerateAiSubtitles(forceRegenerate: true);
   }

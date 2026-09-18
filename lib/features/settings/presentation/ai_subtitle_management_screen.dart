@@ -10,6 +10,7 @@ import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../player/presentation/asr_subtitle_job.dart';
 import '../../player/presentation/player_mock_state.dart';
 import '../../player/presentation/player_subtitle_loader.dart';
+import '../../player/presentation/subtitle_text_source.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
 import '../../shared/presentation/pad/pad_top_bar.dart';
 import 'settings_provider.dart';
@@ -284,9 +285,14 @@ class _AiSubtitleManagementScreenState
       _message('原视频文件已移动或删除，无法重新生成。');
       return;
     }
+    final bool fromSubtitleText =
+        entry.generationSource == subtitleTextSourceLabel;
     final bool confirmed = await _confirm(
       title: '重新生成 AI 字幕？',
-      content: '这会再次调用当前设置中的 AI 服务，可能产生费用。生成失败时会保留现有字幕。',
+      content: fromSubtitleText
+          ? '会用保存下来的字幕文本重新生成：时间轴沿用上次结果，'
+                '只重新走一遍翻译，不会重新识别、也不调用云端 ASR。'
+          : '这会再次调用当前设置中的 AI 服务，可能产生费用。生成失败时会保留现有字幕。',
       action: '重新生成',
     );
     if (!confirmed || !mounted) return;
@@ -296,8 +302,9 @@ class _AiSubtitleManagementScreenState
       final LearningSettingsState settings = ref.read(learningSettingsProvider);
       List<PlayerSubtitleLine> referenceSubtitleLines =
           const <PlayerSubtitleLine>[];
-      if (entry.referenceSignature != null) {
-        final Map<String, dynamic> cached = await _cache.readEntry(entry);
+      Map<String, dynamic> cached = const <String, dynamic>{};
+      if (entry.referenceSignature != null || fromSubtitleText) {
+        cached = await _cache.readEntry(entry);
         final Object? storedReferenceLines = cached['referenceLines'];
         if (storedReferenceLines is! List) {
           throw const FormatException('缺少原字幕快照，请先在播放器中重新生成一次。');
@@ -312,20 +319,35 @@ class _AiSubtitleManagementScreenState
           throw const FormatException('原字幕快照无效，请先在播放器中重新生成一次。');
         }
       }
-      final String raw = await runner.run(
-        episodeId: entry.episodeId,
-        videoPath: entry.videoPath,
-        settings: settings,
-        referenceSubtitleLines: referenceSubtitleLines,
-        referenceSignatureOverride: entry.referenceSignature,
-        forceRegenerate: true,
-      );
-      final AsrSubtitleRepairSummary repairSummary = await runner
-          .readRepairSummary(
-            episodeId: entry.episodeId,
-            videoPath: entry.videoPath,
-            settings: settings,
-          );
+      final String raw = fromSubtitleText
+          ? await runner.runFromSubtitleText(
+              episodeId: entry.episodeId,
+              videoPath: entry.videoPath,
+              settings: settings,
+              textSource: SubtitleTextSource(
+                lines: referenceSubtitleLines,
+                hasTimings: true,
+              ),
+              timingRecognition: parseSubtitleLines(
+                jsonEncode(cached),
+              ),
+              forceRegenerate: true,
+            )
+          : await runner.run(
+              episodeId: entry.episodeId,
+              videoPath: entry.videoPath,
+              settings: settings,
+              referenceSubtitleLines: referenceSubtitleLines,
+              referenceSignatureOverride: entry.referenceSignature,
+              forceRegenerate: true,
+            );
+      final AsrSubtitleRepairSummary repairSummary = fromSubtitleText
+          ? const AsrSubtitleRepairSummary(0)
+          : await runner.readRepairSummary(
+              episodeId: entry.episodeId,
+              videoPath: entry.videoPath,
+              settings: settings,
+            );
       final String? warning = subtitleGenerationWarning(raw);
       _message(
         repairSummary.appendTo(
@@ -435,6 +457,13 @@ class _SubtitleCard extends StatelessWidget {
         icon: Icons.info_outline_rounded,
         text: '中文翻译 $entry.chineseLineCount/${entry.lineCount} 句。$warning',
         warning: true,
+      ));
+    }
+    if (entry.generationSource == subtitleTextSourceLabel) {
+      messages.add((
+        icon: Icons.article_outlined,
+        text: '这份字幕是用你自己的字幕文本生成的（时间轴由本地 Whisper 对齐），重新生成不会重新识别。',
+        warning: false,
       ));
     }
     if (settingsChanged) {

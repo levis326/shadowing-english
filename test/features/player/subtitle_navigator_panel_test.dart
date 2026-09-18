@@ -47,6 +47,82 @@ void main() {
     );
   }
 
+  testWidgets('没有字幕时提供「用字幕文本文件生成」入口', (WidgetTester tester) async {
+    int taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 480,
+            height: 640,
+            child: SubtitleNavigatorPanel(
+              lines: const <PlayerSubtitleLine>[],
+              activeIndex: 0,
+              subtitleMode: '双语',
+              fontScale: 1,
+              onTapLine: (_) {},
+              onCollectWord: (_) {},
+              onBookmarkLine: (_) {},
+              onLoopFromLine: (_) {},
+              onDictationLine: (_) {},
+              onAiExplain: (_) {},
+              showAiGenerateSubtitles: true,
+              onGenerateAiSubtitles: () {},
+              onGenerateFromSubtitleText: () => taps += 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('AI生成可跟读的词级同步字幕'), findsOneWidget);
+    expect(find.text('用字幕文本文件生成（不识别文字）'), findsOneWidget);
+    await tester.tap(find.text('用字幕文本文件生成（不识别文字）'));
+    expect(taps, 1);
+  });
+
+  testWidgets('已有 AI 字幕时也能从字幕文本重新生成', (WidgetTester tester) async {
+    int taps = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 480,
+            height: 640,
+            child: SubtitleNavigatorPanel(
+              lines: const <PlayerSubtitleLine>[
+                PlayerSubtitleLine(
+                  startTime: '00:01',
+                  english: 'Try it today.',
+                  chinese: '今天就试试吧。',
+                  startMs: 1000,
+                  endMs: 2500,
+                ),
+              ],
+              activeIndex: 0,
+              subtitleMode: '双语',
+              fontScale: 1,
+              onTapLine: (_) {},
+              onCollectWord: (_) {},
+              onBookmarkLine: (_) {},
+              onLoopFromLine: (_) {},
+              onDictationLine: (_) {},
+              onAiExplain: (_) {},
+              onRegenerateAiSubtitles: () {},
+              onGenerateFromSubtitleText: () => taps += 1,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('用文本生成'), findsOneWidget);
+    await tester.tap(find.text('用文本生成'));
+    expect(taps, 1);
+  });
+
   testWidgets('字幕区显示全部双语字幕且无点击录音', (WidgetTester tester) async {
     await tester.pumpWidget(buildPanel(activeIndex: 0, onTapLine: (_) {}));
     await tester.pumpAndSettle();

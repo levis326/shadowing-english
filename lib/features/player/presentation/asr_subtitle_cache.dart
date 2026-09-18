@@ -16,6 +16,7 @@ class AiSubtitleCacheEntry {
     required this.sizeBytes,
     this.chineseLineCount = 0,
     this.translationWarning,
+    this.generationSource,
     this.referenceSignature,
   });
 
@@ -34,6 +35,10 @@ class AiSubtitleCacheEntry {
   /// 生成时记录下来的翻译/时间轴警告，例如
   /// “英文词级字幕已生成，但中文翻译失败：…”。
   final String? translationWarning;
+
+  /// 生成来源：`subtitle-text` 表示用「字幕文本文件」生成
+  /// （本地 Whisper 只对齐时间轴，文字来自文件）。
+  final String? generationSource;
   final String? referenceSignature;
 }
 
@@ -211,6 +216,7 @@ class AsrSubtitleCache {
                 )
                 .length,
             translationWarning: _entryWarning(raw),
+            generationSource: raw['source'] as String?,
             provider: metadata['asrProvider'] as String? ?? '未知服务',
             model: metadata['asrModel'] as String? ?? '未知模型',
             generatedAt: generatedAtMs == null

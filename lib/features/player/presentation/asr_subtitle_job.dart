@@ -12,8 +12,11 @@ import '../../shared/data/local_nllb_translation.dart';
 import '../../shared/data/word_lookup_service.dart';
 import 'asr_subtitle_cache.dart';
 import 'asr_subtitle_service.dart';
+import 'desktop_whisper.dart';
 import 'player_mock_state.dart';
 import 'player_subtitle_loader.dart';
+import 'subtitle_text_alignment.dart';
+import 'subtitle_text_source.dart';
 import 'subtitle_word_alignment.dart';
 
 typedef AsrChunkTranscriber =
@@ -97,6 +100,72 @@ String? subtitleGenerationWarning(String raw) {
   } catch (_) {
     return null;
   }
+}
+
+/// 缓存里记录的生成来源；目前只有 [subtitleTextSourceLabel]
+/// （用「字幕文本文件」生成：本地 Whisper 只对齐时间轴，文字来自文件）。
+String? subtitleGenerationSource(String? raw) {
+  if (raw == null || raw.isEmpty) {
+    return null;
+  }
+  try {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is Map<String, dynamic>) {
+      return decoded['source'] as String?;
+    }
+  } catch (_) {
+    // 损坏的缓存按“没有来源标记”处理。
+  }
+  return null;
+}
+
+/// 取出缓存里保存的参考字幕快照（生成时用的原字幕或字幕文本）。
+List<PlayerSubtitleLine> subtitleReferenceLinesFromCache(String? raw) {
+  if (raw == null || raw.isEmpty) {
+    return const <PlayerSubtitleLine>[];
+  }
+  try {
+    final Object? decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) {
+      return const <PlayerSubtitleLine>[];
+    }
+    final Object? referenceLines = decoded['referenceLines'];
+    if (referenceLines is! List) {
+      return const <PlayerSubtitleLine>[];
+    }
+    return parseSubtitleLines(
+      jsonEncode(<String, Object?>{'version': 1, 'lines': referenceLines}),
+    );
+  } catch (_) {
+    return const <PlayerSubtitleLine>[];
+  }
+}
+
+/// 只按文字内容计算的签名：字幕文本文件换了内容时，缓存即视为过期。
+String subtitleTextSignature(List<PlayerSubtitleLine> lines) {
+  final String value = lines
+      .map((PlayerSubtitleLine line) => line.english.trim())
+      .where((String text) => text.isNotEmpty)
+      .join('\n');
+  if (value.isEmpty) {
+    return '';
+  }
+  return sha1.convert(utf8.encode(value)).toString();
+}
+
+/// 「用字幕文本生成」需要本地 Whisper 只提供时间轴；返回 null 表示可用。
+Future<String?> localWhisperTimingUnavailableReason() async {
+  final String? model =
+      LocalModelResolver.whisperModelPath() ??
+      await findDesktopWhisperModel();
+  if (model == null) {
+    return '需要先下载本地语音识别模型（只用来对齐时间轴，不会上传音频、不产生费用）：请到“设置 → 本地模型（在线下载）”下载 Whisper 模型后重试。';
+  }
+  final String? server = await findDesktopWhisperServer();
+  if (server == null) {
+    return '没有找到本地 whisper-server，无法对齐时间轴；请使用官方发布包，或在“设置 → 本地模型”确认模型完整后重试。';
+  }
+  return null;
 }
 
 class _SubtitleQualityReport {
@@ -206,6 +275,7 @@ class AsrSubtitleJobRunner {
     this.cloudTranscribeChunk,
     this.translateSentence,
     this.translateBatch,
+    this.whisperAvailabilityChecker,
   });
 
   final Future<Directory> Function()? supportDirectory;
@@ -214,6 +284,9 @@ class AsrSubtitleJobRunner {
   final AsrChunkTranscriber? cloudTranscribeChunk;
   final AsrSentenceTranslator? translateSentence;
   final AsrBatchTranslator? translateBatch;
+
+  /// 测试用：检查「本地 Whisper 是否可用于对齐时间轴」（返回 null 表示可用）。
+  final Future<String?> Function()? whisperAvailabilityChecker;
 
   static const int _repairableOverlapMs = 500;
   static final Set<String> _activeJobs = <String>{};
@@ -433,6 +506,112 @@ class AsrSubtitleJobRunner {
     }
   }
 
+  /// 用「字幕文本文件」生成 AI 字幕（不需要 AI 语音转文字）。
+  ///
+  /// 文字以 [textSource] 为准（用户的正确字幕文本），时间轴这样来：
+  ///  - [timingRecognition] 不为空时直接用它对齐（“重新生成”复用上次结果）；
+  ///  - 文件自带时间轴（`.srt` / `.vtt`）时用文件的时间，完全不碰音频；
+  ///  - 纯文本时用本地 Whisper 只做时间轴，识别出来的文字随后被文件文字替换。
+  /// 之后按“翻译”设置补齐中文，生成结果与 AI 字幕完全一致（可逐词跟读、
+  /// 在“设置 → 管理 AI 字幕”中查看/编辑/导出/重新生成）。
+  Future<String> runFromSubtitleText({
+    required String episodeId,
+    required String videoPath,
+    required LearningSettingsState settings,
+    required SubtitleTextSource textSource,
+    List<PlayerSubtitleLine> timingRecognition = const <PlayerSubtitleLine>[],
+    bool forceRegenerate = false,
+    AsrProgressCallback? onProgress,
+    AsrSubtitleCancellationToken? cancellationToken,
+  }) async {
+    final File video = File(videoPath);
+    if (!video.existsSync()) {
+      throw StateError('missing-video-file');
+    }
+    if (textSource.lines.isEmpty) {
+      throw const AsrSubtitleGenerationException('字幕文本文件里没有可用文本。');
+    }
+    // 只用本地 Whisper 对齐时间轴：不依赖“设置 → ASR 来源”，
+    // 因此不会把音频发给云端、也不会产生费用。
+    final TranslationProviderPreset whisperPreset =
+        asrProviderPresets[localWhisperProviderName]!;
+    final LearningSettingsState timingSettings = settings.copyWith(
+      asrProvider: localWhisperProviderName,
+      asrApiKey: '',
+      asrBaseUrl: whisperPreset.baseUrl,
+      asrModel: whisperPreset.model,
+    );
+    final String jobKey = _jobKey(
+      episodeId: episodeId,
+      videoPath: videoPath,
+      settings: timingSettings,
+    );
+    if (!_activeJobs.add(jobKey)) {
+      throw const AsrSubtitleGenerationException('这个视频的 AI 字幕正在生成，请等待当前任务完成。');
+    }
+    List<AsrAudioChunk> chunks = const <AsrAudioChunk>[];
+    try {
+      cancellationToken?.throwIfCancelled();
+      if (forceRegenerate) {
+        final Directory previousJob = await jobDirectory(
+          episodeId: episodeId,
+          videoPath: videoPath,
+          settings: timingSettings,
+        );
+        if (previousJob.existsSync()) {
+          await previousJob.delete(recursive: true);
+        }
+      }
+      List<PlayerSubtitleLine> reference = textSource.lines;
+      List<PlayerSubtitleLine>? untimedTextLines;
+      if (timingRecognition.isNotEmpty) {
+        // 调用方已经有一份带时间轴（最好还带逐词时间）的识别结果，
+        // 例如“重新生成”时复用上次结果：不用再跑一次 Whisper。
+        reference = assignTimingsFromRecognition(
+          reference: textSource.lines,
+          recognition: timingRecognition,
+        );
+        if (reference.isEmpty) {
+          throw const AsrSubtitleGenerationException('这份字幕缺少可用于对齐的时间轴。');
+        }
+      } else if (textSource.hasTimings) {
+        // 文件自带时间轴：不需要音频，也不需要 Whisper。
+      } else {
+        final String? unavailable = await (whisperAvailabilityChecker ??
+            localWhisperTimingUnavailableReason)();
+        if (unavailable != null) {
+          throw AsrSubtitleGenerationException(unavailable);
+        }
+        chunks = await service.prepareAudioChunks(video, wavOutput: true);
+        if (chunks.isEmpty) {
+          throw const AsrSubtitleGenerationException(
+            '没有从视频里提取到音频，无法用本地 Whisper 对齐字幕时间轴。',
+          );
+        }
+        untimedTextLines = textSource.lines;
+      }
+      cancellationToken?.throwIfCancelled();
+      final String textSignature = subtitleTextSignature(textSource.lines);
+      return await _runPrepared(
+        episodeId: episodeId,
+        videoPath: videoPath,
+        settings: timingSettings,
+        chunks: chunks,
+        referenceSubtitleLines: untimedTextLines == null
+            ? reference
+            : const <PlayerSubtitleLine>[],
+        referenceSignature: textSignature,
+        untimedTextLines: untimedTextLines,
+        generationSource: subtitleTextSourceLabel,
+        onProgress: onProgress,
+        cancellationToken: cancellationToken,
+      );
+    } finally {
+      service.deleteTemporaryAudioChunks(chunks);
+      _activeJobs.remove(jobKey);
+    }
+  }
+
   Future<String> _runPrepared({
     required String episodeId,
     required String videoPath,
@@ -440,6 +619,8 @@ class AsrSubtitleJobRunner {
     required List<AsrAudioChunk> chunks,
     required List<PlayerSubtitleLine> referenceSubtitleLines,
     required String referenceSignature,
+    List<PlayerSubtitleLine>? untimedTextLines,
+    String? generationSource,
     AsrProgressCallback? onProgress,
     AsrSubtitleCancellationToken? cancellationToken,
   }) async {
@@ -537,13 +718,31 @@ class AsrSubtitleJobRunner {
 
     String raw = await _mergeChunks(chunksDir, chunks.length, report: report);
     _reportProgressPhase(onProgress, chunks.length, '正在整理字幕...');
-    if (referenceSubtitleLines.isNotEmpty) {
+    // 「字幕文本文件」只有文字、没有时间轴：用本地 Whisper 的识别结果
+    // 给每一句套上时间（文字仍以文件为准）。
+    List<PlayerSubtitleLine> effectiveReference = referenceSubtitleLines;
+    if (untimedTextLines != null && untimedTextLines.isNotEmpty) {
+      effectiveReference = assignTimingsFromRecognition(
+        reference: untimedTextLines,
+        recognition: parseSubtitleLines(raw),
+        fallbackEndMs: totalMs,
+      );
+      if (effectiveReference.isEmpty) {
+        throw const AsrSubtitleGenerationException(
+          '本地 Whisper 没有识别到可用语音，无法为字幕文本对齐时间轴；请确认视频有声音，或改用 AI 语音识别。',
+        );
+      }
+    }
+    if (effectiveReference.isNotEmpty) {
       final bool hasRecognizedWords = parseSubtitleLines(
         raw,
       ).any((PlayerSubtitleLine line) => line.words.isNotEmpty);
-      raw = _calibrateWithReference(raw, referenceSubtitleLines);
+      raw = _calibrateWithReference(raw, effectiveReference);
       if (report.usedReferenceFallback || !hasRecognizedWords) {
         raw = _addTimingWarning(raw);
+      }
+      if (generationSource != null) {
+        raw = _withGenerationSource(raw, generationSource);
       }
     }
     // 按句号、问号、分号等句子标点拆分成独立字幕行，避免一句字幕过长；
@@ -586,7 +785,9 @@ class AsrSubtitleJobRunner {
     try {
       _validateFinalResult(
         completedRaw,
-        allowLineOverlap: referenceSubtitleLines.isNotEmpty,
+        allowLineOverlap:
+            referenceSubtitleLines.isNotEmpty ||
+            (untimedTextLines?.isNotEmpty ?? false),
       );
     } catch (error) {
       await report.write(jobDir, 'FAILED');
@@ -628,6 +829,13 @@ class AsrSubtitleJobRunner {
     );
     await report.write(jobDir, 'PASS');
     return completedRaw;
+  }
+
+  String _withGenerationSource(String raw, String source) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    decoded['source'] = source;
+    return const JsonEncoder.withIndent('  ').convert(decoded);
   }
 
   String _calibrateWithReference(

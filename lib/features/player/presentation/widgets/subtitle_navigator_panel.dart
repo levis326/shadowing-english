@@ -27,6 +27,7 @@ class SubtitleNavigatorPanel extends StatefulWidget {
     this.onRegenerateAiSubtitles,
     this.onDeleteAiSubtitles,
     this.onRegenerateAiLine,
+    this.onGenerateFromSubtitleText,
     this.showAiGenerateSubtitles = false,
     this.generatingAiSubtitles = false,
     this.aiSubtitleProgressValue,
@@ -53,6 +54,9 @@ class SubtitleNavigatorPanel extends StatefulWidget {
   final VoidCallback? onRegenerateAiSubtitles;
   final VoidCallback? onDeleteAiSubtitles;
   final Future<void> Function(int index)? onRegenerateAiLine;
+
+  /// 用「字幕文本文件」生成字幕（文字来自文件，时间轴由本地 Whisper 对齐）。
+  final VoidCallback? onGenerateFromSubtitleText;
   final bool showAiGenerateSubtitles;
   final bool generatingAiSubtitles;
   final double? aiSubtitleProgressValue;
@@ -126,6 +130,7 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
           previewText: widget.aiSubtitlePreviewText,
           errorText: widget.aiSubtitleErrorText,
           onGenerate: widget.onGenerateAiSubtitles,
+          onGenerateFromSubtitleText: widget.onGenerateFromSubtitleText,
         );
       }
       return const Center(
@@ -202,6 +207,15 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
                       visualDensity: VisualDensity.compact,
                     ),
                   ),
+                  if (widget.onGenerateFromSubtitleText != null)
+                    TextButton.icon(
+                      onPressed: widget.onGenerateFromSubtitleText,
+                      icon: const Icon(Icons.article_outlined, size: 16),
+                      label: const Text('用文本生成'),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
                   if (widget.onRegenerateAiSubtitles != null)
                     TextButton.icon(
                       onPressed: widget.onRegenerateAiSubtitles,
@@ -629,6 +643,7 @@ class _AiSubtitlePlaceholder extends StatelessWidget {
     required this.previewText,
     required this.errorText,
     required this.onGenerate,
+    required this.onGenerateFromSubtitleText,
   });
 
   final bool generating;
@@ -637,6 +652,7 @@ class _AiSubtitlePlaceholder extends StatelessWidget {
   final String? previewText;
   final String? errorText;
   final VoidCallback? onGenerate;
+  final VoidCallback? onGenerateFromSubtitleText;
 
   @override
   Widget build(BuildContext context) {
@@ -727,6 +743,27 @@ class _AiSubtitlePlaceholder extends StatelessWidget {
                 generating ? '正在生成词级同步字幕...' : 'AI生成可跟读的词级同步字幕',
               ),
             ),
+            if (onGenerateFromSubtitleText != null && !generating) ...<Widget>[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                onPressed: onGenerateFromSubtitleText,
+                icon: const Icon(Icons.article_outlined, size: 18),
+                label: const Text('用字幕文本文件生成（不识别文字）'),
+              ),
+              const SizedBox(height: 6),
+              const SizedBox(
+                width: 320,
+                child: Text(
+                  '已有完全正确的字幕文本时用它：只借用本地 Whisper 对齐时间轴，文字以你的文件为准，再按“翻译”设置补齐中文。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: Color(0xFF7E8A82),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

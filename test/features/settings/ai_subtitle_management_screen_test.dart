@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
+import 'package:common_learn_english/features/player/presentation/subtitle_text_source.dart';
 import 'package:common_learn_english/features/settings/presentation/ai_subtitle_management_screen.dart';
 import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
 import 'package:flutter/material.dart';
@@ -104,6 +105,33 @@ void main() {
     expect(find.text('lesson.mp4'), findsOneWidget);
     expect(find.textContaining('这次生成只有外文字幕'), findsOneWidget);
     expect(find.textContaining('还没有下载本地翻译模型'), findsOneWidget);
+  });
+
+  testWidgets('management marks subtitles generated from a subtitle text file', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final _CacheFixture fixture = (await tester.runAsync(
+      _createSubtitleTextFixture,
+    ))!;
+    addTearDown(fixture.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: AiSubtitleManagementScreen(cache: fixture.cache),
+        ),
+      ),
+    );
+    await _pumpFrames(tester);
+
+    expect(find.text('lesson.mp4'), findsOneWidget);
+    expect(
+      find.textContaining('这份字幕是用你自己的字幕文本生成的'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('empty state shows the scanned cache directory', (
@@ -261,6 +289,55 @@ Future<_CacheFixture> _createEnglishOnlyFixture() async {
           'endMs': 2000,
           'english': 'hello world',
           'chinese': '',
+          'words': <Object?>[],
+        },
+      ],
+    }),
+  );
+  return _CacheFixture(
+    root: root,
+    downloads: downloads,
+    cache: cache,
+    entries: await cache.listEntries(),
+  );
+}
+
+Future<_CacheFixture> _createSubtitleTextFixture() async {
+  final Directory root = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-text-source-',
+  );
+  final Directory downloads = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-text-source-downloads-',
+  );
+  final AsrSubtitleCache cache = AsrSubtitleCache(
+    appSupportDirectory: () async => root,
+    downloadsDirectory: () async => downloads,
+  );
+  final File video = File('${root.path}/lesson.mp4')
+    ..writeAsStringSync('video');
+  await cache.write(
+    episodeId: 'episode-0',
+    videoPath: video.path,
+    settings: LearningSettingsState.defaults().copyWith(
+      asrProvider: localWhisperProviderName,
+    ),
+    content: jsonEncode(<String, Object?>{
+      'version': 1,
+      'source': subtitleTextSourceLabel,
+      'referenceLines': <Map<String, Object?>>[
+        <String, Object?>{
+          'startMs': 1000,
+          'endMs': 2000,
+          'english': 'hello world',
+          'chinese': '',
+        },
+      ],
+      'lines': <Map<String, Object?>>[
+        <String, Object?>{
+          'startMs': 1000,
+          'endMs': 2000,
+          'english': 'hello world',
+          'chinese': '你好，世界',
           'words': <Object?>[],
         },
       ],
