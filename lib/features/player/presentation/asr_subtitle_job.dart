@@ -764,7 +764,12 @@ class AsrSubtitleJobRunner {
         },
       );
       _reportProgressPhase(onProgress, chunks.length, '正在校准词级时间轴...');
-      completedRaw = _repairFinalWordTimelines(translatedRaw, report: report);
+      completedRaw = _normalizeFinalLines(
+        _repairFinalWordTimelines(translatedRaw, report: report),
+        allowLineOverlap:
+            referenceSubtitleLines.isNotEmpty ||
+            (untimedTextLines?.isNotEmpty ?? false),
+      );
     } catch (error) {
       await report.write(jobDir, 'FAILED');
       await _writeJob(
@@ -1374,12 +1379,30 @@ class AsrSubtitleJobRunner {
           sourceChunk: sourceChunk,
           report: report,
         );
-        final Object? lines = normalized['lines'];
-        if (lines is! List<dynamic> || lines.isNotEmpty) {
-          _validateFinalResult(jsonEncode(normalized));
+        // 逐段也要清理一遍：只剩标点的行、字数与正文不一致的词级数据
+        // 都不该让整段（进而整段视频）失败。但如果这一段的返回整体不可用
+        // （有行却一行都留不下），仍然算无效响应，交给上面的重试逻辑处理。
+        final Map<String, Object?> cleaned = Map<String, Object?>.from(
+          jsonDecode(
+                _normalizeFinalLines(
+                  jsonEncode(normalized),
+                  allowLineOverlap: false,
+                  requireNonEmpty: false,
+                ),
+              )
+              as Map<String, dynamic>,
+        );
+        final Object? rawLines = normalized['lines'];
+        final int rawLineCount = rawLines is List<dynamic> ? rawLines.length : 0;
+        final Object? cleanedLines = cleaned['lines'];
+        final int cleanedLineCount = cleanedLines is List<dynamic>
+            ? cleanedLines.length
+            : 0;
+        if (rawLineCount > 0 && cleanedLineCount == 0) {
+          throw StateError('字幕检查失败：没有识别到有效字幕。');
         }
         await chunkFile.writeAsString(
-          const JsonEncoder.withIndent('  ').convert(normalized),
+          const JsonEncoder.withIndent('  ').convert(cleaned),
         );
         return;
       } catch (error) {
@@ -1431,14 +1454,17 @@ class AsrSubtitleJobRunner {
     for (int index = 0; index < lines.length; index += 1) {
       final PlayerSubtitleLine line = lines[index];
       final String location = '第 ${index + 1} 句';
+      final String snippet = _lineSnippet(line.english);
       if (line.english.trim().isEmpty) {
         throw StateError('字幕检查失败：$location 存在空字幕。');
       }
       if (line.endMs <= line.startMs) {
-        throw StateError('字幕检查失败：$location 存在无效时间轴。');
+        throw StateError('字幕检查失败：$location$snippet 存在无效时间轴。');
       }
       if (line.words.isEmpty) {
-        throw StateError('字幕检查失败：$location 未返回词级时间戳，无法精准跟读单词。');
+        throw StateError(
+          '字幕检查失败：$location$snippet 未返回词级时间戳，无法精准跟读单词。',
+        );
       }
       final int expectedWordCount = _wordCount(line.english);
       final int timedWordCount = line.words.fold<int>(
@@ -1446,13 +1472,17 @@ class AsrSubtitleJobRunner {
         (int count, PlayerSubtitleWord word) => count + _wordCount(word.text),
       );
       if (expectedWordCount > 0 && timedWordCount < expectedWordCount) {
-        throw StateError('字幕检查失败：$location 不是每个英文单词都有词级时间戳。');
+        throw StateError(
+          '字幕检查失败：$location$snippet 不是每个英文单词都有词级时间戳。',
+        );
       }
       if (_comparableText(line.english) !=
           _comparableText(
             line.words.map((PlayerSubtitleWord word) => word.text).join(' '),
           )) {
-        throw StateError('字幕检查失败：$location 的正文与词级时间戳文本不一致。');
+        throw StateError(
+          '字幕检查失败：$location$snippet 的正文与词级时间戳文本不一致。',
+        );
       }
       int previousWordEndMs = -1;
       for (final PlayerSubtitleWord word in line.words) {
@@ -1468,6 +1498,132 @@ class AsrSubtitleJobRunner {
       }
       previousEndMs = line.endMs;
     }
+  }
+
+  /// 最后一道保险：让每一行都满足 [ _validateFinalResult ] 的要求。
+  ///
+  /// 真实数据里总会有“只剩标点”的行、时间戳类型不对的词条、字数与正文不一致
+  /// 的词级数据（服务商差异、字幕文件写法各异）。这些细节不该让整段视频的
+  /// 字幕生成失败：能修的修（按正文重新合成逐词时间），修不好的行直接丢掉。
+  String _normalizeFinalLines(
+    String raw, {
+    required bool allowLineOverlap,
+    bool requireNonEmpty = true,
+  }) {
+    final Map<String, dynamic> decoded =
+        jsonDecode(raw) as Map<String, dynamic>;
+    final List<dynamic> lines =
+        decoded['lines'] as List<dynamic>? ?? const <dynamic>[];
+    final List<Map<String, Object?>> normalized = <Map<String, Object?>>[];
+    int previousEndMs = -1;
+    for (final Object? item in lines) {
+      if (item is! Map<String, dynamic>) {
+        continue;
+      }
+      final String english = (item['english'] as String? ?? '').trim();
+      int startMs = _timelineMs(item['startMs']);
+      int endMs = _timelineMs(item['endMs']);
+      // 没有可跟读文字的（纯标点）和无效时间轴的行直接丢掉。
+      if (english.isEmpty || _wordCount(english) == 0) {
+        continue;
+      }
+      if (endMs <= startMs) {
+        continue;
+      }
+      if (!allowLineOverlap &&
+          previousEndMs >= 0 &&
+          startMs < previousEndMs - 250) {
+        startMs = previousEndMs;
+        if (endMs <= startMs) {
+          endMs = startMs + 1;
+        }
+      }
+      List<Map<String, Object?>> words = _sanitizedWords(
+        item: item,
+        startMs: startMs,
+        endMs: endMs,
+      );
+      if (!_wordsCoverText(english: english, words: words)) {
+        words = _synthesizeWords(english, startMs, endMs);
+      }
+      if (words.isEmpty) {
+        continue;
+      }
+      normalized.add(<String, Object?>{
+        ...item,
+        'english': english,
+        'startMs': startMs,
+        'endMs': endMs,
+        'words': words,
+      });
+      previousEndMs = endMs;
+    }
+    if (normalized.isEmpty && requireNonEmpty) {
+      throw StateError('字幕检查失败：没有识别到有效字幕。');
+    }
+    decoded['lines'] = normalized;
+    return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  /// 只保留解析时会保留的词条（文本非空、时间戳为有效数字且在行内、不乱序）。
+  List<Map<String, Object?>> _sanitizedWords({
+    required Map<String, dynamic> item,
+    required int startMs,
+    required int endMs,
+  }) {
+    final List<Map<String, Object?>> words = <Map<String, Object?>>[];
+    int previousWordEndMs = -1;
+    for (final Object? entry
+        in item['words'] as List<dynamic>? ?? const <dynamic>[]) {
+      if (entry is! Map<String, dynamic>) {
+        continue;
+      }
+      final String text = (entry['text'] as String? ?? '').trim();
+      final Object? rawStart = entry['startMs'];
+      final Object? rawEnd = entry['endMs'];
+      if (text.isEmpty || rawStart is! num || rawEnd is! num) {
+        continue;
+      }
+      final int wordStartMs = rawStart.round();
+      final int wordEndMs = rawEnd.round();
+      if (wordEndMs <= wordStartMs ||
+          wordStartMs < startMs ||
+          wordEndMs > endMs ||
+          (previousWordEndMs >= 0 && wordStartMs < previousWordEndMs)) {
+        continue;
+      }
+      words.add(<String, Object?>{
+        ...entry,
+        'text': text,
+        'startMs': wordStartMs,
+        'endMs': wordEndMs,
+      });
+      previousWordEndMs = wordEndMs;
+    }
+    return words;
+  }
+
+  /// 逐词时间戳是否覆盖了整行正文。
+  bool _wordsCoverText({
+    required String english,
+    required List<Map<String, Object?>> words,
+  }) {
+    if (words.isEmpty) {
+      return false;
+    }
+    final int expectedWordCount = _wordCount(english);
+    final int timedWordCount = words.fold<int>(
+      0,
+      (int count, Map<String, Object?> word) =>
+          count + _wordCount(word['text'] as String? ?? ''),
+    );
+    if (timedWordCount < expectedWordCount) {
+      return false;
+    }
+    return _comparableText(english) ==
+        _comparableText(
+          words.map((Map<String, Object?> word) => word['text'] ?? '').join(' '),
+        );
   }
 
   String _repairFinalWordTimelines(
@@ -1523,6 +1679,18 @@ class AsrSubtitleJobRunner {
         ..repairCount += 1;
     }
     return const JsonEncoder.withIndent('  ').convert(decoded);
+  }
+
+  /// 报错时带上这一句的开头，方便定位是哪个视频/哪一句的数据有问题。
+  String _lineSnippet(String english) {
+    final String trimmed = english.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    final String short = trimmed.length > 24
+        ? '${trimmed.substring(0, 24)}…'
+        : trimmed;
+    return '「$short」';
   }
 
   int _wordCount(String text) {
@@ -1663,7 +1831,9 @@ class AsrSubtitleJobRunner {
     final int safeFrom = fromIndex.clamp(0, words.length - 1);
     final String target = _comparableText(token);
     if (target.isEmpty) {
-      return safeFrom;
+      // 纯标点 token 不参与匹配，也不能占用某个词条（否则后面的单词会
+      // 因为“下标已被用过”而丢掉时间戳）。
+      return -1;
     }
     for (int index = safeFrom; index < words.length; index += 1) {
       final String candidate = _comparableText(
@@ -1752,7 +1922,7 @@ class AsrSubtitleJobRunner {
       for (final String token in tokens) {
         final int match = _wordIndexForToken(token, words, cursor);
         tokenToWord.add(match);
-        if (match + 1 < words.length) {
+        if (match >= 0 && match + 1 < words.length) {
           cursor = match + 1;
         }
       }
@@ -1766,11 +1936,19 @@ class AsrSubtitleJobRunner {
       final String subEnglish = range
           .map((int index) => tokens[index])
           .join(' ');
+      // 只剩标点的片段（例如单独的 ","）没法跟读，丢掉它，
+      // 这段时间会被相邻子行覆盖（下面会把首尾接起来）。
+      if (_wordCount(subEnglish) == 0) {
+        continue;
+      }
       final List<Map<String, dynamic>> groupWords = <Map<String, dynamic>>[];
       if (tokenToWord.isNotEmpty) {
         final Set<int> usedWordIndexes = <int>{};
         for (final int tokenIndex in range) {
           final int wordIndex = tokenToWord[tokenIndex];
+          if (wordIndex < 0 || wordIndex >= words.length) {
+            continue;
+          }
           if (usedWordIndexes.add(wordIndex)) {
             groupWords.add(words[wordIndex]);
           }
