@@ -140,6 +140,54 @@ void main() {
     expect(entry.definitionCn, isNotEmpty);
   });
 
+  test('context phrases are looked up in their base form', () async {
+    // 点击 consists，句子里有 consist of → 查的是词组并显示初始形态。
+    final WordLookupEntry phrase = await const WordLookupService().lookupWord(
+      rawWord: 'Consists',
+      contextSentence:
+          'I mentioned that over half the human body consists of water.',
+      settings: LearningSettingsState.defaults(),
+    );
+    expect(phrase.word, 'Consist of');
+    expect(phrase.type, '英文词组');
+
+    // 点小品词 of 也命中同一个词组。
+    final WordLookupEntry particle = await const WordLookupService().lookupWord(
+      rawWord: 'of',
+      contextSentence: 'The human body consists of water.',
+      settings: LearningSettingsState.defaults(),
+    );
+    expect(particle.word, 'Consist of');
+
+    // 上下文里没有固定词组时仍然按单词查，并且显示初始形态。
+    final WordLookupEntry word = await const WordLookupService().lookupWord(
+      rawWord: 'Consists',
+      contextSentence: 'The soup consists mainly in a bowl.',
+      settings: LearningSettingsState.defaults(),
+    );
+    expect(word.word, 'Consist');
+    expect(word.sourceLabel, '本地词典');
+    expect(word.definitionCn, isNotEmpty);
+  });
+
+  test('phrase meaning can come from the local translator', () async {
+    final WordLookupService service = WordLookupService(
+      localNllbTranslateOverride: (String text) async =>
+          text == 'consist of' ? '由…组成' : null,
+    );
+
+    final WordLookupEntry entry = await service.lookupWord(
+      rawWord: 'consists',
+      contextSentence: 'The human body consists of water.',
+      settings: LearningSettingsState.defaults(),
+    );
+
+    expect(entry.word, 'Consist of');
+    expect(entry.type, '英文词组');
+    expect(entry.definitionCn, '由…组成');
+    expect(entry.sourceLabel, '本地翻译');
+  });
+
   test('word forms are resolved by the offline dictionary', () async {
     const WordLookupService service = WordLookupService();
 

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'english_lemmas.dart';
+
 const String _dictionaryAsset = 'assets/dictionary/ecdict_core.json';
 
 final Provider<OfflineWordDictionary> offlineWordDictionaryProvider =
@@ -29,141 +31,86 @@ class OfflineWordDictionary {
   /// 查词。先查原形，再依次尝试常见词形变化（drinking → drink、
   /// studies → study、stopped → stop 等），本地词典命中就不必依赖联网翻译。
   Future<OfflineWordDefinition?> lookup(String rawWord) async {
-    final String word = rawWord.trim().toLowerCase().replaceAll('’', "'");
-    if (word.isEmpty) return null;
-    final Map<String, OfflineWordDefinition> entries =
-        (await (_entriesFuture ??= _load())).cast<String, OfflineWordDefinition>();
+    final String word = normalizeEnglishToken(rawWord);
+    if (word.isEmpty) {
+      return null;
+    }
+    final Map<String, OfflineWordDefinition> entries = await _entries();
     final OfflineWordDefinition? direct = entries[word];
-    if (direct != null) return direct;
+    if (direct != null) {
+      return direct;
+    }
     // 短语（多个词）不做词形还原，交给翻译服务。
-    if (word.contains(' ')) return null;
-    for (final String candidate in _lemmaCandidates(word)) {
+    if (word.contains(' ')) {
+      return null;
+    }
+    for (final String candidate in englishLemmaCandidates(word)) {
       final OfflineWordDefinition? definition = entries[candidate];
-      if (definition != null) return definition;
+      if (definition != null) {
+        return definition;
+      }
     }
     return null;
   }
 
-  /// 生成可能的原形候选（按可信度排序）。
-  Iterable<String> _lemmaCandidates(String word) sync* {
-    yield* _candidates(word).where((String c) => c.length >= 2 && c != word);
+  /// 单词的初始形态：优先返回词典里真的存在的原形
+  /// （`consists → consist`、`studies → study`、`children → child`），
+  /// 词典里查不到时按规则还原，最后退回原词。
+  Future<String> baseForm(String rawWord) async {
+    final String word = normalizeEnglishToken(rawWord);
+    if (word.isEmpty || word.contains(' ')) {
+      return word;
+    }
+    final Map<String, OfflineWordDefinition> entries = await _entries();
+    if (entries.containsKey(word)) {
+      // 本身已经是词表里的形式（例如 bus / series）就直接用。
+      if (!_looksInflected(word)) {
+        return word;
+      }
+    }
+    for (final String candidate in englishLemmaCandidates(word)) {
+      if (entries.containsKey(candidate)) {
+        return candidate;
+      }
+    }
+    final String lemma = englishLemma(word);
+    return entries.containsKey(lemma) ? lemma : word;
   }
 
-  Iterable<String> _candidates(String word) sync* {
-    final int length = word.length;
-    // 名词复数 / 动词三单
-    if (word.endsWith('ies') && length > 4) {
-      yield '${word.substring(0, length - 3)}y'; // studies → study
-    }
-    if (word.endsWith('es') && length > 3) {
-      yield word.substring(0, length - 2); // boxes → box
-    }
-    if (word.endsWith('s') && !word.endsWith('ss') && length > 2) {
-      yield word.substring(0, length - 1); // books → book
-    }
-    // 过去式 / 过去分词
-    if (word.endsWith('ied') && length > 4) {
-      yield '${word.substring(0, length - 3)}y'; // studied → study
-    }
-    if (word.endsWith('ed') && length > 3) {
-      final String stem = word.substring(0, length - 2);
-      yield stem; // played → play
-      if (stem.isNotEmpty) {
-        final String last = stem[stem.length - 1];
-        if ('bdgklmnprt'.contains(last)) {
-          yield '$stem$last'; // stopped → stop
+  /// 词组的中文提示：把各组成词在词典里的释义拼起来（离线可用）。
+  Future<String> componentGloss(String phrase) async {
+    final Map<String, OfflineWordDefinition> entries = await _entries();
+    final List<String> parts = <String>[];
+    for (final String token in normalizeEnglishToken(phrase).split(' ')) {
+      if (token.isEmpty) {
+        continue;
+      }
+      OfflineWordDefinition? definition = entries[token];
+      if (definition == null) {
+        for (final String candidate in englishLemmaCandidates(token)) {
+          definition = entries[candidate];
+          if (definition != null) {
+            break;
+          }
         }
       }
-      yield '${word.substring(0, length - 1)}e'; // loved → love
-    }
-    // 现在分词 / 动名词
-    if (word.endsWith('ing') && length > 4) {
-      final String stem = word.substring(0, length - 3);
-      yield stem; // drinking → drink
-      yield '${stem}e'; // making → make
-      if (stem.length > 1 && stem[stem.length - 1] == stem[stem.length - 2]) {
-        yield stem.substring(0, stem.length - 1); // running → run
+      final String translation = definition?.translation.trim() ?? '';
+      if (translation.isNotEmpty) {
+        parts.add('$token：$translation');
       }
     }
-    // 比较级 / 最高级 / 副词
-    if (word.endsWith('est') && length > 4) {
-      yield word.substring(0, length - 3); // biggest → big
-    }
-    if (word.endsWith('er') && length > 3) {
-      yield word.substring(0, length - 2); // bigger → big
-    }
-    if (word.endsWith('ly') && length > 4) {
-      yield word.substring(0, length - 2); // quickly → quick
-      if (word.endsWith('ily')) {
-        yield '${word.substring(0, length - 3)}y'; // happily → happy
-      }
-    }
-    final String? irregular = _irregularLemmas[word];
-    if (irregular != null) {
-      yield irregular;
-    }
+    return parts.join('；');
   }
 
-  static const Map<String, String> _irregularLemmas = <String, String>{
-    'am': 'be',
-    'is': 'be',
-    'are': 'be',
-    'was': 'be',
-    'were': 'be',
-    'been': 'be',
-    'being': 'be',
-    'has': 'have',
-    'had': 'have',
-    'having': 'have',
-    'does': 'do',
-    'did': 'do',
-    'done': 'do',
-    'doing': 'do',
-    'went': 'go',
-    'gone': 'go',
-    'said': 'say',
-    'made': 'make',
-    'took': 'take',
-    'taken': 'take',
-    'came': 'come',
-    'saw': 'see',
-    'seen': 'see',
-    'got': 'get',
-    'gotten': 'get',
-    'gave': 'give',
-    'given': 'give',
-    'knew': 'know',
-    'known': 'know',
-    'thought': 'think',
-    'told': 'tell',
-    'found': 'find',
-    'left': 'leave',
-    'felt': 'feel',
-    'kept': 'keep',
-    'met': 'meet',
-    'ran': 'run',
-    'wrote': 'write',
-    'written': 'write',
-    'spoke': 'speak',
-    'spoken': 'speak',
-    'brought': 'bring',
-    'bought': 'buy',
-    'taught': 'teach',
-    'caught': 'catch',
-    'children': 'child',
-    'men': 'man',
-    'women': 'woman',
-    'feet': 'foot',
-    'teeth': 'tooth',
-    'mice': 'mouse',
-    'people': 'person',
-    'better': 'good',
-    'best': 'good',
-    'worse': 'bad',
-    'worst': 'bad',
-    'more': 'many',
-    'most': 'many',
-  };
+  /// 看起来像变形（复数/过去式/分词等）时才继续找原形。
+  bool _looksInflected(String word) {
+    return englishLemmaCandidates(word).isNotEmpty;
+  }
+
+  Future<Map<String, OfflineWordDefinition>> _entries() async =>
+      (await (_entriesFuture ??= _load())).cast<String, OfflineWordDefinition>();
+
+
 
   Future<Map<String, OfflineWordDefinition>> _load() async {
     final Map<String, dynamic> decoded =

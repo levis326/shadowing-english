@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/presentation/settings_provider.dart';
+import '../../words/data/english_phrases.dart';
 import '../../words/data/offline_word_dictionary.dart';
 import '../domain/word_lookup_entry.dart';
 import 'local_nllb_translation.dart';
@@ -53,7 +54,21 @@ class WordLookupService {
     String? contextSentence,
     required LearningSettingsState settings,
   }) async {
-    final String normalizedWord = _normalizeWord(rawWord);
+    // 先看点击的词在上下文里是不是一个固定词组（consists of → consist of、
+    // as well as 里点任意一个词都能命中）。是词组就拿词组去查，否则查单词；
+    // 两者都统一用初始形态。
+    final EnglishPhraseMatch? phrase = matchEnglishPhrase(
+      contextSentence: contextSentence ?? '',
+      clickedWord: rawWord,
+    );
+    if (phrase != null) {
+      return _lookupPhrase(
+        phrase: phrase.phrase,
+        contextSentence: contextSentence,
+        settings: settings,
+      );
+    }
+    final String normalizedWord = await _baseForm(rawWord);
     if (_canUseRemoteProvider(settings)) {
       try {
         final WordLookupEntry entry = remoteLookupOverride != null
@@ -89,6 +104,107 @@ class WordLookupService {
           'Not found in the offline dictionary. Configure an online translator '
           'or download the local translation model in Settings.',
     );
+  }
+
+  /// 词组查词：在线服务 → 本地翻译 → 词典组成词释义兜底（离线可用）。
+  Future<WordLookupEntry> _lookupPhrase({
+    required String phrase,
+    String? contextSentence,
+    required LearningSettingsState settings,
+  }) async {
+    if (_canUseRemoteProvider(settings)) {
+      try {
+        final WordLookupEntry entry = remoteLookupOverride != null
+            ? await remoteLookupOverride!(
+                rawWord: phrase,
+                contextSentence: contextSentence,
+                settings: settings,
+              )
+            : await _lookupRemote(
+                rawWord: phrase,
+                contextSentence: contextSentence,
+                settings: settings,
+              );
+        if (entry.definitionCn.trim().isNotEmpty &&
+            entry.sourceLabel != '未配置') {
+          return entry;
+        }
+      } catch (_) {
+        // 在线失败时继续尝试本地。
+      }
+    }
+    final String? translated = await _translateLocally(phrase);
+    if (translated != null && translated.trim().isNotEmpty) {
+      return WordLookupEntry(
+        word: _displayWord(phrase),
+        phonetic: '',
+        type: '英文词组',
+        definitionEn: '',
+        usageEn: '',
+        exampleSentenceEn: '',
+        definitionCn: translated.trim(),
+        sourceLabel: '本地翻译',
+      );
+    }
+    try {
+      final String gloss = await offlineDictionary
+          .componentGloss(phrase)
+          .timeout(const Duration(seconds: 2), onTimeout: () => '');
+      if (gloss.trim().isNotEmpty) {
+        return WordLookupEntry(
+          word: _displayWord(phrase),
+          phonetic: '',
+          type: '英文词组',
+          definitionEn: '',
+          usageEn: '',
+          exampleSentenceEn: '',
+          definitionCn: gloss.trim(),
+          sourceLabel: '本地词典（逐词）',
+        );
+      }
+    } catch (_) {
+      // 词典资源不可用时忽略。
+    }
+    return _buildUnavailableEntry(
+      rawWord: phrase,
+      messageCn: '这是一个固定词组，但本地没有它的中文释义。可在“设置 → 翻译”配置在线翻译，或在“设置 → 本地模型”下载翻译模型后重试。',
+      messageEn:
+          'This is a fixed phrase. Configure an online translator or download '
+          'the local translation model in Settings to see its meaning.',
+    );
+  }
+
+  /// 本地翻译（词组或单词），不可用时返回 null。
+  Future<String?> _translateLocally(String text) async {
+    try {
+      if (localNllbTranslateOverride != null && !text.contains(' ')) {
+        return await localNllbTranslateOverride!(text);
+      }
+      return await _translateWithLocalNllb(
+        text,
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 单词的初始形态（词典里有原形就用原形，否则按规则还原）。
+  Future<String> _baseForm(String rawWord) async {
+    final String normalized = _normalizeWord(rawWord);
+    if (normalized.isEmpty || normalized.contains(' ')) {
+      return normalized;
+    }
+    try {
+      final String base = await offlineDictionary
+          .baseForm(normalized)
+          .timeout(const Duration(seconds: 2), onTimeout: () => normalized);
+      return base.isEmpty ? normalized : base;
+    } catch (_) {
+      return normalized;
+    }
   }
 
   /// 本地释义：内置离线词典 → 本地 NLLB 翻译。都不可用时返回 null。
@@ -129,18 +245,7 @@ class WordLookupService {
       }
     }
     try {
-      final String? translated =
-          localNllbTranslateOverride != null && !isPhrase
-          ? await localNllbTranslateOverride!(rawWord)
-          : await _translateWithLocalNllb(
-              rawWord,
-            ).timeout(
-              // 本地翻译模型首次加载要拉起服务，给足时间；超时也不报错，
-              // 交给上层的提示文案。
-              const Duration(seconds: 30),
-              onTimeout: () => null,
-            );
-      final String text = translated?.trim() ?? '';
+      final String text = (await _translateLocally(rawWord))?.trim() ?? '';
       if (text.isNotEmpty) {
         return WordLookupEntry(
           word: _displayWord(rawWord),
