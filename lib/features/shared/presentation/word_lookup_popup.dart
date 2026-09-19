@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/presentation/settings_provider.dart';
+import '../../words/data/offline_word_dictionary.dart';
+import '../../words/data/word_formation.dart';
 import '../data/word_lookup_service.dart';
 import '../data/word_pronunciation_service.dart';
 import '../domain/word_lookup_entry.dart';
@@ -41,6 +45,10 @@ class WordLookupPopupCard extends ConsumerStatefulWidget {
 }
 
 class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
+  /// 当前展示的词（点“同根词”后会在卡片内切换）。
+  late String _currentWord;
+  WordFormation? _formation;
+
   WordLookupEntry? _entry;
   String? _errorMessage;
   bool _isLoading = true;
@@ -49,7 +57,23 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
   @override
   void initState() {
     super.initState();
+    _currentWord = widget.rawWord;
     _loadEntry();
+  }
+
+  /// 切换到同根词：卡片内容原地更新，便于连续看同一家族。
+  void _showRelatedWord(String word) {
+    if (word.trim().isEmpty || word == _currentWord) {
+      return;
+    }
+    setState(() {
+      _currentWord = word;
+      _entry = null;
+      _formation = null;
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    _loadEntry(reload: true);
   }
 
   @override
@@ -62,18 +86,24 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
     }
   }
 
-  Future<void> _loadEntry() async {
+  Future<void> _loadEntry({bool reload = false}) async {
+    if (!reload) {
+      _currentWord = widget.rawWord;
+    }
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
+
+    // 构词拆解（离线词典）：即使查词失败也可以展示。
+    unawaited(_loadFormation());
 
     final LearningSettingsState settings = ref.read(learningSettingsProvider);
     try {
       final WordLookupEntry entry = await ref
           .read(wordLookupServiceProvider)
           .lookupWord(
-            rawWord: widget.rawWord,
+            rawWord: _currentWord,
             contextSentence: widget.contextSentence,
             settings: settings,
           );
@@ -158,7 +188,7 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
           children: <Widget>[
             Expanded(
               child: Text(
-                _entry?.word ?? widget.rawWord,
+                _entry?.word ?? _currentWord,
                 style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
@@ -192,11 +222,13 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
         else if (_entry != null)
           _WordLookupPopupBody(
             entry: _entry!,
+            formation: _formation,
             contextSentence: widget.contextSentence,
             isPronouncing: _isPronouncing,
             onCollect: widget.onCollect,
             onFavorite: widget.onFavorite,
             onPronounce: _handlePronounce,
+            onSelectRelatedWord: _showRelatedWord,
           ),
       ],
     );
@@ -256,6 +288,22 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
     );
   }
 
+  Future<void> _loadFormation() async {
+    final String word = _currentWord;
+    try {
+      final WordFormation? formation = await analyzeWordFormation(
+        rawWord: word,
+        dictionary: ref.read(offlineWordDictionaryProvider),
+      );
+      if (!mounted || word != _currentWord) {
+        return;
+      }
+      setState(() => _formation = formation);
+    } catch (_) {
+      // 构词表不可用时忽略该区块。
+    }
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -271,9 +319,15 @@ class _WordLookupPopupBody extends StatelessWidget {
     required this.onCollect,
     this.onFavorite,
     required this.onPronounce,
+    this.formation,
+    this.onSelectRelatedWord,
   });
 
   final WordLookupEntry entry;
+
+  /// 词根词缀拆解（离线）；为空时不显示该区块。
+  final WordFormation? formation;
+  final ValueChanged<String>? onSelectRelatedWord;
   final String contextSentence;
   final bool isPronouncing;
   final VoidCallback? onCollect;
@@ -367,6 +421,13 @@ class _WordLookupPopupBody extends StatelessWidget {
             ],
           ],
         ),
+        if (formation != null) ...<Widget>[
+          const SizedBox(height: 12),
+          _WordFormationCard(
+            formation: formation!,
+            onSelectRelatedWord: onSelectRelatedWord,
+          ),
+        ],
         const SizedBox(height: 12),
         Container(
           width: double.infinity,
@@ -633,6 +694,160 @@ class _WordLookupPopupActions extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// 「词根词缀」区块：前缀/词根/后缀拆解 + 同根词（点击可在卡片内切换）。
+class _WordFormationCard extends StatelessWidget {
+  const _WordFormationCard({
+    required this.formation,
+    this.onSelectRelatedWord,
+  });
+
+  final WordFormation formation;
+  final ValueChanged<String>? onSelectRelatedWord;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Row(
+            children: <Widget>[
+              Icon(
+                Icons.account_tree_outlined,
+                size: 16,
+                color: Color(0xFFB45309),
+              ),
+              SizedBox(width: 6),
+              Text(
+                '词根词缀',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFB45309),
+                ),
+              ),
+              Spacer(),
+              Text(
+                '本地词根表',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF9A7B5A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              for (int index = 0; index < formation.parts.length; index += 1)
+                ...<Widget>[
+                  if (index > 0)
+                    const Text(
+                      '+',
+                      style: TextStyle(color: Color(0xFFB08968)),
+                    ),
+                  _FormationPartChip(part: formation.parts[index]),
+                ],
+            ],
+          ),
+          if (formation.relatedWords.isNotEmpty &&
+              onSelectRelatedWord != null) ...<Widget>[
+            const SizedBox(height: 10),
+            const Text(
+              '同根词（点击查看）',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF8A6D4B),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: <Widget>[
+                for (final String word in formation.relatedWords)
+                  ActionChip(
+                    label: Text(word),
+                    labelStyle: const TextStyle(fontSize: 12),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize:
+                        MaterialTapTargetSize.shrinkWrap,
+                    onPressed: () => onSelectRelatedWord!(word),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FormationPartChip extends StatelessWidget {
+  const _FormationPartChip({required this.part});
+
+  final WordPart part;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isRoot = part.kind == WordPartKind.root;
+    final String text = switch (part.kind) {
+      WordPartKind.prefix => '${part.text}-',
+      WordPartKind.suffix => '-${part.text}',
+      _ => part.text,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: isRoot ? const Color(0xFFFDE68A) : Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isRoot ? const Color(0xFFD97706) : const Color(0xFFE7D7C3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(
+            text,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: Color(0xFF7C2D12),
+            ),
+          ),
+          if (part.meaning.isNotEmpty)
+            Text(
+              '${part.kindLabel}·${part.meaning}',
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF9A6B3F),
+              ),
+            )
+          else
+            Text(
+              part.kindLabel,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Color(0xFF9A6B3F),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

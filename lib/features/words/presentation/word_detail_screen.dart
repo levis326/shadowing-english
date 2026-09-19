@@ -13,6 +13,7 @@ import '../../shared/data/word_pronunciation_service.dart';
 import '../../shared/domain/word_lookup_entry.dart';
 import '../../shared/presentation/pad/app_design_tokens.dart';
 import '../data/offline_word_dictionary.dart';
+import '../data/word_formation.dart';
 import 'word_book_provider.dart';
 
 class WordDetailDialog extends ConsumerStatefulWidget {
@@ -26,6 +27,7 @@ class WordDetailDialog extends ConsumerStatefulWidget {
 
 class _WordDetailDialogState extends ConsumerState<WordDetailDialog> {
   OfflineWordDefinition? _offlineDefinition;
+  WordFormation? _formation;
   bool _loadingOfflineDefinition = true;
   bool _translatingWithApi = false;
   String? _speakingText;
@@ -38,15 +40,105 @@ class _WordDetailDialogState extends ConsumerState<WordDetailDialog> {
   }
 
   Future<void> _loadOfflineDefinition() async {
-    final OfflineWordDefinition? definition = await ref
-        .read(offlineWordDictionaryProvider)
-        .lookup(widget.word);
+    final OfflineWordDictionary dictionary = ref.read(
+      offlineWordDictionaryProvider,
+    );
+    final OfflineWordDefinition? definition = await dictionary.lookup(
+      widget.word,
+    );
+    WordFormation? formation;
+    try {
+      formation = await analyzeWordFormation(
+        rawWord: widget.word,
+        dictionary: dictionary,
+      );
+    } catch (_) {
+      // 构词表不可用时忽略该区块。
+    }
     if (mounted) {
       setState(() {
         _offlineDefinition = definition;
+        _formation = formation;
         _loadingOfflineDefinition = false;
       });
     }
+  }
+
+  /// 同根词：先看离线词典，缺失时用在线/本地翻译补一条释义。
+  Future<void> _openRelatedWord(String word) async {
+    final OfflineWordDictionary dictionary = ref.read(
+      offlineWordDictionaryProvider,
+    );
+    final OfflineWordDefinition? definition = await dictionary.lookup(word);
+    if (!mounted) {
+      return;
+    }
+    String? translated;
+    if (definition == null) {
+      final WordLookupEntry entry = await ref
+          .read(wordLookupServiceProvider)
+          .lookupWord(
+            rawWord: word,
+            settings: ref.read(learningSettingsProvider),
+          );
+      translated = entry.definitionCn.trim().isEmpty
+          ? null
+          : entry.definitionCn.trim();
+    }
+    if (!mounted) {
+      return;
+    }
+    final WordFormation? formation = await analyzeWordFormation(
+      rawWord: word,
+      dictionary: dictionary,
+    );
+    if (!mounted) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        insetPadding: const EdgeInsets.all(24),
+        title: Text(word),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (definition?.phonetic.trim().isNotEmpty ?? false) ...<Widget>[
+                Text(
+                  definition!.phonetic.trim(),
+                  style: const TextStyle(color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Text(
+                definition?.translation.trim() ??
+                    translated ??
+                    '离线词典未收录，可到“设置 → 翻译”配置在线翻译。',
+                style: const TextStyle(fontSize: 16, height: 1.5),
+              ),
+              if (formation != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(
+                  '词根词缀：${formation.breakdown}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF8A6D4B),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _translateWithApi(WordEntry entry) async {
@@ -208,6 +300,13 @@ class _WordDetailDialogState extends ConsumerState<WordDetailDialog> {
                     translating: _translatingWithApi,
                     onTranslate: () => _translateWithApi(entry),
                   ),
+                  if (_formation != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    _WordFormationSection(
+                      formation: _formation!,
+                      onSelectWord: _openRelatedWord,
+                    ),
+                  ],
                   const SizedBox(height: 22),
                   Text(
                     '影片语境 · ${entry.occurrenceCount} 次出现',
@@ -371,6 +470,113 @@ class _DefinitionCard extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// 「词根词缀」区块（生词本详情页）：拆解 + 同根词，点同根词就地查看。
+class _WordFormationSection extends StatelessWidget {
+  const _WordFormationSection({
+    required this.formation,
+    required this.onSelectWord,
+  });
+
+  final WordFormation formation;
+  final ValueChanged<String> onSelectWord;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          const Text(
+            '词根词缀',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              for (int index = 0; index < formation.parts.length; index += 1)
+                ...<Widget>[
+                  if (index > 0)
+                    const Text('+', style: TextStyle(color: Color(0xFFB08968))),
+                  _PartCard(part: formation.parts[index]),
+                ],
+            ],
+          ),
+          if (formation.relatedWords.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 14),
+            const Text(
+              '同根词（点击查看）',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF8A6D4B),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                for (final String word in formation.relatedWords)
+                  ActionChip(
+                    label: Text(word),
+                    onPressed: () => onSelectWord(word),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PartCard extends StatelessWidget {
+  const _PartCard({required this.part});
+
+  final WordPart part;
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isRoot = part.kind == WordPartKind.root;
+    final String text = switch (part.kind) {
+      WordPartKind.prefix => '${part.text}-',
+      WordPartKind.suffix => '-${part.text}',
+      _ => part.text,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: isRoot ? const Color(0xFFFDE68A) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isRoot ? const Color(0xFFD97706) : const Color(0xFFE7D7C3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(text, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(
+            part.meaning.isEmpty
+                ? part.kindLabel
+                : '${part.kindLabel}·${part.meaning}',
+            style: const TextStyle(fontSize: 12, color: Color(0xFF9A6B3F)),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _OccurrenceCard extends StatelessWidget {

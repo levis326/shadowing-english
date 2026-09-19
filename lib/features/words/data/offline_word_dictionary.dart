@@ -77,6 +77,34 @@ class OfflineWordDictionary {
     return entries.containsKey(lemma) ? lemma : word;
   }
 
+  /// 词表里包含某个片段（词根）的单词，短的优先，用于“同根词”。
+  Future<List<String>> wordsContaining(
+    String fragment, {
+    String exclude = '',
+    int limit = 12,
+  }) async {
+    final String needle = normalizeEnglishToken(fragment);
+    if (needle.isEmpty) {
+      return const <String>[];
+    }
+    final Map<String, OfflineWordDefinition> entries = await _entries();
+    final String excludeWord = exclude.trim().toLowerCase();
+    final List<String> hits = <String>[
+      for (final String word in entries.keys)
+        if (word != excludeWord &&
+            word.length <= needle.length + 8 &&
+            word.contains(needle))
+          word,
+    ];
+    return (hits
+          ..sort((String a, String b) {
+            final int byLength = a.length.compareTo(b.length);
+            return byLength != 0 ? byLength : a.compareTo(b);
+          }))
+        .take(limit)
+        .toList(growable: false);
+  }
+
   /// 词组的中文提示：把各组成词在词典里的释义拼起来（离线可用）。
   Future<String> componentGloss(String phrase) async {
     final Map<String, OfflineWordDefinition> entries = await _entries();
