@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../utils/app_paths.dart';
+import '../../library/presentation/library_catalog_provider.dart';
 import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../player/presentation/asr_subtitle_job.dart';
 import '../../player/presentation/player_mock_state.dart';
@@ -175,7 +176,9 @@ class _AiSubtitleManagementScreenState
                                         entry.cacheFile.path,
                                     onToggleSelection: () =>
                                         _toggleSelection(entry),
-                                    onEdit: () => _edit(entry),
+                                    onEdit: entry.isSrt
+                                        ? null
+                                        : () => _edit(entry),
                                     onExport: () => _export(entry),
                                     onRegenerate: () => _regenerate(entry),
                                     onDelete: () => _delete(entry),
@@ -266,7 +269,7 @@ class _AiSubtitleManagementScreenState
     );
     if (!confirmed) return;
     for (final AiSubtitleCacheEntry entry in selected) {
-      await _cache.deleteEntry(entry);
+      await _deleteEntryDeep(entry);
     }
     if (mounted) _reload();
   }
@@ -285,8 +288,9 @@ class _AiSubtitleManagementScreenState
       _message('原视频文件已移动或删除，无法重新生成。');
       return;
     }
+    final bool fromSrtFile = entry.isSrt;
     final bool fromSubtitleText =
-        entry.generationSource == subtitleTextSourceLabel;
+        entry.generationSource == subtitleTextSourceLabel || fromSrtFile;
     final bool confirmed = await _confirm(
       title: '重新生成 AI 字幕？',
       content: fromSubtitleText
@@ -303,7 +307,19 @@ class _AiSubtitleManagementScreenState
       List<PlayerSubtitleLine> referenceSubtitleLines =
           const <PlayerSubtitleLine>[];
       Map<String, dynamic> cached = const <String, dynamic>{};
-      if (entry.referenceSignature != null || fromSubtitleText) {
+      if (fromSrtFile) {
+        // 用这份 .srt 自身的文本与时间轴生成词级字幕（不跑识别）。
+        referenceSubtitleLines = parseSubtitleLines(
+          await entry.cacheFile.readAsString(),
+        )
+            .where(
+              (PlayerSubtitleLine line) => line.english.trim().isNotEmpty,
+            )
+            .toList(growable: false);
+        if (referenceSubtitleLines.isEmpty) {
+          throw const FormatException('这份字幕文件里没有可用文本。');
+        }
+      } else if (entry.referenceSignature != null || fromSubtitleText) {
         cached = await _cache.readEntry(entry);
         final Object? storedReferenceLines = cached['referenceLines'];
         if (storedReferenceLines is! List) {
@@ -328,9 +344,9 @@ class _AiSubtitleManagementScreenState
                 lines: referenceSubtitleLines,
                 hasTimings: true,
               ),
-              timingRecognition: parseSubtitleLines(
-                jsonEncode(cached),
-              ),
+              timingRecognition: fromSrtFile
+                  ? const <PlayerSubtitleLine>[]
+                  : parseSubtitleLines(jsonEncode(cached)),
               forceRegenerate: true,
             )
           : await runner.run(
@@ -351,7 +367,9 @@ class _AiSubtitleManagementScreenState
       final String? warning = subtitleGenerationWarning(raw);
       _message(
         repairSummary.appendTo(
-          warning == null ? 'AI 字幕已重新生成' : 'AI 字幕已重新生成；$warning',
+          warning == null
+              ? (fromSrtFile ? '已根据这份字幕文件生成可逐词跟读的字幕' : 'AI 字幕已重新生成')
+              : 'AI 字幕已重新生成；$warning',
         ),
       );
       _reload();
@@ -364,14 +382,35 @@ class _AiSubtitleManagementScreenState
 
   Future<void> _delete(AiSubtitleCacheEntry entry) async {
     final bool confirmed = await _confirm(
-      title: '删除这份 AI 字幕？',
-      content: '删除后无法恢复，但可以从视频播放页重新生成。',
+      title: entry.isSrt ? '删除这个字幕文件？' : '删除这份 AI 字幕？',
+      content: entry.isSrt
+          ? '会删除随视频保存的 .en.srt / .zh.srt 文件，并把它从剧集上移除。删除后无法恢复（如果这是你导入的字幕文件，需要重新导入）。'
+          : '会删除这份词级字幕以及随视频保存的 .en.srt / .zh.srt 副本，并把它从剧集上移除，避免打开视频后字幕又出现。删除后无法恢复，但可以从视频播放页重新生成。',
       action: '删除',
       danger: true,
     );
     if (!confirmed) return;
-    await _cache.deleteEntry(entry);
+    await _deleteEntryDeep(entry);
     if (mounted) _reload();
+  }
+
+  /// 删除一份字幕：缓存文件（或 .srt 文件）+ 随视频保存的字幕副本 +
+  /// 剧集上的引用，这样打开视频时不会又看到字幕。
+  Future<void> _deleteEntryDeep(AiSubtitleCacheEntry entry) async {
+    await _cache.deleteEntry(entry);
+    if (!entry.isSrt) {
+      _cache.deleteGeneratedSrtFiles(entry.videoPath);
+    }
+    try {
+      await ref
+          .read(libraryCatalogProvider.notifier)
+          .detachGeneratedSubtitles(
+            episodeId: entry.episodeId,
+            videoPath: entry.videoPath,
+          );
+    } catch (_) {
+      // 剧集数据不在本地时忽略：字幕文件已经删掉了。
+    }
   }
 
   Future<bool> _confirm({
@@ -433,7 +472,7 @@ class _SubtitleCard extends StatelessWidget {
   final bool settingsChanged;
   final bool regenerating;
   final VoidCallback onToggleSelection;
-  final VoidCallback onEdit;
+  final VoidCallback? onEdit;
   final VoidCallback onExport;
   final VoidCallback onRegenerate;
   final VoidCallback onDelete;
@@ -443,6 +482,14 @@ class _SubtitleCard extends StatelessWidget {
   List<({IconData icon, String text, bool warning})> get _statusMessages {
     final List<({IconData icon, String text, bool warning})> messages =
         <({IconData icon, String text, bool warning})>[];
+    if (entry.isSrt) {
+      messages.add((
+        icon: Icons.description_outlined,
+        text: '这是随视频保存的 .srt 字幕文件（可能是生成时保存的，也可能是导入时带的）。可导出或删除；想变成可逐词跟读的字幕，点“重新生成”即可。',
+        warning: false,
+      ));
+      return messages;
+    }
     final String? warning = entry.translationWarning;
     if (entry.lineCount > 0 && entry.chineseLineCount == 0) {
       messages.add((
@@ -535,7 +582,9 @@ class _SubtitleCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            '${entry.lineCount} 句 · ${entry.provider} / ${entry.model}',
+                            entry.isSrt
+                                ? '${entry.lineCount} 句 · 字幕文件（.srt）'
+                                : '${entry.lineCount} 句 · ${entry.provider} / ${entry.model}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -607,12 +656,13 @@ class _SubtitleCard extends StatelessWidget {
                     runSpacing: 8,
                     alignment: WrapAlignment.end,
                     children: <Widget>[
-                      _CardAction(
-                        icon: Icons.edit_rounded,
-                        label: '编辑字幕',
-                        prominent: true,
-                        onPressed: onEdit,
-                      ),
+                      if (onEdit != null)
+                        _CardAction(
+                          icon: Icons.edit_rounded,
+                          label: '编辑字幕',
+                          prominent: true,
+                          onPressed: onEdit,
+                        ),
                       _CardAction(
                         icon: Icons.download_rounded,
                         label: '导出',

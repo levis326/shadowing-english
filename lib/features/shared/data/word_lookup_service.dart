@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../settings/presentation/settings_provider.dart';
+import '../../words/data/offline_word_dictionary.dart';
 import '../domain/word_lookup_entry.dart';
 import 'local_nllb_translation.dart';
 
@@ -33,45 +34,129 @@ class WordLookupService {
     this.remoteLookupOverride,
     this.httpRequestOverride,
     this.localNllbTranslateOverride,
+    this.offlineDictionary = const OfflineWordDictionary(),
   });
 
   final WordLookupRemoteLookup? remoteLookupOverride;
   final WordLookupHttpRequest? httpRequestOverride;
   final WordLookupLocalTranslator? localNllbTranslateOverride;
 
+
+  /// 内置离线词典（ECDICT 精简版），提供不联网的中文释义。
+  final OfflineWordDictionary offlineDictionary;
+
+  /// 查词。优先使用「设置 → 翻译」里配置的在线服务（可带上下文、释义更准）；
+  /// 没有配置、或在线服务失败时，回退到**完全本地**的释义：
+  /// 内置离线词典（含词形还原：drinking → drink）→ 本地 NLLB 翻译。
   Future<WordLookupEntry> lookupWord({
     required String rawWord,
     String? contextSentence,
     required LearningSettingsState settings,
   }) async {
     final String normalizedWord = _normalizeWord(rawWord);
-    if (!_canUseRemoteProvider(settings)) {
-      return _buildUnavailableEntry(
-        rawWord: normalizedWord,
-        messageCn: '请先在设置中配置可用的翻译 API。',
-        messageEn: 'Set up a translation API in Settings first.',
-      );
+    if (_canUseRemoteProvider(settings)) {
+      try {
+        final WordLookupEntry entry = remoteLookupOverride != null
+            ? await remoteLookupOverride!(
+                rawWord: normalizedWord,
+                contextSentence: contextSentence,
+                settings: settings,
+              )
+            : await _lookupRemote(
+                rawWord: normalizedWord,
+                contextSentence: contextSentence,
+                settings: settings,
+              );
+        if (entry.definitionCn.trim().isNotEmpty &&
+            entry.sourceLabel != '未配置') {
+          return entry;
+        }
+      } catch (_) {
+        // 在线服务不可用时继续尝试本地释义。
+      }
+    }
+    final WordLookupEntry? local = await _lookupLocally(
+      rawWord: normalizedWord,
+      settings: settings,
+    );
+    if (local != null) {
+      return local;
+    }
+    return _buildUnavailableEntry(
+      rawWord: normalizedWord,
+      messageCn: '本地词典没有收录这个词。可在“设置 → 翻译”配置在线翻译，或在“设置 → 本地模型”下载翻译模型后重试。',
+      messageEn:
+          'Not found in the offline dictionary. Configure an online translator '
+          'or download the local translation model in Settings.',
+    );
+  }
+
+  /// 本地释义：内置离线词典 → 本地 NLLB 翻译。都不可用时返回 null。
+  Future<WordLookupEntry?> _lookupLocally({
+    required String rawWord,
+    required LearningSettingsState settings,
+  }) async {
+    if (rawWord.trim().isEmpty) {
+      return null;
+    }
+    final bool isPhrase = rawWord.trim().contains(' ');
+    if (!isPhrase) {
+      try {
+        // 词典资源是 4MB 级 JSON：正常几十毫秒解析完。加超时是为了任何
+        // 异常情况（资源缺失、IO 卡住）都不会把查词界面卡住。
+        final OfflineWordDefinition? definition = await offlineDictionary
+            .lookup(rawWord)
+            .timeout(
+              const Duration(seconds: 2),
+              onTimeout: () => null,
+            );
+        if (definition != null && definition.translation.trim().isNotEmpty) {
+          return WordLookupEntry(
+            word: _displayWord(rawWord),
+            phonetic: definition.phonetic,
+            type: definition.partOfSpeech.trim().isEmpty
+                ? '英文单词'
+                : definition.partOfSpeech.trim(),
+            definitionEn: '',
+            usageEn: '',
+            exampleSentenceEn: '',
+            definitionCn: definition.translation.trim(),
+            sourceLabel: '本地词典',
+          );
+        }
+      } catch (_) {
+        // 词典资源缺失时继续尝试本地翻译。
+      }
     }
     try {
-      return remoteLookupOverride != null
-          ? await remoteLookupOverride!(
-              rawWord: normalizedWord,
-              contextSentence: contextSentence,
-              settings: settings,
-            )
-          : await _lookupRemote(
-              rawWord: normalizedWord,
-              contextSentence: contextSentence,
-              settings: settings,
+      final String? translated =
+          localNllbTranslateOverride != null && !isPhrase
+          ? await localNllbTranslateOverride!(rawWord)
+          : await _translateWithLocalNllb(
+              rawWord,
+            ).timeout(
+              // 本地翻译模型首次加载要拉起服务，给足时间；超时也不报错，
+              // 交给上层的提示文案。
+              const Duration(seconds: 30),
+              onTimeout: () => null,
             );
+      final String text = translated?.trim() ?? '';
+      if (text.isNotEmpty) {
+        return WordLookupEntry(
+          word: _displayWord(rawWord),
+          phonetic: '',
+          type: isPhrase ? '英文词组' : '英文单词',
+          definitionEn: '',
+          usageEn: '',
+          exampleSentenceEn: '',
+          definitionCn: text,
+          sourceLabel: '本地翻译',
+        );
+      }
     } catch (_) {
-      return _buildUnavailableEntry(
-        rawWord: normalizedWord,
-        messageCn: '翻译服务当前不可用，请检查 API 配置后重试。',
-        messageEn:
-            'Translation API is unavailable. Check your API settings and try again.',
-      );
+      // 本地模型未下载时忽略。
     }
+    return null;
   }
 
   Future<String?> translateSentence({
@@ -399,8 +484,14 @@ class WordLookupService {
     );
   }
 
+  /// 去掉标点、保留单词之间的空格：这样单击查词与“词组选择”（例如
+  /// `remember you can`）都能拿到正确的查询文本。
   String _normalizeWord(String rawWord) {
-    return rawWord.toLowerCase().replaceAll(RegExp(r'[^\w]'), '').trim();
+    return rawWord
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   bool _canUseRemoteProvider(LearningSettingsState settings) {

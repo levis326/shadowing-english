@@ -10,6 +10,9 @@ Future<String?> _fakeNllbTranslate(String sentence) async {
 }
 
 void main() {
+  // 离线词典通过 rootBundle 读取 assets，需要初始化测试绑定。
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('preserves the full lookup result when sent between windows', () {
     const WordLookupEntry entry = WordLookupEntry(
       word: 'Guess',
@@ -75,7 +78,7 @@ void main() {
     expect(entry.sourceLabel, 'API');
   });
 
-  test('shows unavailable message when api lookup fails', () async {
+  test('falls back to the offline dictionary when api lookup fails', () async {
     final WordLookupService service = WordLookupService(
       remoteLookupOverride:
           ({
@@ -98,11 +101,11 @@ void main() {
       ),
     );
 
-    expect(entry.sourceLabel, '未配置');
-    expect(entry.definitionCn, '翻译服务当前不可用，请检查 API 配置后重试。');
+    expect(entry.sourceLabel, '本地词典');
+    expect(entry.definitionCn, isNotEmpty);
   });
 
-  test('shows setup message when api key is missing', () async {
+  test('uses the offline dictionary when api key is missing', () async {
     int remoteCallCount = 0;
     final WordLookupService service = WordLookupService(
       remoteLookupOverride:
@@ -132,8 +135,34 @@ void main() {
     );
 
     expect(remoteCallCount, 0);
-    expect(entry.sourceLabel, '未配置');
-    expect(entry.definitionCn, '请先在设置中配置可用的翻译 API。');
+    // 没有配置在线翻译时用内置离线词典，不再要求用户先配 API。
+    expect(entry.sourceLabel, '本地词典');
+    expect(entry.definitionCn, isNotEmpty);
+  });
+
+  test('word forms are resolved by the offline dictionary', () async {
+    const WordLookupService service = WordLookupService();
+
+    for (final String form in <String>['drinking', 'studies', 'stopped']) {
+      final WordLookupEntry entry = await service.lookupWord(
+        rawWord: form,
+        settings: LearningSettingsState.defaults(),
+      );
+      expect(
+        entry.sourceLabel,
+        '本地词典',
+        reason: '$form 应该能通过词形还原查到本地释义',
+      );
+      expect(entry.definitionCn, isNotEmpty);
+    }
+
+    // 词典与本地模型都没有的短语：给出可操作的提示，而不是要求先配 API。
+    final WordLookupEntry phrase = await service.lookupWord(
+      rawWord: 'zzz qqq',
+      settings: LearningSettingsState.defaults(),
+    );
+    expect(phrase.sourceLabel, '未配置');
+    expect(phrase.definitionCn, contains('本地词典没有收录'));
   });
 
   test('uses google translate direct provider when configured', () async {
@@ -299,8 +328,8 @@ void main() {
       settings: withoutSecret,
     );
     expect(requestCount, 0);
-    expect(localEntry.sourceLabel, '未配置');
-    expect(localEntry.definitionCn, '请先在设置中配置可用的翻译 API。');
+    expect(localEntry.sourceLabel, '本地词典');
+    expect(localEntry.definitionCn, isNotEmpty);
 
     final WordLookupEntry entry = await service.lookupWord(
       rawWord: 'chaotic',

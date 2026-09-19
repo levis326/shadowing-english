@@ -826,6 +826,98 @@ void main() {
 
     expect(find.byType(CoverImage), findsOneWidget);
   });
+
+
+  test('detachGeneratedSubtitles only clears program-generated srt', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'library-detach-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory courseDir = Directory('${root.path}/imported_sources/c1')
+      ..createSync(recursive: true);
+    final File video = File('${courseDir.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    // 用户自己导入的字幕。
+    final File userSrt = File('${courseDir.path}/user.en.srt')
+      ..writeAsStringSync('1\n00:00:01,000 --> 00:00:02,000\nHello\n');
+    // 程序生成的字幕。
+    final File generatedSrt = File('${courseDir.path}/lesson.en.srt')
+      ..writeAsStringSync('1\n00:00:01,000 --> 00:00:02,000\nHello\n');
+    final File generatedZh = File('${courseDir.path}/lesson.zh.srt')
+      ..writeAsStringSync('1\n00:00:01,000 --> 00:00:02,000\n你好\n');
+
+    final ProviderContainer container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(libraryCatalogProvider.notifier).state = <LibraryCourseData>[
+      LibraryCourseData(
+        id: 'c1',
+        title: 'Course',
+        description: '',
+        sourceLabel: '本地资源',
+        coverImage: '',
+        level: '',
+        category: '',
+        progressPercent: 0,
+        totalWords: 0,
+        completedEpisodes: 0,
+        totalEpisodes: 1,
+        lastStudiedStr: '',
+        rating: 0,
+        episodes: <LibraryEpisodeItem>[
+          LibraryEpisodeItem(
+            id: 'c1-ep01',
+            numberStr: '01',
+            title: 'Lesson',
+            durationMinutes: 10,
+            hasChineseSubtitles: true,
+            hasEnglishSubtitles: true,
+            completed: false,
+            progressPercent: 0,
+            coverImage: '',
+            videoAsset: video.path,
+            enSubtitleAsset: generatedSrt.path,
+            cnSubtitleAsset: generatedZh.path,
+            subtitleTracks: <LibrarySubtitleTrackItem>[
+              LibrarySubtitleTrackItem(
+                languageCode: 'en',
+                languageLabel: '英文字幕',
+                path: generatedSrt.path,
+              ),
+              LibrarySubtitleTrackItem(
+                languageCode: 'zh',
+                languageLabel: '中文字幕',
+                path: generatedZh.path,
+              ),
+              LibrarySubtitleTrackItem(
+                languageCode: 'en',
+                languageLabel: '英文字幕',
+                path: userSrt.path,
+              ),
+            ],
+          ),
+        ],
+      ),
+    ];
+
+    await container
+        .read(libraryCatalogProvider.notifier)
+        .detachGeneratedSubtitles(
+      episodeId: 'c1-ep01',
+      videoPath: video.path,
+    );
+
+    final LibraryEpisodeItem episode =
+        container.read(libraryCatalogProvider).single.episodes.single;
+    expect(episode.enSubtitleAsset, isNull);
+    expect(episode.cnSubtitleAsset, isNull);
+    expect(episode.hasEnglishSubtitles, isFalse);
+    expect(episode.hasChineseSubtitles, isFalse);
+    // 用户自己导入的字幕引用保留。
+    expect(
+      episode.subtitleTracks.map((LibrarySubtitleTrackItem t) => t.path),
+      <String>[userSrt.path],
+    );
+  });
 }
 
 ImportMatchRow _makeRow({

@@ -200,6 +200,15 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
           ),
       ],
     );
+    final Widget? actions = _entry == null
+        ? null
+        : _WordLookupPopupActions(
+            entry: _entry!,
+            isPronouncing: _isPronouncing,
+            onCollect: widget.onCollect,
+            onFavorite: widget.onFavorite,
+            onPronounce: _handlePronounce,
+          );
 
     return Container(
       key: const ValueKey<String>('word-lookup-popup-card'),
@@ -220,9 +229,30 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
           ),
         ],
       ),
-      child: widget.maxHeight == null
-          ? content
-          : SingleChildScrollView(child: content),
+      // 有高度限制时：释义部分可滚动、操作按钮固定在底部（释义很长时
+      // 按钮也不会被滚出屏幕）；完全没有高度限制时退化为普通列布局。
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          if (!constraints.hasBoundedHeight) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                content,
+                if (actions != null) actions,
+              ],
+            );
+          }
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Flexible(child: SingleChildScrollView(child: content)),
+              if (actions != null) actions,
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -453,47 +483,6 @@ class _WordLookupPopupBody extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          '翻译来源：${entry.sourceLabel}',
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppDesignTokens.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Row(
-          children: <Widget>[
-            if (onFavorite != null)
-              IconButton(
-                tooltip: '收藏单词',
-                onPressed: onFavorite,
-                icon: const Icon(Icons.bookmark_add_outlined),
-              ),
-            if (onCollect != null) ...<Widget>[
-              Expanded(
-                child: FilledButton(
-                  onPressed: onCollect,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppDesignTokens.brandGreen,
-                  ),
-                  child: const Text('加入短语库'),
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            Expanded(
-              child: OutlinedButton(
-                onPressed: isPronouncing
-                    ? null
-                    : () {
-                        onPronounce(entry.word);
-                      },
-                child: Text(isPronouncing ? '播放中...' : '播放发音'),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -574,6 +563,76 @@ class _MeaningCard extends StatelessWidget {
           child,
         ],
       ),
+    );
+  }
+}
+
+/// 查词卡片的底部操作区：翻译来源 + 收藏/加入短语库/播放发音。
+/// 单独放在滚动区之外，释义再长按钮也不会被滚出视野。
+class _WordLookupPopupActions extends StatelessWidget {
+  const _WordLookupPopupActions({
+    required this.entry,
+    required this.isPronouncing,
+    required this.onCollect,
+    this.onFavorite,
+    required this.onPronounce,
+  });
+
+  final WordLookupEntry entry;
+  final bool isPronouncing;
+  final VoidCallback? onCollect;
+  final VoidCallback? onFavorite;
+  final Future<void> Function(String text, {String language, bool preferSource})
+  onPronounce;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const SizedBox(height: 8),
+        Text(
+          '翻译来源：${entry.sourceLabel}',
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppDesignTokens.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: <Widget>[
+            if (onFavorite != null)
+              IconButton(
+                tooltip: '收藏单词',
+                onPressed: onFavorite,
+                icon: const Icon(Icons.bookmark_add_outlined),
+              ),
+            if (onCollect != null) ...<Widget>[
+              Expanded(
+                child: FilledButton(
+                  onPressed: onCollect,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppDesignTokens.brandGreen,
+                  ),
+                  child: const Text('加入短语库'),
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: OutlinedButton(
+                onPressed: isPronouncing
+                    ? null
+                    : () {
+                        onPronounce(entry.word);
+                      },
+                child: Text(isPronouncing ? '播放中...' : '播放发音'),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

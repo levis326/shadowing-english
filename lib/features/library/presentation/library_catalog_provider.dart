@@ -7,6 +7,7 @@ import 'package:hive_ce/hive.dart';
 import '../../../utils/app_paths.dart';
 import '../../import_course/domain/import_match.dart';
 import '../../player/presentation/asr_subtitle_cache.dart';
+import '../../player/presentation/player_subtitle_loader.dart';
 import 'library_mock_data.dart';
 
 const String _libraryCatalogStorageKey = 'imported_library_courses_v1';
@@ -228,6 +229,73 @@ class LibraryCatalogNotifier extends Notifier<List<LibraryCourseData>> {
                         cnSubtitleAsset: zhSubtitlePath,
                         subtitleTracks: tracks,
                       )
+                    : item,
+              )
+              .toList(growable: false);
+          return course.copyWith(episodes: episodes);
+        })
+        .toList(growable: false);
+    if (changed) {
+      await _persistImportedCourses();
+    }
+  }
+
+  /// 删掉随视频保存的生成字幕（`.en.srt` / `.zh.srt`）后，把剧集上对它们的
+  /// 引用一并清掉：只清“程序生成的”那份，用户自己导入的字幕不受影响。
+  Future<void> detachGeneratedSubtitles({
+    required String episodeId,
+    required String videoPath,
+  }) async {
+    if (videoPath.trim().isEmpty) {
+      return;
+    }
+    final File video = File(videoPath);
+    final Set<String> generatedNames = <String>{
+      generatedSubtitleSrtFileName(videoPath).toLowerCase(),
+      generatedSubtitleSrtFileName(videoPath, languageCode: 'zh').toLowerCase(),
+    };
+    bool isGenerated(String? path) {
+      if (path == null || path.trim().isEmpty) {
+        return false;
+      }
+      final String normalized = path.replaceAll(r'\', '/');
+      final String name = normalized.split('/').last.toLowerCase();
+      return generatedNames.contains(name) &&
+          normalized.startsWith(
+            video.parent.path.replaceAll(r'\', '/'),
+          );
+    }
+
+    bool changed = false;
+    state = state
+        .map((LibraryCourseData course) {
+          final LibraryEpisodeItem? current = course.episodes
+              .where((LibraryEpisodeItem item) => item.id == episodeId)
+              .firstOrNull;
+          if (current == null) {
+            return course;
+          }
+          final bool enGenerated = isGenerated(current.enSubtitleAsset);
+          final bool zhGenerated = isGenerated(current.cnSubtitleAsset);
+          if (!enGenerated && !zhGenerated) {
+            return course;
+          }
+          changed = true;
+          // 只移除指向“程序生成文件”的轨道，用户自己导入的字幕保留。
+          final List<LibrarySubtitleTrackItem> tracks = current.subtitleTracks
+              .where(
+                (LibrarySubtitleTrackItem track) => !isGenerated(track.path),
+              )
+              .toList(growable: false);
+          final List<LibraryEpisodeItem> episodes = course.episodes
+              .map(
+                (LibraryEpisodeItem item) => item.id == episodeId
+                    ? item
+                          .withoutGeneratedSubtitles(
+                            clearEnglish: enGenerated,
+                            clearChinese: zhGenerated,
+                          )
+                          .copyWith(subtitleTracks: tracks)
                     : item,
               )
               .toList(growable: false);

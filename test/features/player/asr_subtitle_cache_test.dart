@@ -538,6 +538,80 @@ void main() {
     );
   });
 
+  test('management also lists srt subtitles saved next to imported videos',
+      () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-srt-list-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course =
+        Directory('${root.path}/imported_sources/course-1')..createSync(recursive: true);
+    final File video = File('${course.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    File('${course.path}/lesson.en.srt').writeAsStringSync('''
+1
+00:00:01,000 --> 00:00:03,000
+Hello there
+
+2
+00:00:04,000 --> 00:00:06,000
+How are you
+''');
+    File('${course.path}/lesson.zh.srt').writeAsStringSync('''
+1
+00:00:01,000 --> 00:00:03,000
+你好
+''');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+
+    final List<AiSubtitleCacheEntry> entries = await cache.listEntries();
+    expect(entries, hasLength(1));
+    final AiSubtitleCacheEntry entry = entries.single;
+    expect(entry.isSrt, isTrue);
+    expect(entry.lineCount, 2);
+    expect(entry.videoPath, video.path);
+    expect(entry.generationSource, 'srt');
+    // 中文文件作为附属文件一起管理（删除时一并删除）。
+    expect(entry.companionFile?.path, endsWith('lesson.zh.srt'));
+
+    await cache.deleteEntry(entry);
+    expect(File('${course.path}/lesson.en.srt').existsSync(), isFalse);
+    expect(File('${course.path}/lesson.zh.srt').existsSync(), isFalse);
+    expect(await cache.listEntries(), isEmpty);
+  });
+
+  test('deleting a words cache also removes the generated srt copies',
+      () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-srt-cleanup-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course =
+        Directory('${root.path}/imported_sources/course-1')..createSync(recursive: true);
+    final File video = File('${course.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final File enSrt = File('${course.path}/lesson.en.srt')
+      ..writeAsStringSync('1\n00:00:01,000 --> 00:00:02,000\nHello\n');
+    final File zhSrt = File('${course.path}/lesson.zh.srt')
+      ..writeAsStringSync('1\n00:00:01,000 --> 00:00:02,000\n你好\n');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    await cache.write(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      content: '{"version":1,"lines":[{"english":"hello","chinese":"你好","words":[]}]}',
+      settings: LearningSettingsState.defaults(),
+    );
+
+    expect(cache.generatedSrtFiles(video.path), hasLength(2));
+    expect(cache.deleteGeneratedSrtFiles(video.path), 2);
+    expect(enSrt.existsSync(), isFalse);
+    expect(zhSrt.existsSync(), isFalse);
+  });
+
   test('management can delete all subtitle caches and checkpoints', () async {
     final Directory root = Directory.systemTemp.createTempSync(
       'asr-cache-delete-all-',

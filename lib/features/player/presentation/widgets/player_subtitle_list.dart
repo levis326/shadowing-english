@@ -87,6 +87,10 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
   bool _autoFollowCurrentLine = true;
   int? _regeneratingAiLineIndex;
 
+  /// 词组选择：长按某个词开始，再点同一个句子里的另一个词作为结尾。
+  int? _phraseLineIndex;
+  int? _phraseAnchorTokenIndex;
+
   bool get _showCurrentOnly => widget.showCurrentOnly;
 
   @override
@@ -533,6 +537,7 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                               ? widget.currentWordIndex
                               : null,
                           active,
+                          lineIndex: originalIndex,
                         ),
                         if (widget.subtitleMode == '双语') ...<Widget>[
                           const _SelectableLineBreak(),
@@ -731,7 +736,12 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
     }
   }
 
-  Widget _buildWordLine(String text, int? highlightIndex, bool active) {
+  Widget _buildWordLine(
+    String text,
+    int? highlightIndex,
+    bool active, {
+    int? lineIndex,
+  }) {
     final List<_WordToken> tokens = text
         .split(' ')
         .where((String rawWord) => rawWord.isNotEmpty)
@@ -752,16 +762,25 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                 widget.highlightWords &&
                 highlightIndex != null &&
                 index == highlightIndex;
-            final String tokenId = '$text-$index';
+            final bool phraseAnchor =
+                _phraseLineIndex != null &&
+                _phraseLineIndex == lineIndex &&
+                _phraseAnchorTokenIndex == index;
 
             return Builder(
               builder: (BuildContext wordContext) {
                 return InkWell(
-                  onTap: () => _toggleDictionaryOverlay(
+                  onTap: () => _handleWordTap(
                     wordContext,
-                    token.value,
-                    text,
-                    tokenId,
+                    lineIndex: lineIndex,
+                    tokenIndex: index,
+                    tokens: tokens,
+                    lineText: text,
+                  ),
+                  onLongPress: () => _startPhraseSelection(
+                    wordContext,
+                    lineIndex: lineIndex,
+                    tokenIndex: index,
                   ),
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
@@ -771,15 +790,19 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                     ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: SubtitleWordHighlightStyle.background(
-                        widget.subtitleWordHighlightStyle,
-                        highlighted: highlighted,
-                      ),
+                      color: phraseAnchor
+                          ? const Color(0xFFD6ECFF)
+                          : SubtitleWordHighlightStyle.background(
+                              widget.subtitleWordHighlightStyle,
+                              highlighted: highlighted,
+                            ),
                       border: Border.all(
-                        color: SubtitleWordHighlightStyle.borderColor(
-                          widget.subtitleWordHighlightStyle,
-                          highlighted: highlighted,
-                        ),
+                        color: phraseAnchor
+                            ? const Color(0xFF2F80ED)
+                            : SubtitleWordHighlightStyle.borderColor(
+                                widget.subtitleWordHighlightStyle,
+                                highlighted: highlighted,
+                              ),
                         width: SubtitleWordHighlightStyle.borderWidth(
                           widget.subtitleWordHighlightStyle,
                           highlighted: highlighted,
@@ -833,6 +856,66 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
           })
           .toList(growable: false),
     );
+  }
+
+  /// 单击：查这个单词；已长按选好起点时，再点另一个词＝选中这段词组。
+  void _handleWordTap(
+    BuildContext wordContext, {
+    required int? lineIndex,
+    required int tokenIndex,
+    required List<_WordToken> tokens,
+    required String lineText,
+  }) {
+    final int? anchorLine = _phraseLineIndex;
+    final int? anchor = _phraseAnchorTokenIndex;
+    if (lineIndex != null && anchorLine == lineIndex && anchor != null) {
+      if (anchor == tokenIndex) {
+        setState(() {
+          _phraseLineIndex = null;
+          _phraseAnchorTokenIndex = null;
+        });
+        _showMessage(wordContext, '已取消词组选择');
+        return;
+      }
+      final int from = anchor < tokenIndex ? anchor : tokenIndex;
+      final int to = anchor < tokenIndex ? tokenIndex : anchor;
+      final String phrase = tokens
+          .sublist(from, to + 1)
+          .map((_WordToken token) => token.value)
+          .join(' ')
+          .trim();
+      setState(() {
+        _phraseLineIndex = null;
+        _phraseAnchorTokenIndex = null;
+      });
+      if (phrase.isEmpty) {
+        return;
+      }
+      _toggleDictionaryOverlay(wordContext, phrase, lineText, 'phrase-$from-$to');
+      return;
+    }
+    _toggleDictionaryOverlay(
+      wordContext,
+      tokens[tokenIndex].value,
+      lineText,
+      '$lineText-$tokenIndex',
+    );
+  }
+
+  /// 长按：把这个词作为词组起点，再点一个词就能选中整段词组。
+  void _startPhraseSelection(
+    BuildContext context, {
+    required int? lineIndex,
+    required int tokenIndex,
+  }) {
+    if (lineIndex == null) {
+      return;
+    }
+    setState(() {
+      _phraseLineIndex = lineIndex;
+      _phraseAnchorTokenIndex = tokenIndex;
+    });
+    _showMessage(context, '词组选择：再点一个词作为结尾（点同一个词取消）');
   }
 
   void _showMessage(BuildContext context, String message) {

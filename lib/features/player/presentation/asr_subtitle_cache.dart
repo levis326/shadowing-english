@@ -3,9 +3,15 @@ import 'dart:io';
 
 import '../../../utils/app_paths.dart';
 import '../../settings/presentation/settings_provider.dart';
+import 'player_mock_state.dart';
+import 'player_subtitle_loader.dart';
+
+/// 一份字幕的来源：识别生成的词级缓存，还是随视频保存的 `.srt` 文件。
+enum AiSubtitleEntryKind { words, srt }
 
 class AiSubtitleCacheEntry {
   const AiSubtitleCacheEntry({
+    this.kind = AiSubtitleEntryKind.words,
     required this.episodeId,
     required this.videoPath,
     required this.cacheFile,
@@ -18,11 +24,16 @@ class AiSubtitleCacheEntry {
     this.translationWarning,
     this.generationSource,
     this.referenceSignature,
+    this.companionFile,
   });
 
+  final AiSubtitleEntryKind kind;
   final String episodeId;
   final String videoPath;
   final File cacheFile;
+
+  /// `.srt` 字幕同名的中文文件（如果有）。
+  final File? companionFile;
   final int lineCount;
   final String provider;
   final String model;
@@ -35,6 +46,8 @@ class AiSubtitleCacheEntry {
   /// 生成时记录下来的翻译/时间轴警告，例如
   /// “英文词级字幕已生成，但中文翻译失败：…”。
   final String? translationWarning;
+
+  bool get isSrt => kind == AiSubtitleEntryKind.srt;
 
   /// 生成来源：`subtitle-text` 表示用「字幕文本文件」生成
   /// （本地 Whisper 只对齐时间轴，文字来自文件）。
@@ -183,11 +196,32 @@ class AsrSubtitleCache {
   }
 
   Future<List<AiSubtitleCacheEntry>> listEntries() async {
-    final Directory root = await _cacheRoot();
-    if (!root.existsSync()) return const <AiSubtitleCacheEntry>[];
+    final Directory dataRoot = await appSupportDirectory();
+    final Directory root = Directory(
+      '${dataRoot.path}${Platform.pathSeparator}asr_subtitles',
+    );
     final List<AiSubtitleCacheEntry> entries = <AiSubtitleCacheEntry>[];
-    for (final FileSystemEntity entity in root.listSync(recursive: true)) {
-      if (entity is! File || !entity.path.endsWith('.words.json')) continue;
+    // 词级缓存目录可能还不存在（例如只导入过带字幕的视频），
+    // 这时仍然要能列出随视频保存的 .srt 字幕。
+    for (final FileSystemEntity entity in root.existsSync()
+        ? root.listSync(recursive: true)
+        : const <FileSystemEntity>[]) {
+      if (entity is! File) continue;
+      // 词级字幕缓存（`.words.json`）。也容忍其它命名的 JSON —— 只要里面
+      // 有 lines 就当成字幕列出，避免个别文件因为命名不同而在列表里消失。
+      final String lowerPath = entity.path.toLowerCase();
+      if (!lowerPath.endsWith('.json') ||
+          lowerPath.endsWith('.meta.json') ||
+          lowerPath.endsWith('.part') ||
+          lowerPath.contains(
+            '${Platform.pathSeparator}jobs${Platform.pathSeparator}',
+          )) {
+        continue;
+      }
+      final String lowerName = _fileName(lowerPath);
+      if (lowerName == 'report.json' || lowerName == 'translations.json') {
+        continue;
+      }
       try {
         final Object? raw = jsonDecode(entity.readAsStringSync());
         if (raw is! Map<String, dynamic> || raw['lines'] is! List) continue;
@@ -230,11 +264,109 @@ class AsrSubtitleCache {
         // A damaged cache is ignored here and cleaned when the player reads it.
       }
     }
-    entries.sort(
-      (AiSubtitleCacheEntry a, AiSubtitleCacheEntry b) =>
-          b.generatedAt.compareTo(a.generatedAt),
-    );
+    entries
+      ..addAll(await _listSrtEntries(dataRoot))
+      ..sort(
+        (AiSubtitleCacheEntry a, AiSubtitleCacheEntry b) =>
+            b.generatedAt.compareTo(a.generatedAt),
+      );
     return entries;
+  }
+
+  /// 找出随视频保存的 `.en.srt` / `.zh.srt`（生成 AI 字幕时保存的，
+  /// 或导入课程时带的字幕文件）。它们不在词级缓存目录里，但同样属于
+  /// “这个视频的字幕”，管理页需要能列出、导出、删除。
+  Future<List<AiSubtitleCacheEntry>> _listSrtEntries(Directory dataRoot) async {
+    final Directory sources = Directory(
+      '${dataRoot.path}${Platform.pathSeparator}imported_sources',
+    );
+    if (!sources.existsSync()) {
+      return const <AiSubtitleCacheEntry>[];
+    }
+    final List<AiSubtitleCacheEntry> entries = <AiSubtitleCacheEntry>[];
+    for (final FileSystemEntity entity in sources.listSync(recursive: true)) {
+      if (entity is! File) {
+        continue;
+      }
+      final String name = _fileName(entity.path).toLowerCase();
+      if (!name.endsWith('.en.srt') && !name.endsWith('.zh.srt')) {
+        continue;
+      }
+      // 中文文件与英文文件成对出现时只列一次（以英文文件为主）。
+      if (name.endsWith('.zh.srt')) {
+        final String enPath =
+            '${entity.path.substring(0, entity.path.length - 6)}en.srt';
+        if (File(enPath).existsSync()) {
+          continue;
+        }
+      }
+      try {
+        final int lineCount = parseSubtitleLines(
+          entity.readAsStringSync(),
+        ).where((PlayerSubtitleLine line) => line.english.trim().isNotEmpty).length;
+        if (lineCount == 0) {
+          continue;
+        }
+        final FileStat stat = entity.statSync();
+        final String? companionPath = name.endsWith('.en.srt')
+            ? '${entity.path.substring(0, entity.path.length - 6)}zh.srt'
+            : null;
+        final File? companion =
+            companionPath != null && File(companionPath).existsSync()
+            ? File(companionPath)
+            : null;
+        entries.add(
+          AiSubtitleCacheEntry(
+            kind: AiSubtitleEntryKind.srt,
+            episodeId: entity.parent.path.split(Platform.pathSeparator).last,
+            videoPath: _videoPathFor(entity),
+            cacheFile: entity,
+            lineCount: lineCount,
+            provider: '字幕文件',
+            model: 'SRT',
+            generatedAt: stat.modified,
+            sizeBytes:
+                stat.size + (companion?.statSync().size ?? 0),
+            generationSource: 'srt',
+            companionFile: companion,
+          ),
+        );
+      } catch (_) {
+        // 读不了的字幕文件跳过即可。
+      }
+    }
+    return entries;
+  }
+
+  /// 字幕文件同目录下与它同名的视频（用来“重新生成”）。
+  String _videoPathFor(File subtitleFile) {
+    final String stem = _stripSrtSuffix(_fileName(subtitleFile.path));
+    for (final FileSystemEntity entity in subtitleFile.parent.listSync()) {
+      if (entity is! File) {
+        continue;
+      }
+      final String name = _fileName(entity.path);
+      if (_stripExtension(name).toLowerCase() == stem.toLowerCase()) {
+        return entity.path;
+      }
+    }
+    return subtitleFile.path;
+  }
+
+  String _stripSrtSuffix(String fileName) {
+    final String lower = fileName.toLowerCase();
+    if (lower.endsWith('.en.srt')) {
+      return fileName.substring(0, fileName.length - 7);
+    }
+    if (lower.endsWith('.zh.srt')) {
+      return fileName.substring(0, fileName.length - 7);
+    }
+    return _stripExtension(fileName);
+  }
+
+  String _stripExtension(String fileName) {
+    final int dot = fileName.lastIndexOf('.');
+    return dot <= 0 ? fileName : fileName.substring(0, dot);
   }
 
   Future<Map<String, dynamic>> readEntry(AiSubtitleCacheEntry entry) async {
@@ -266,11 +398,56 @@ class AsrSubtitleCache {
   }
 
   Future<void> deleteEntry(AiSubtitleCacheEntry entry) async {
+    if (entry.isSrt) {
+      // 字幕文件：连中文文件一起删掉。
+      if (entry.cacheFile.existsSync()) {
+        entry.cacheFile.deleteSync();
+      }
+      final File? companion = entry.companionFile;
+      if (companion != null && companion.existsSync()) {
+        companion.deleteSync();
+      }
+      return;
+    }
     _deleteFiles(entry.cacheFile);
     final Directory jobs = Directory(
       '${entry.cacheFile.parent.path}${Platform.pathSeparator}jobs',
     );
     if (jobs.existsSync()) jobs.deleteSync(recursive: true);
+  }
+
+  /// 生成 AI 字幕时随视频保存的 `.en.srt` / `.zh.srt` 文件。
+  List<File> generatedSrtFiles(String videoPath) {
+    final File video = File(videoPath);
+    if (video.path.isEmpty) {
+      return const <File>[];
+    }
+    return <File>[
+      File(
+        '${video.parent.path}${Platform.pathSeparator}'
+        '${generatedSubtitleSrtFileName(videoPath)}',
+      ),
+      File(
+        '${video.parent.path}${Platform.pathSeparator}'
+        '${generatedSubtitleSrtFileName(videoPath, languageCode: 'zh')}',
+      ),
+    ];
+  }
+
+  /// 删除随视频保存的 `.en.srt` / `.zh.srt`，返回删除数量。
+  int deleteGeneratedSrtFiles(String videoPath) {
+    int removed = 0;
+    for (final File file in generatedSrtFiles(videoPath)) {
+      try {
+        if (file.existsSync()) {
+          file.deleteSync();
+          removed += 1;
+        }
+      } catch (_) {
+        // 文件被占用时忽略。
+      }
+    }
+    return removed;
   }
 
   Future<void> deleteAll() async {

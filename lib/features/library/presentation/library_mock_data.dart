@@ -78,6 +78,34 @@ class LibraryEpisodeItem {
       subtitleTracks: subtitleTracks ?? this.subtitleTracks,
     );
   }
+
+  /// 清空程序生成的字幕引用。
+  ///
+  /// `copyWith` 无法把可空字段置回 null（传 null 会保留原值），删除生成字幕
+  /// 后需要真正解绑，所以单独提供这个方法。
+  LibraryEpisodeItem withoutGeneratedSubtitles({
+    required bool clearEnglish,
+    required bool clearChinese,
+  }) {
+    return LibraryEpisodeItem(
+      id: id,
+      numberStr: numberStr,
+      title: title,
+      durationMinutes: durationMinutes,
+      hasChineseSubtitles: !clearChinese && hasChineseSubtitles,
+      hasEnglishSubtitles: !clearEnglish && hasEnglishSubtitles,
+      completed: completed,
+      progressPercent: progressPercent,
+      coverImage: coverImage,
+      lastWatchedStr: lastWatchedStr,
+      progressTimeStr: progressTimeStr,
+      totalTimeStr: totalTimeStr,
+      videoAsset: videoAsset,
+      enSubtitleAsset: clearEnglish ? null : enSubtitleAsset,
+      cnSubtitleAsset: clearChinese ? null : cnSubtitleAsset,
+      subtitleTracks: subtitleTracks,
+    );
+  }
 }
 
 class LibraryCourseData {
