@@ -849,8 +849,8 @@ class _PadPortraitPlayerScreenState
                         settings.subtitleWordHighlightStyle,
                     subtitleWordHighlightBorderWidth:
                         settings.subtitleWordHighlightBorderWidth,
-                    onCollectWord: (String word) =>
-                        _handleCollectWord(word, courseContext),
+                    onCollectWord: (String word, String definitionCn) =>
+                        _handleCollectWord(word, definitionCn, courseContext),
                     onFavoriteWord: _handleFavoriteWord,
                     onArmRecording: _handleArmShadowingRecording,
                     onPronounce: _stopVideo,
@@ -866,8 +866,8 @@ class _PadPortraitPlayerScreenState
                     subtitleMode: state.subtitleMode,
                     fontScale: settings.fontScale,
                     onTapLine: _goToLine,
-                    onCollectWord: (String word) =>
-                        _handleCollectWord(word, courseContext),
+                    onCollectWord: (String word, String definitionCn) =>
+                        _handleCollectWord(word, definitionCn, courseContext),
                     onFavoriteWord: _handleFavoriteWord,
                     onBookmarkLine: (int index) =>
                         _handleBookmarkLine(index, courseContext),
@@ -1419,26 +1419,51 @@ class _PadPortraitPlayerScreenState
     _showMessage(added ? '成功收藏当前句型到短语库！' : '该例句已经在您的短语库中！');
   }
 
-  void _handleCollectWord(String word, PlayerCourseLookupResult courseContext) {
+  /// 短语库里存小写形式更自然（专有名词/缩写保持原样）。
+  String _phraseBookEntryText(String word) {
+    final String trimmed = word.trim();
+    if (trimmed.length < 2) {
+      return trimmed;
+    }
+    final String rest = trimmed.substring(1);
+    return rest == rest.toLowerCase()
+        ? '${trimmed[0].toLowerCase()}$rest'
+        : trimmed;
+  }
+
+  /// 收藏查到的**词或词组**（不是整句字幕）：英文用初始形态，
+  /// 中文用查词卡片里的释义，原句作为例句记到 note 里。
+  void _handleCollectWord(
+    String word,
+    String definitionCn,
+    PlayerCourseLookupResult courseContext,
+  ) {
+    final String entryText = _phraseBookEntryText(word);
     final PlayerSubtitleLine line = state.lines[state.activeLineIndex];
     final LibraryCourseData? course = courseContext.course;
     final LibraryEpisodeItem? episode = courseContext.episode;
+    final String chinese = definitionCn.trim().isNotEmpty
+        ? definitionCn.trim()
+        : line.chinese;
     final bool added = ref
         .read(phraseBookProvider.notifier)
         .addPhraseIfMissing(
-          english: line.english,
-          chinese: '${line.chinese} (生词: $word)',
+          english: entryText,
+          chinese: chinese,
           course: course?.title ?? '课程',
           episode: '第 ${episode?.numberStr ?? '01'} 集',
           time: line.startTime,
           courseId: course?.id,
           episodeId: episode?.id,
           endTime: _formatTimestamp(line.endMs),
+          note: line.english,
         );
     if (added) {
       ref.read(learningActivityProvider.notifier).recordPhraseSaved();
     }
-    _showMessage(added ? '成功收藏单词 "$word" 到短语库！' : '该例句已经在您的短语库中！');
+    _showMessage(
+      added ? '已把「$entryText」加入短语库（原句已记为例句）' : '「$entryText」已经在短语库中',
+    );
   }
 
   void _handleFavoriteWord(String word) {
@@ -1710,8 +1735,8 @@ class _PadPortraitPlayerScreenState
             onToggleMuted: _handleToggleMuted,
             onVolumeChanged: _handleVolumeChanged,
             onSubtitleLookupOpen: _stopVideo,
-            onCollectWord: (String word) =>
-                _handleCollectWord(word, courseContext),
+            onCollectWord: (String word, String definitionCn) =>
+                _handleCollectWord(word, definitionCn, courseContext),
             onFavoriteWord: _handleFavoriteWord,
             onBookmarkLine: (int index) =>
                 _handleBookmarkLine(index, courseContext),

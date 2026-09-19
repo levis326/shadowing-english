@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../../shared/domain/word_lookup_entry.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
@@ -43,7 +44,8 @@ class SubtitleNavigatorPanel extends StatefulWidget {
   final String subtitleMode;
   final double fontScale;
   final ValueChanged<int> onTapLine;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
   final ValueChanged<int> onBookmarkLine;
   final ValueChanged<int> onLoopFromLine;
@@ -455,9 +457,9 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
               contextSentence: contextSentence,
               maxHeight: 520,
               onClose: () => Navigator.of(dialogContext).pop(),
-              onCollect: () {
+              onCollect: (WordLookupEntry entry) {
                 Navigator.of(dialogContext).pop();
-                widget.onCollectWord(rawWord);
+                widget.onCollectWord(entry.word, entry.definitionCn);
               },
               onFavorite: widget.onFavoriteWord == null
                   ? null

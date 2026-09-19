@@ -1,3 +1,4 @@
+import 'package:common_learn_english/features/shared/domain/word_lookup_entry.dart';
 import 'package:common_learn_english/features/shared/presentation/word_lookup_popup.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -57,6 +58,47 @@ void main() {
     final String relatedTitle =
         relatedWord[0].toUpperCase() + relatedWord.substring(1);
     expect(find.text(relatedTitle), findsWidgets);
+  });
+
+  testWidgets('加入短语库时收藏的是词/词组与释义，而不是整句字幕', (
+    WidgetTester tester,
+  ) async {
+    tester.view.physicalSize = const Size(900, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    WordLookupEntry? collected;
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 420,
+              height: 820,
+              child: WordLookupPopupCard(
+                rawWord: 'Inspection',
+                contextSentence: 'The inspection starts tomorrow.',
+                onClose: _noop,
+                onCollect: (WordLookupEntry entry) => collected = entry,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 800)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('加入短语库'));
+    await tester.pumpAndSettle();
+
+    expect(collected, isNotNull);
+    // 单词用初始形态，并且带上词典释义。
+    expect(collected!.word, 'Inspection');
+    expect(collected!.definitionCn, isNotEmpty);
+    expect(collected!.definitionCn, isNot(contains('The inspection starts')));
   });
 
   testWidgets('没有构词结构的单词不显示该区块', (WidgetTester tester) async {

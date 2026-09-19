@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../shared/domain/word_lookup_entry.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
@@ -23,7 +24,8 @@ class PlayerCurrentLineCard extends StatefulWidget {
   final double fontScale;
   final bool highlightWords;
   final VoidCallback onBookmark;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final VoidCallback? onPronounce;
 
   @override
@@ -198,7 +200,8 @@ class _PlayerCurrentLineCardState extends State<PlayerCurrentLineCard> {
               WordLookupPopupCard(
                 rawWord: selectedWord!,
                 contextSentence: widget.line.english,
-                onCollect: () => widget.onCollectWord(selectedWord!),
+                onCollect: (WordLookupEntry entry) =>
+                    widget.onCollectWord(entry.word, entry.definitionCn),
                 onPronounce: widget.onPronounce,
                 onClose: () {
                   setState(() {

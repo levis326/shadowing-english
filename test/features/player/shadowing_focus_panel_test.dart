@@ -66,7 +66,7 @@ void main() {
               currentWordIndex: 0,
               fontScale: 1,
               highlightWords: false,
-              onCollectWord: (_) {},
+              onCollectWord: (_, __) {},
               onArmRecording: onArmRecording ?? () {},
             ),
           ),

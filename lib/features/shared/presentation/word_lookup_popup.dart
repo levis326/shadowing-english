@@ -30,7 +30,9 @@ class WordLookupPopupCard extends ConsumerStatefulWidget {
   final String rawWord;
   final String contextSentence;
   final VoidCallback onClose;
-  final VoidCallback? onCollect;
+
+  /// 收藏：把**查到的词/词组与释义**交给调用方（不是整句字幕）。
+  final ValueChanged<WordLookupEntry>? onCollect;
   final VoidCallback? onFavorite;
   final VoidCallback? onPronounce;
   final String? fallbackDefinitionCn;
@@ -225,7 +227,9 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
             formation: _formation,
             contextSentence: widget.contextSentence,
             isPronouncing: _isPronouncing,
-            onCollect: widget.onCollect,
+            onCollect: widget.onCollect == null
+                ? null
+                : () => widget.onCollect!(_entry!),
             onFavorite: widget.onFavorite,
             onPronounce: _handlePronounce,
             onSelectRelatedWord: _showRelatedWord,
@@ -237,7 +241,9 @@ class _WordLookupPopupCardState extends ConsumerState<WordLookupPopupCard> {
         : _WordLookupPopupActions(
             entry: _entry!,
             isPronouncing: _isPronouncing,
-            onCollect: widget.onCollect,
+            onCollect: widget.onCollect == null
+                ? null
+                : () => widget.onCollect!(_entry!),
             onFavorite: widget.onFavorite,
             onPronounce: _handlePronounce,
           );

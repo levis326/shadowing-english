@@ -8,6 +8,7 @@ import 'package:record/record.dart';
 
 import '../../../../utils/app_paths.dart';
 import '../../../shared/data/local_pronunciation_service.dart';
+import '../../../shared/domain/word_lookup_entry.dart';
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
 import '../../../words/data/offline_word_dictionary.dart';
@@ -38,7 +39,8 @@ class ShadowingFocusPanel extends ConsumerStatefulWidget {
   final bool highlightWords;
   final String subtitleWordHighlightStyle;
   final double subtitleWordHighlightBorderWidth;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
   final VoidCallback onArmRecording;
   final VoidCallback? onPronounce;
@@ -685,9 +687,9 @@ class ShadowingFocusPanelState extends ConsumerState<ShadowingFocusPanel> {
               contextSentence: contextSentence,
               maxHeight: 520,
               onClose: () => Navigator.of(dialogContext).pop(),
-              onCollect: () {
+              onCollect: (WordLookupEntry entry) {
                 Navigator.of(dialogContext).pop();
-                widget.onCollectWord(rawWord);
+                widget.onCollectWord(entry.word, entry.definitionCn);
               },
               onFavorite: widget.onFavoriteWord == null
                   ? null

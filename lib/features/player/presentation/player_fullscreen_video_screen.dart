@@ -73,7 +73,8 @@ class PlayerFullscreenVideoScreen extends StatefulWidget {
   final VoidCallback onToggleMuted;
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onSubtitleLookupOpen;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
   final ValueChanged<int> onBookmarkLine;
   final ValueChanged<int> onLoopFromLine;
@@ -342,7 +343,8 @@ class _FullscreenSubtitlePanel extends StatelessWidget {
   final String subtitleWordHighlightStyle;
   final double subtitleWordHighlightBorderWidth;
   final ValueChanged<int> onTapLine;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
   final ValueChanged<int> onBookmarkLine;
   final ValueChanged<int> onLoopFromLine;

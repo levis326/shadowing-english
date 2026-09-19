@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/services.dart';
+import '../../../shared/domain/word_lookup_entry.dart';
 
 import '../../../shared/presentation/pad/app_design_tokens.dart';
 import '../../../shared/presentation/word_lookup_popup.dart';
@@ -54,7 +55,8 @@ class PlayerSubtitleList extends StatefulWidget {
   final String subtitleWordHighlightStyle;
   final double subtitleWordHighlightBorderWidth;
   final ValueChanged<int> onTapLine;
-  final ValueChanged<String> onCollectWord;
+  /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
+  final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
   final ValueChanged<int> onBookmarkLine;
   final ValueChanged<int> onLoopFromLine;
@@ -315,9 +317,9 @@ class _PlayerSubtitleListState extends State<PlayerSubtitleList> {
                   maxHeight: popupHeight,
                   onPronounce: widget.onPronounce,
                   onClose: _dismissDictionary,
-                  onCollect: () {
+                  onCollect: (WordLookupEntry entry) {
                     _dismissDictionary();
-                    widget.onCollectWord(rawWord);
+                    widget.onCollectWord(entry.word, entry.definitionCn);
                   },
                   onFavorite: widget.onFavoriteWord == null
                       ? null
