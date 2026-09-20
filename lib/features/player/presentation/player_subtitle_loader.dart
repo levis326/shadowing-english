@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
+import '../../../utils/text_file_io.dart';
 import 'player_media_source.dart';
 import 'player_mock_state.dart';
 
@@ -381,7 +382,9 @@ Future<String> saveGeneratedSubtitleSrt({
   final String enPath =
       '${File(videoPath).parent.path}'
       '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath)}';
-  await File(enPath).writeAsString(subtitleLinesToSrt(lines), flush: true);
+  // 导出的 .srt 带 UTF-8 BOM：中文 Windows 上的播放器/记事本才认得这是
+  // UTF-8，否则会按 ANSI 显示成乱码（应用自己解析时会去掉 BOM）。
+  await writeTextFileWithBom(enPath, subtitleLinesToSrt(lines));
 
   final bool hasChinese = lines.any(
     (PlayerSubtitleLine line) => line.chinese.trim().isNotEmpty,
@@ -390,9 +393,10 @@ Future<String> saveGeneratedSubtitleSrt({
     final String zhPath =
         '${File(videoPath).parent.path}'
         '${Platform.pathSeparator}${generatedSubtitleSrtFileName(videoPath, languageCode: 'zh')}';
-    await File(
+    await writeTextFileWithBom(
       zhPath,
-    ).writeAsString(subtitleLinesToSrt(lines, chinese: true), flush: true);
+      subtitleLinesToSrt(lines, chinese: true),
+    );
   }
   return enPath;
 }

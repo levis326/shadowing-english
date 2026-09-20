@@ -780,4 +780,77 @@ How are you
 
     expect(await cache.listEntries(), isEmpty);
   });
+
+  test('listEntries 能列出 GBK 编码的 .en.srt（中文 Windows 的 ANSI）', () async {
+    final Directory root = Directory.systemTemp.createTempSync('asr-cache-gbk-');
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course = Directory('${root.path}/imported_sources/course-1')
+      ..createSync(recursive: true);
+    File('${course.path}/lesson.mp4').writeAsStringSync('video');
+    // 两行中文用 GBK 写：中文 Windows 的记事本/老播放器默认就是这种编码。
+    File('${course.path}/lesson.en.srt').writeAsBytesSync(<int>[
+      ...utf8.encode('1\n00:00:01,000 --> 00:00:03,000\n'),
+      0xC4, 0xE3, 0xBA, 0xC3, 0xA3, 0xA1, // 你好！
+      ...utf8.encode('\n\n2\n00:00:04,000 --> 00:00:06,000\n'),
+      0xCE, 0xD2, 0xBA, 0xDC, 0xBA, 0xC3, 0xA3, 0xA1, // 我很好！
+      ...utf8.encode('\n'),
+    ]);
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+    expect(entry.isSrt, isTrue);
+    expect(entry.lineCount, 2);
+
+    final Map<String, dynamic> content = await cache.readEntry(entry);
+    final List<dynamic> lines = content['lines'] as List<dynamic>;
+    expect(
+      (lines.first as Map<String, dynamic>)['english'],
+      '你好！',
+    );
+    expect(
+      (lines.last as Map<String, dynamic>)['english'],
+      '我很好！',
+    );
+  });
+
+  test('编辑 srt 字幕时写回带 UTF-8 BOM 的文件（外部播放器不乱码）', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-srt-bom-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course = Directory('${root.path}/imported_sources/course-1')
+      ..createSync(recursive: true);
+    File('${course.path}/lesson.mp4').writeAsStringSync('video');
+    File('${course.path}/lesson.en.srt').writeAsStringSync(
+      '1\n00:00:01,000 --> 00:00:02,000\nHello\n',
+    );
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+
+    await cache.updateEntry(entry, <String, dynamic>{
+      'version': 1,
+      'lines': <Map<String, Object?>>[
+        <String, Object?>{
+          'startMs': 1000,
+          'endMs': 2000,
+          'english': '你好',
+          'chinese': '你好',
+          'words': <Object?>[],
+        },
+      ],
+    });
+
+    final List<int> bytes = File('${course.path}/lesson.en.srt').readAsBytesSync();
+    expect(bytes.take(3), <int>[0xEF, 0xBB, 0xBF]);
+    final Map<String, dynamic> reloaded = await cache.readEntry(entry);
+    expect(
+      ((reloaded['lines'] as List<dynamic>).single
+          as Map<String, dynamic>)['english'],
+      '你好',
+    );
+  });
 }

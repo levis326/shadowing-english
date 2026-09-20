@@ -604,4 +604,45 @@ Hello from file
     expect((state..syncWithTimestamp(2600)).activeLine.english, 'Second');
     expect(state.videoStartMsForLine(1), 2500);
   });
+
+  test('saveGeneratedSubtitleSrt 写出带 UTF-8 BOM 的中英字幕文件', () async {
+    final Directory dir = Directory.systemTemp.createTempSync('srt-save-');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final File video = File('${dir.path}${Platform.pathSeparator}Lesson 01.mp4')
+      ..writeAsStringSync('video');
+
+    final String enPath = await saveGeneratedSubtitleSrt(
+      videoPath: video.path,
+      lines: const <PlayerSubtitleLine>[
+        PlayerSubtitleLine(
+          startTime: '00:00',
+          english: 'Hello there',
+          chinese: '你好',
+          startMs: 1000,
+          endMs: 2000,
+        ),
+      ],
+    );
+
+    expect(enPath, endsWith('Lesson 01.en.srt'));
+    // BOM：中文 Windows 上的播放器/记事本才会按 UTF-8 打开，否则是乱码。
+    expect(File(enPath).readAsBytesSync().take(3), <int>[0xEF, 0xBB, 0xBF]);
+    expect(
+      File(
+        '${dir.path}${Platform.pathSeparator}Lesson 01.zh.srt',
+      ).readAsBytesSync().take(3),
+      <int>[0xEF, 0xBB, 0xBF],
+    );
+
+    // 应用自己读回来时 BOM 不会影响解析：英文文件是纯英文，
+    // 中文在随视频保存的 .zh.srt 里。
+    final List<PlayerSubtitleLine> englishLines = await loadSubtitleLines(
+      enPath,
+    );
+    expect(englishLines.single.english, 'Hello there');
+    final List<PlayerSubtitleLine> chineseLines = await loadSubtitleLines(
+      '${dir.path}${Platform.pathSeparator}Lesson 01.zh.srt',
+    );
+    expect(chineseLines.single.english, '你好');
+  });
 }

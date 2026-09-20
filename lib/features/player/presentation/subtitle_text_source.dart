@@ -1,4 +1,4 @@
-import 'dart:io';
+import '../../../utils/text_file_io.dart';
 
 import 'player_mock_state.dart';
 import 'player_subtitle_loader.dart';
@@ -70,7 +70,7 @@ SubtitleTextSource parseSubtitleTextFile(String raw, {String fileName = ''}) {
 
 /// 读取并解析字幕文本文件（支持 `UTF-8`，带 BOM 也能识别）。
 Future<SubtitleTextSource> loadSubtitleTextFile(String path) async {
-  final String raw = await File(path).readAsString();
+  final String raw = await readTextFileTolerant(path);
   return parseSubtitleTextFile(raw, fileName: _fileName(path));
 }
 

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import '../../../utils/text_file_io.dart';
 
 String createPlayerMediaUri(String source) {
   if (source.startsWith('http://') || source.startsWith('https://')) {
@@ -24,7 +25,7 @@ bool playerMediaAvailable(String source) {
 
 Future<String> loadPlayerTextSource(String source) async {
   if (_isLocalFilePath(source)) {
-    return File(source).readAsString();
+    return readTextFileTolerant(source);
   }
   return rootBundle.loadString(source);
 }

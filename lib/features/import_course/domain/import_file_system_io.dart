@@ -1,4 +1,5 @@
 import 'dart:io';
+import '../../../utils/text_file_io.dart';
 
 List<String> listFilesSync(String folderPath, Set<String> allowedExtensions) {
   final Directory directory = Directory(folderPath);
@@ -24,7 +25,7 @@ String readTextFileSnippetSync(String filePath, {int maxChars = 1200}) {
   }
 
   try {
-    final String content = file.readAsStringSync();
+    final String content = readTextFileTolerantSync(filePath);
     if (content.length <= maxChars) {
       return content;
     }

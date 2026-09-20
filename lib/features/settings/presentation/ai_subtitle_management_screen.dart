@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../utils/app_paths.dart';
+import '../../../utils/text_file_io.dart';
 import '../../library/presentation/library_catalog_provider.dart';
 import '../../player/presentation/asr_subtitle_cache.dart';
 import '../../player/presentation/asr_subtitle_job.dart';
@@ -308,7 +309,7 @@ class _AiSubtitleManagementScreenState
       if (fromSrtFile) {
         // 用这份 .srt 自身的文本与时间轴生成词级字幕（不跑识别）。
         referenceSubtitleLines = parseSubtitleLines(
-          await entry.cacheFile.readAsString(),
+          await readTextFileTolerant(entry.cacheFile.path),
         )
             .where(
               (PlayerSubtitleLine line) => line.english.trim().isNotEmpty,

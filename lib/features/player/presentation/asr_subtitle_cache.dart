@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../../utils/app_paths.dart';
+import '../../../utils/text_encoding.dart';
+import '../../../utils/text_file_io.dart';
 import '../../settings/presentation/settings_provider.dart';
 import 'player_mock_state.dart';
 import 'player_subtitle_loader.dart';
@@ -320,7 +322,7 @@ class AsrSubtitleCache {
       }
       try {
         final int lineCount = parseSubtitleLines(
-          entity.readAsStringSync(),
+          readTextFileTolerantSync(entity.path),
         ).where((PlayerSubtitleLine line) => line.english.trim().isNotEmpty).length;
         if (lineCount == 0) {
           continue;
@@ -428,14 +430,16 @@ class AsrSubtitleCache {
   /// 这样“编辑字幕”界面可以同时编辑两种来源的字幕。
   Map<String, dynamic> _readSrtEntry(AiSubtitleCacheEntry entry) {
     final List<PlayerSubtitleLine> english = parseSubtitleLines(
-      entry.cacheFile.readAsStringSync(),
+      readTextFileTolerantSync(entry.cacheFile.path),
     );
     final File? companion = entry.companionFile;
     final List<PlayerSubtitleLine> merged =
         companion != null && companion.existsSync()
         ? mergeSubtitleLines(
             englishLines: english,
-            chineseLines: parseSubtitleLines(companion.readAsStringSync()),
+            chineseLines: parseSubtitleLines(
+              readTextFileTolerantSync(companion.path),
+            ),
           )
         : english;
     return <String, dynamic>{
@@ -469,12 +473,13 @@ class AsrSubtitleCache {
       if (lines.isEmpty) {
         throw const FormatException('invalid-asr-subtitle-cache');
       }
-      _writeAtomically(entry.cacheFile, subtitleLinesToSrt(lines));
+      _writeAtomically(entry.cacheFile, subtitleLinesToSrt(lines), bom: true);
       final File? companion = entry.companionFile;
       if (companion != null) {
         _writeAtomically(
           companion,
           subtitleLinesToSrt(lines, chinese: true),
+          bom: true,
         );
       }
       return;
@@ -783,14 +788,20 @@ class AsrSubtitleCache {
     }
   }
 
-  void _writeAtomically(File file, String content) {
+  void _writeAtomically(File file, String content, {bool bom = false}) {
     final File part = File(
       '${file.path}.${DateTime.now().microsecondsSinceEpoch}.part',
     );
     try {
-      part
-        ..writeAsStringSync(content, flush: true)
-        ..renameSync(file.path);
+      if (bom) {
+        part
+          ..writeAsBytesSync(utf8BytesWithBom(content))
+          ..renameSync(file.path);
+      } else {
+        part
+          ..writeAsStringSync(content, flush: true)
+          ..renameSync(file.path);
+      }
     } finally {
       if (part.existsSync()) part.deleteSync();
     }

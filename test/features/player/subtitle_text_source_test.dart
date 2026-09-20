@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
@@ -119,6 +120,46 @@ How are you
         source.lines.map((PlayerSubtitleLine line) => line.english),
         <String>['First sentence.', 'Second sentence.'],
       );
+    });
+
+    test('loadSubtitleTextFile 能读 GBK（ANSI）的中文字幕文本', () async {
+      final Directory dir = Directory.systemTemp.createTempSync(
+        'subtitle-text-source-gbk-',
+      );
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final File file = File('${dir.path}/lesson.txt');
+      // 「Hello there. 你好，世界。」其中中文（含句号）是 GBK 字节。
+      await file.writeAsBytes(<int>[
+        ...utf8.encode('Hello there. '),
+        0xC4, 0xE3, 0xBA, 0xC3, 0xA3, 0xAC, 0xCA, 0xC0, 0xBD, 0xE7,
+        0xA1, 0xA3, // 全角句号「。」
+        ...utf8.encode('\n'),
+      ]);
+
+      final SubtitleTextSource source = await loadSubtitleTextFile(file.path);
+
+      expect(
+        source.lines.map((PlayerSubtitleLine line) => line.english),
+        <String>['Hello there.', '你好，世界。'],
+      );
+    });
+
+    test('loadSubtitleTextFile 能读 GBK 的 .srt（带时间轴）', () async {
+      final Directory dir = Directory.systemTemp.createTempSync(
+        'subtitle-text-source-gbk-srt-',
+      );
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final File file = File('${dir.path}/lesson.srt');
+      await file.writeAsBytes(<int>[
+        ...utf8.encode('1\n00:00:01,000 --> 00:00:03,000\n'),
+        0xBA, 0xC3, 0xB5, 0xC4, // 「好的」的 GBK 字节
+        ...utf8.encode('\n'),
+      ]);
+
+      final SubtitleTextSource source = await loadSubtitleTextFile(file.path);
+
+      expect(source.hasTimings, isTrue);
+      expect(source.lines.single.english, '好的');
     });
   });
 }
