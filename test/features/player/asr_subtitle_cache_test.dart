@@ -540,6 +540,41 @@ void main() {
     );
   });
 
+  test('one video with an AI cache and its srt copy lists a single entry',
+      () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-merge-srt-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course =
+        Directory('${root.path}/imported_sources/course-1')
+          ..createSync(recursive: true);
+    final File video = File('${course.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    // 生成的字幕副本（.en.srt / .zh.srt）。
+    File('${course.path}/lesson.en.srt').writeAsStringSync(
+      '1\n00:00:01,000 --> 00:00:02,000\nHello\n',
+    );
+    File('${course.path}/lesson.zh.srt').writeAsStringSync(
+      '1\n00:00:01,000 --> 00:00:02,000\n你好\n',
+    );
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    await cache.write(
+      episodeId: 'course-1-ep01',
+      videoPath: video.path,
+      content:
+          '{"version":1,"lines":[{"english":"hello","chinese":"你好","words":[]}]}',
+      settings: LearningSettingsState.defaults(),
+    );
+
+    final List<AiSubtitleCacheEntry> entries = await cache.listEntries();
+    expect(entries, hasLength(1));
+    expect(entries.single.isSrt, isFalse);
+    expect(entries.single.hasSrtCopy, isTrue);
+  });
+
   test('management also lists srt subtitles saved next to imported videos',
       () async {
     final Directory root = Directory.systemTemp.createTempSync(

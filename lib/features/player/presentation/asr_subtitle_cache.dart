@@ -25,6 +25,7 @@ class AiSubtitleCacheEntry {
     this.generationSource,
     this.referenceSignature,
     this.companionFile,
+    this.hasSrtCopy = false,
   });
 
   final AiSubtitleEntryKind kind;
@@ -34,6 +35,9 @@ class AiSubtitleCacheEntry {
 
   /// `.srt` 字幕同名的中文文件（如果有）。
   final File? companionFile;
+
+  /// 词级字幕是否同时有随视频保存的 `.en.srt` / `.zh.srt` 副本。
+  final bool hasSrtCopy;
   final int lineCount;
   final String provider;
   final String model;
@@ -234,13 +238,16 @@ class AsrSubtitleCache {
         final FileStat stat = entity.statSync();
         final int? generatedAtMs = metadata['generatedAtMs'] as int?;
         final List<dynamic> lines = raw['lines'] as List<dynamic>;
+        final String wordsVideoPath =
+            metadata['videoPath'] as String? ?? entity.path;
         entries.add(
           AiSubtitleCacheEntry(
             episodeId:
                 metadata['episodeId'] as String? ??
                 entity.parent.path.split(Platform.pathSeparator).last,
-            videoPath: metadata['videoPath'] as String? ?? entity.path,
+            videoPath: wordsVideoPath,
             cacheFile: entity,
+            hasSrtCopy: _hasGeneratedSrtCopy(wordsVideoPath),
             lineCount: lines.length,
             chineseLineCount: lines
                 .whereType<Map<String, dynamic>>()
@@ -264,8 +271,19 @@ class AsrSubtitleCache {
         // A damaged cache is ignored here and cleaned when the player reads it.
       }
     }
+    // 同一个视频只显示一条：有词级 AI 字幕时，它的 `.srt` 副本随它一起管理，
+    // 不再单独占一行（否则一个视频会出现“字幕文件 + 词级字幕”两条）。
+    final Set<String> videosWithWords = <String>{
+      for (final AiSubtitleCacheEntry entry in entries)
+        if (!entry.isSrt) _videoKey(entry.videoPath),
+    };
     entries
-      ..addAll(await _listSrtEntries(dataRoot))
+      ..addAll(
+        (await _listSrtEntries(dataRoot)).where(
+          (AiSubtitleCacheEntry entry) =>
+              !videosWithWords.contains(_videoKey(entry.videoPath)),
+        ),
+      )
       ..sort(
         (AiSubtitleCacheEntry a, AiSubtitleCacheEntry b) =>
             b.generatedAt.compareTo(a.generatedAt),
@@ -336,6 +354,32 @@ class AsrSubtitleCache {
       }
     }
     return entries;
+  }
+
+  /// 同一个视频的归并键：目录 + 文件名（不含扩展名），忽略大小写与分隔符差异。
+  static String _videoKey(String videoPath) {
+    final String normalized = videoPath
+        .replaceAll(String.fromCharCode(92), '/')
+        .toLowerCase();
+    final int slash = normalized.lastIndexOf('/');
+    final String name = slash < 0 ? normalized : normalized.substring(slash + 1);
+    final int dot = name.lastIndexOf('.');
+    final String stem = dot <= 0 ? name : name.substring(0, dot);
+    final String dir = slash < 0 ? '' : normalized.substring(0, slash);
+    return '$dir/$stem';
+  }
+
+  /// 词级字幕是否已经有随视频保存的 `.en.srt` / `.zh.srt` 副本。
+  bool _hasGeneratedSrtCopy(String videoPath) {
+    if (videoPath.isEmpty) {
+      return false;
+    }
+    for (final File file in generatedSrtFiles(videoPath)) {
+      if (file.existsSync()) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// 字幕文件同目录下与它同名的视频（用来“重新生成”）。

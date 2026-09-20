@@ -511,6 +511,13 @@ class _SubtitleCard extends StatelessWidget {
         warning: false,
       ));
     }
+    if (entry.hasSrtCopy) {
+      messages.add((
+        icon: Icons.description_outlined,
+        text: '同一个视频的 .srt 副本已并入这一条管理：编辑、删除都会一起同步。',
+        warning: false,
+      ));
+    }
     if (settingsChanged) {
       messages.add((
         icon: Icons.settings_backup_restore_rounded,
