@@ -866,6 +866,7 @@ class _PadPortraitPlayerScreenState
                     subtitleMode: state.subtitleMode,
                     fontScale: settings.fontScale,
                     onTapLine: _goToLine,
+                    onEditLine: _handleEditLine,
                     onCollectWord: (String word, String definitionCn) =>
                         _handleCollectWord(word, definitionCn, courseContext),
                     onFavoriteWord: _handleFavoriteWord,
@@ -1417,6 +1418,115 @@ class _PadPortraitPlayerScreenState
       ref.read(learningActivityProvider.notifier).recordPhraseSaved();
     }
     _showMessage(added ? '成功收藏当前句型到短语库！' : '该例句已经在您的短语库中！');
+  }
+
+  /// 双击字幕（或菜单“编辑这句字幕”）：修改这一句的外文与中文，
+  /// 保存后立刻更新播放器并写回字幕缓存（缓存不存在时会新建）。
+  Future<void> _handleEditLine(int index) async {
+    if (!state.hasLines || index < 0 || index >= state.lines.length) {
+      return;
+    }
+    final PlayerSubtitleLine line = state.lines[index];
+    final String? videoPath = _videoAsset;
+    if (videoPath == null || videoPath.isEmpty) {
+      _showMessage('当前视频不可用');
+      return;
+    }
+    final TextEditingController english = TextEditingController(
+      text: line.english,
+    );
+    final TextEditingController chinese = TextEditingController(
+      text: line.chinese,
+    );
+    final bool? saved = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        title: Text('编辑第 ${index + 1} 句'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                '${line.startTime} - ${_formatTimestamp(line.endMs)}'
+                '${line.words.isEmpty ? '' : ' · 保留逐词时间轴'}',
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: english,
+                maxLines: null,
+                decoration: const InputDecoration(
+                  labelText: '外文',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: chinese,
+                maxLines: null,
+                decoration: const InputDecoration(
+                  labelText: '中文翻译',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) {
+      return;
+    }
+    final String nextEnglish = english.text.trim();
+    final String nextChinese = chinese.text.trim();
+    final PlayerSubtitleLine updated = PlayerSubtitleLine(
+      startTime: line.startTime,
+      english: nextEnglish,
+      chinese: nextChinese,
+      startMs: line.startMs,
+      endMs: line.endMs,
+      words: line.words,
+    );
+    setState(() {
+      state.lines[index] = updated;
+    });
+    _syncTranscriptReader();
+    try {
+      final List<PlayerSubtitleLine> lines = List<PlayerSubtitleLine>.of(
+        state.lines,
+      );
+      await const AsrSubtitleCache().saveLines(
+        episodeId: widget.episodeId,
+        videoPath: videoPath,
+        lines: lines,
+        settings: ref.read(learningSettingsProvider),
+      );
+      // 随视频保存的 .srt 也同步更新，避免缓存被清掉后又看到旧字幕。
+      try {
+        await saveGeneratedSubtitleSrt(videoPath: videoPath, lines: lines);
+      } catch (_) {
+        // 写 srt 失败不影响缓存里的修改。
+      }
+      if (mounted) {
+        _showMessage('已保存第 ${index + 1} 句的修改');
+      }
+    } catch (error) {
+      if (mounted) {
+        _showMessage('保存失败：$error');
+      }
+    }
   }
 
   /// 短语库里存小写形式更自然（专有名词/缩写保持原样）。

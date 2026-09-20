@@ -176,9 +176,7 @@ class _AiSubtitleManagementScreenState
                                         entry.cacheFile.path,
                                     onToggleSelection: () =>
                                         _toggleSelection(entry),
-                                    onEdit: entry.isSrt
-                                        ? null
-                                        : () => _edit(entry),
+                                    onEdit: () => _edit(entry),
                                     onExport: () => _export(entry),
                                     onRegenerate: () => _regenerate(entry),
                                     onDelete: () => _delete(entry),
@@ -1001,7 +999,9 @@ class _AiSubtitleEditorScreenState extends State<AiSubtitleEditorScreen> {
               onPressed: () => Navigator.of(context).pop(_changed),
               icon: Icons.arrow_back_rounded,
             ),
-            trailing: const _InfoBadge(label: '自动保存'),
+            trailing: _InfoBadge(
+              label: widget.entry.isSrt ? '自动保存到 .srt' : '自动保存',
+            ),
           ),
           Expanded(
             child: lines == null

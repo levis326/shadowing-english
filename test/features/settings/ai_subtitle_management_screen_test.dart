@@ -107,6 +107,33 @@ void main() {
     expect(find.textContaining('还没有下载本地翻译模型'), findsOneWidget);
   });
 
+  testWidgets('srt 字幕也能进入编辑界面', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1100, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final _CacheFixture fixture = (await tester.runAsync(
+      _createSrtFixture,
+    ))!;
+    addTearDown(fixture.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          home: AiSubtitleManagementScreen(cache: fixture.cache),
+        ),
+      ),
+    );
+    await _pumpFrames(tester);
+
+    expect(find.textContaining('字幕文件（.srt）'), findsOneWidget);
+    expect(find.text('编辑字幕'), findsOneWidget);
+
+    await tester.tap(find.text('编辑字幕'));
+    await tester.pumpAndSettle();
+    expect(find.text('编辑 AI 字幕'), findsOneWidget);
+    expect(find.textContaining('Hello there'), findsWidgets);
+  });
+
   testWidgets('management marks subtitles generated from a subtitle text file', (
     WidgetTester tester,
   ) async {
@@ -342,6 +369,38 @@ Future<_CacheFixture> _createSubtitleTextFixture() async {
         },
       ],
     }),
+  );
+  return _CacheFixture(
+    root: root,
+    downloads: downloads,
+    cache: cache,
+    entries: await cache.listEntries(),
+  );
+}
+
+Future<_CacheFixture> _createSrtFixture() async {
+  final Directory root = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-srt-',
+  );
+  final Directory downloads = Directory.systemTemp.createTempSync(
+    'ai-subtitle-management-srt-downloads-',
+  );
+  final Directory course =
+      Directory('${root.path}/imported_sources/course-1')
+        ..createSync(recursive: true);
+  File('${course.path}/lesson.mp4').writeAsStringSync('video');
+  File('${course.path}/lesson.en.srt').writeAsStringSync('''
+1
+00:00:01,000 --> 00:00:03,000
+Hello there
+
+2
+00:00:04,000 --> 00:00:06,000
+How are you
+''');
+  final AsrSubtitleCache cache = AsrSubtitleCache(
+    appSupportDirectory: () async => root,
+    downloadsDirectory: () async => downloads,
   );
   return _CacheFixture(
     root: root,

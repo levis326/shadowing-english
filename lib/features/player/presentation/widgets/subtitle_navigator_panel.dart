@@ -17,6 +17,7 @@ class SubtitleNavigatorPanel extends StatefulWidget {
     required this.subtitleMode,
     required this.fontScale,
     required this.onTapLine,
+    this.onEditLine,
     required this.onCollectWord,
     this.onFavoriteWord,
     required this.onBookmarkLine,
@@ -44,6 +45,9 @@ class SubtitleNavigatorPanel extends StatefulWidget {
   final String subtitleMode;
   final double fontScale;
   final ValueChanged<int> onTapLine;
+
+  /// 双击某条字幕（或在操作菜单里选“编辑这句字幕”）时编辑这句双语文本。
+  final ValueChanged<int>? onEditLine;
   /// 收藏查到的词/词组：`(词或词组, 中文释义)`。
   final void Function(String word, String definitionCn) onCollectWord;
   final ValueChanged<String>? onFavoriteWord;
@@ -75,6 +79,11 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _rowKeys = <int, GlobalKey>{};
   bool _autoFollowCurrentLine = true;
+
+  /// 手动实现的“双击”：给行的 InkWell 加 onDoubleTap 会和行内按钮
+  /// （循环/收藏/更多）抢手势，导致按钮点不动，所以用点击时间判断。
+  int? _lastTappedLineIndex;
+  DateTime? _lastTapAt;
   int? _regeneratingAiLineIndex;
 
   @override
@@ -290,6 +299,25 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
     );
   }
 
+  /// 单击定位播放；350ms 内再次点击同一行视为双击 → 编辑这句字幕。
+  void _handleLineTap(int index) {
+    final DateTime now = DateTime.now();
+    final bool isDoubleTap =
+        widget.onEditLine != null &&
+        _lastTappedLineIndex == index &&
+        _lastTapAt != null &&
+        now.difference(_lastTapAt!) < const Duration(milliseconds: 350);
+    if (isDoubleTap) {
+      _lastTappedLineIndex = null;
+      _lastTapAt = null;
+      widget.onEditLine!(index);
+      return;
+    }
+    _lastTappedLineIndex = index;
+    _lastTapAt = now;
+    widget.onTapLine(index);
+  }
+
   Widget _buildLine(BuildContext context, int index) {
     final PlayerSubtitleLine line = widget.lines[index];
     final bool active = index == widget.activeIndex;
@@ -299,7 +327,7 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
 
     return InkWell(
       key: _rowKeyFor(index),
-      onTap: () => widget.onTapLine(index),
+      onTap: () => _handleLineTap(index),
       borderRadius: BorderRadius.circular(20),
       child: Ink(
         padding: const EdgeInsets.all(12),
@@ -486,6 +514,13 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
+                if (widget.onEditLine != null)
+                  ListTile(
+                    leading: const Icon(Icons.edit_note_rounded),
+                    title: const Text('编辑这句字幕'),
+                    subtitle: const Text('修改外文与中文，双击字幕也能打开'),
+                    onTap: () => Navigator.of(context).pop('edit-line'),
+                  ),
                 ListTile(
                   leading: const Icon(Icons.bookmark_add_outlined),
                   title: const Text('收藏到短语库'),
@@ -544,6 +579,9 @@ class _SubtitleNavigatorPanelState extends State<SubtitleNavigatorPanel> {
     }
 
     switch (action) {
+      case 'edit-line':
+        widget.onEditLine?.call(index);
+        return;
       case 'bookmark':
         widget.onBookmarkLine(index);
         return;

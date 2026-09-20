@@ -370,11 +370,45 @@ class AsrSubtitleCache {
   }
 
   Future<Map<String, dynamic>> readEntry(AiSubtitleCacheEntry entry) async {
+    if (entry.isSrt) {
+      return _readSrtEntry(entry);
+    }
     final Object? decoded = jsonDecode(entry.cacheFile.readAsStringSync());
     if (decoded is! Map<String, dynamic> || decoded['lines'] is! List) {
       throw const FormatException('invalid-asr-subtitle-cache');
     }
     return decoded;
+  }
+
+  /// 把 `.srt` 字幕（可能还带一个中文文件）读成与词级缓存相同的结构，
+  /// 这样“编辑字幕”界面可以同时编辑两种来源的字幕。
+  Map<String, dynamic> _readSrtEntry(AiSubtitleCacheEntry entry) {
+    final List<PlayerSubtitleLine> english = parseSubtitleLines(
+      entry.cacheFile.readAsStringSync(),
+    );
+    final File? companion = entry.companionFile;
+    final List<PlayerSubtitleLine> merged =
+        companion != null && companion.existsSync()
+        ? mergeSubtitleLines(
+            englishLines: english,
+            chineseLines: parseSubtitleLines(companion.readAsStringSync()),
+          )
+        : english;
+    return <String, dynamic>{
+      'version': 1,
+      'language': 'en',
+      'lines': merged
+          .map(
+            (PlayerSubtitleLine line) => <String, Object?>{
+              'startMs': line.startMs,
+              'endMs': line.endMs,
+              'english': line.english,
+              'chinese': line.chinese,
+              'words': <Object?>[],
+            },
+          )
+          .toList(growable: false),
+    };
   }
 
   Future<void> updateEntry(
@@ -384,7 +418,74 @@ class AsrSubtitleCache {
     if (content['lines'] is! List) {
       throw const FormatException('invalid-asr-subtitle-cache');
     }
+    if (entry.isSrt) {
+      final List<PlayerSubtitleLine> lines = parseSubtitleLines(
+        jsonEncode(content),
+      );
+      if (lines.isEmpty) {
+        throw const FormatException('invalid-asr-subtitle-cache');
+      }
+      _writeAtomically(entry.cacheFile, subtitleLinesToSrt(lines));
+      final File? companion = entry.companionFile;
+      if (companion != null) {
+        _writeAtomically(
+          companion,
+          subtitleLinesToSrt(lines, chinese: true),
+        );
+      }
+      return;
+    }
     _writeAtomically(entry.cacheFile, jsonEncode(content));
+  }
+
+  /// 用当前播放器里的字幕行覆盖缓存（用于播放页“双击编辑本句”）。
+  ///
+  /// 缓存不存在时用 [settings] 新建一份（这样修改会真正保存下来）。
+  Future<void> saveLines({
+    required String episodeId,
+    required String videoPath,
+    required List<PlayerSubtitleLine> lines,
+    LearningSettingsState? settings,
+  }) async {
+    final File file = await cacheFileFor(
+      episodeId: episodeId,
+      videoPath: videoPath,
+    );
+    final Map<String, dynamic> decoded;
+    if (file.existsSync()) {
+      final Object? existing = jsonDecode(file.readAsStringSync());
+      decoded = existing is Map<String, dynamic>
+          ? existing
+          : <String, dynamic>{'version': 1, 'language': 'en'};
+    } else {
+      decoded = <String, dynamic>{'version': 1, 'language': 'en'};
+    }
+    decoded['lines'] = lines
+        .map(
+          (PlayerSubtitleLine line) => <String, Object?>{
+            'startMs': line.startMs,
+            'endMs': line.endMs,
+            'english': line.english,
+            'chinese': line.chinese,
+            'words': line.words
+                .map(
+                  (PlayerSubtitleWord word) => <String, Object?>{
+                    'text': word.text,
+                    'startMs': word.startMs,
+                    'endMs': word.endMs,
+                    if (word.confidence != null) 'confidence': word.confidence,
+                  },
+                )
+                .toList(growable: false),
+          },
+        )
+        .toList(growable: false);
+    await write(
+      episodeId: episodeId,
+      videoPath: videoPath,
+      content: jsonEncode(decoded),
+      settings: file.existsSync() ? null : settings,
+    );
   }
 
   Future<File> exportEntry(AiSubtitleCacheEntry entry) async {

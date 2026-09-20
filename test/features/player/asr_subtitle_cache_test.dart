@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:common_learn_english/features/player/presentation/asr_subtitle_cache.dart';
+import 'package:common_learn_english/features/player/presentation/player_mock_state.dart';
+import 'package:common_learn_english/features/player/presentation/player_subtitle_loader.dart';
 import 'package:common_learn_english/features/settings/presentation/settings_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -610,6 +612,119 @@ How are you
     expect(cache.deleteGeneratedSrtFiles(video.path), 2);
     expect(enSrt.existsSync(), isFalse);
     expect(zhSrt.existsSync(), isFalse);
+  });
+
+  test('srt entries can be read and updated from the editor', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-srt-edit-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final Directory course =
+        Directory('${root.path}/imported_sources/course-1')
+          ..createSync(recursive: true);
+    File('${course.path}/lesson.mp4').writeAsStringSync('video');
+    File('${course.path}/lesson.en.srt').writeAsStringSync('''
+1
+00:00:01,000 --> 00:00:03,000
+Hello there
+
+2
+00:00:04,000 --> 00:00:06,000
+How are you
+''');
+    File('${course.path}/lesson.zh.srt').writeAsStringSync('''
+1
+00:00:01,000 --> 00:00:03,000
+你好
+
+2
+00:00:04,000 --> 00:00:06,000
+你好吗
+''');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+    final AiSubtitleCacheEntry entry = (await cache.listEntries()).single;
+
+    // 读成与词级缓存相同的结构（含中文）。
+    final Map<String, dynamic> content = await cache.readEntry(entry);
+    final List<dynamic> lines = content['lines'] as List<dynamic>;
+    expect(lines, hasLength(2));
+    expect((lines.first as Map<String, dynamic>)['english'], 'Hello there');
+    expect((lines.first as Map<String, dynamic>)['chinese'], '你好');
+
+    // 改一句后写回 srt（中英两个文件都要更新）。
+    (lines.first as Map<String, dynamic>)['english'] = 'Hello there!';
+    (lines.first as Map<String, dynamic>)['chinese'] = '你好！';
+    await cache.updateEntry(entry, content);
+
+    final String enText = File('${course.path}/lesson.en.srt').readAsStringSync();
+    final String zhText = File('${course.path}/lesson.zh.srt').readAsStringSync();
+    expect(enText, contains('Hello there!'));
+    expect(zhText, contains('你好！'));
+    // 读回来确认修改生效。
+    final Map<String, dynamic> reloaded = await cache.readEntry(entry);
+    final List<dynamic> reloadedLines = reloaded['lines'] as List<dynamic>;
+    expect(
+      (reloadedLines.first as Map<String, dynamic>)['english'],
+      'Hello there!',
+    );
+    expect(
+      (reloadedLines.first as Map<String, dynamic>)['chinese'],
+      '你好！',
+    );
+  });
+
+  test('saveLines writes the player edits back to the cache', () async {
+    final Directory root = Directory.systemTemp.createTempSync(
+      'asr-cache-save-lines-',
+    );
+    addTearDown(() => root.deleteSync(recursive: true));
+    final File video = File('${root.path}/lesson.mp4')
+      ..writeAsStringSync('video');
+    final AsrSubtitleCache cache = AsrSubtitleCache(
+      appSupportDirectory: () async => root,
+    );
+
+    // 没有缓存时用当前设置新建一份。
+    await cache.saveLines(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      settings: LearningSettingsState.defaults(),
+      lines: <PlayerSubtitleLine>[
+        const PlayerSubtitleLine(
+          startTime: '00:01',
+          english: 'Fixed sentence.',
+          chinese: '修正后的句子。',
+          startMs: 1000,
+          endMs: 3000,
+        ),
+      ],
+    );
+    final String? raw = await cache.read(episodeId: 'ep01', videoPath: video.path);
+    expect(raw, isNotNull);
+    expect(parseSubtitleLines(raw!).single.english, 'Fixed sentence.');
+    expect(parseSubtitleLines(raw).single.chinese, '修正后的句子。');
+
+    // 已有缓存时再改一遍。
+    await cache.saveLines(
+      episodeId: 'ep01',
+      videoPath: video.path,
+      lines: <PlayerSubtitleLine>[
+        const PlayerSubtitleLine(
+          startTime: '00:01',
+          english: 'Fixed again.',
+          chinese: '再改一次。',
+          startMs: 1000,
+          endMs: 3000,
+        ),
+      ],
+    );
+    final String? updated = await cache.read(
+      episodeId: 'ep01',
+      videoPath: video.path,
+    );
+    expect(parseSubtitleLines(updated!).single.english, 'Fixed again.');
   });
 
   test('management can delete all subtitle caches and checkpoints', () async {
