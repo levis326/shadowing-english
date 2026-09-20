@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../utils/chinese_text.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../words/data/english_phrases.dart';
 import '../../words/data/offline_word_dictionary.dart';
@@ -158,7 +159,7 @@ class WordLookupService {
           definitionEn: '',
           usageEn: '',
           exampleSentenceEn: '',
-          definitionCn: gloss.trim(),
+          definitionCn: normalizeChineseText(gloss),
           sourceLabel: '本地词典（逐词）',
         );
       }
@@ -236,7 +237,7 @@ class WordLookupService {
             definitionEn: '',
             usageEn: '',
             exampleSentenceEn: '',
-            definitionCn: definition.translation.trim(),
+            definitionCn: normalizeChineseText(definition.translation),
             sourceLabel: '本地词典',
           );
         }

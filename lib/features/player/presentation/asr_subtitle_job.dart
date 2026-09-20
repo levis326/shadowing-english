@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 
 import '../../../utils/app_paths.dart';
+import '../../../utils/chinese_text.dart';
 import '../../models/data/local_model_resolver.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../shared/data/desktop_nllb.dart';
@@ -1119,7 +1120,8 @@ class AsrSubtitleJobRunner {
       RegExp(r'\s+([,.;:!?，。；：！？、])'),
       (Match match) => match.group(1)!,
     );
-    return cleaned;
+    // 简体中文排版：半角标点转全角、去掉中文之间的空格。
+    return normalizeChineseText(cleaned);
   }
 
   bool _lineNeedsTranslation(Map<String, dynamic> line) {

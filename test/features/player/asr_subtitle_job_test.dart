@@ -494,7 +494,8 @@ void main() {
       settings: settings,
     );
 
-    expect(parseSubtitleLines(raw).single.chinese, '学会,然后开始做片。');
+    // 半角逗号也会被整理成中文全角逗号。
+    expect(parseSubtitleLines(raw).single.chinese, '学会，然后开始做片。');
   });
 
   test(
