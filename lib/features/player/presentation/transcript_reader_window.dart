@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod/misc.dart' show Override;
 import 'package:window_manager/window_manager.dart';
 
+import '../../../utils/app_fonts.dart';
 import '../../settings/presentation/settings_provider.dart';
 import '../../shared/data/word_lookup_service.dart';
 import '../../shared/domain/word_lookup_entry.dart';
@@ -197,6 +198,7 @@ class _TranscriptReaderWindowAppState
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF10B981)),
         fontFamily: 'Nunito',
+        fontFamilyFallback: kCjkFontFallback,
       ),
       home: FullTranscriptReaderScreen(
         snapshot: _snapshot,

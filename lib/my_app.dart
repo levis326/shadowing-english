@@ -8,6 +8,7 @@ import 'config/theme/theme_logic.dart';
 import 'config/theme/theme_ui_model.dart';
 import 'flavors/app_flavor.dart';
 import 'router/app_router.dart';
+import 'utils/app_fonts.dart';
 
 class MyApp extends ConsumerWidget {
   const MyApp({super.key});
@@ -29,8 +30,8 @@ class MyApp extends ConsumerWidget {
 
         /// Localization is not available for the title.
         title: FlavorConfig.appName,
-        theme: _buildTheme(Brightness.light),
-        darkTheme: _buildTheme(Brightness.dark),
+        theme: buildAppTheme(Brightness.light),
+        darkTheme: buildAppTheme(Brightness.dark),
 
         themeMode: currentTheme.themeMode,
         debugShowCheckedModeBanner: false,
@@ -66,7 +67,8 @@ double _textScaleForWidth(double width) {
   return 0.95;
 }
 
-ThemeData _buildTheme(Brightness brightness) {
+/// 应用主题（测试里也直接用这个函数检查字体回退等设置）。
+ThemeData buildAppTheme(Brightness brightness) {
   final bool isDark = brightness == Brightness.dark;
   final ColorScheme colorScheme = ColorScheme.fromSeed(
     brightness: brightness,
@@ -86,8 +88,11 @@ ThemeData _buildTheme(Brightness brightness) {
   /// 不再走 google_fonts：它会把字体缓存到
   /// `getApplicationSupportDirectory()`（Windows 上是 `%APPDATA%`），
   /// 还会在缺字体时联网下载，都不符合"全部数据放在程序目录"的要求。
+  ///
+  /// `fontFamilyFallback` 显式指定简体中文字体：Nunito 没有汉字字形，
+  /// 不指定时会回退到日文/繁体中文字体，出现「门」等字形不合简体规范的问题。
   final TextTheme textTheme = ThemeData.light().textTheme
-      .apply(fontFamily: 'Nunito')
+      .apply(fontFamily: 'Nunito', fontFamilyFallback: kCjkFontFallback)
       .apply(
         bodyColor: colorScheme.onSurface,
         displayColor: colorScheme.onSurface,
